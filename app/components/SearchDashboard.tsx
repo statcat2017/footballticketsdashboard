@@ -2,18 +2,26 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
-import type { RankedTicketResult } from "@/lib/types";
+import type { RankedTicketOpportunityResult } from "@/lib/types";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
 
-function formatPrice(pence: number): string {
+function formatPrice(pence: number | null): string {
+  if (pence === null) {
+    return "Price TBC";
+  }
+
   return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency: "GBP"
   }).format(pence / 100);
 }
 
-function formatKickoff(value: string): string {
+function formatKickoff(value: string | null): string {
+  if (value === null) {
+    return "Kickoff TBC";
+  }
+
   return new Intl.DateTimeFormat("en-GB", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -26,7 +34,7 @@ export function SearchDashboard() {
   const [age, setAge] = useState("65");
   const [state, setState] = useState<SearchState>("idle");
   const [error, setError] = useState("");
-  const [results, setResults] = useState<RankedTicketResult[]>([]);
+  const [results, setResults] = useState<RankedTicketOpportunityResult[]>([]);
 
   const resultCount = useMemo(() => results.length, [results]);
 
@@ -56,8 +64,8 @@ export function SearchDashboard() {
     <main className="dashboard-shell">
       <section className="search-panel" aria-labelledby="search-title">
         <div>
-          <p className="eyebrow">UK football tickets</p>
-          <h1 id="search-title">Find nearby match tickets</h1>
+          <p className="eyebrow">UK football ticket opportunities</p>
+          <h1 id="search-title">Find nearby match ticket leads</h1>
         </div>
 
         <form onSubmit={onSubmit} className="search-form">
@@ -89,33 +97,33 @@ export function SearchDashboard() {
 
       <section className="results-section" aria-live="polite">
         {state === "idle" && (
-          <div className="empty-state">Search with your postcode and age to rank available tickets.</div>
+          <div className="empty-state">Search with your postcode and age to rank public ticket opportunities.</div>
         )}
         {state === "error" && <div className="error-state">{error}</div>}
         {state === "ready" && (
           <>
             <div className="results-header">
-              <h2>{resultCount} ranked results</h2>
-              <span>Seed data adapter</span>
+              <h2>{resultCount} opportunity results</h2>
+              <span>Dulwich Hamlet official adapter</span>
             </div>
-            <div className="result-list">
-              {results.map((result) => (
+            {results.length === 0 ? (
+              <div className="empty-state">No public ticket opportunities found from the current live sources.</div>
+            ) : (
+              <div className="result-list">
+                {results.map((result) => (
                 <article className="ticket-card" key={result.id}>
                   <div className="ticket-main">
-                    <p className="competition">{result.competition}</p>
-                    <h3>
-                      {result.homeTeam} vs {result.awayTeam}
-                    </h3>
+                    <p className="competition">{result.competition ?? result.saleLabel}</p>
+                    <h3>{result.title}</h3>
                     <p>
-                      {result.venue} · {formatKickoff(result.kickoff)}
+                      {result.venueName ?? "Venue TBC"} · {formatKickoff(result.kickoffAt)}
                     </p>
                   </div>
                   <div className="ticket-meta">
-                    <strong>{formatPrice(result.effectivePricePence)}</strong>
-                    {result.effectivePricePence < result.pricePence && (
-                      <span className="saving">Concession from {formatPrice(result.pricePence)}</span>
-                    )}
-                    <a href={result.url} target="_blank" rel="noreferrer">
+                    <strong>{formatPrice(result.displayPricePence)}</strong>
+                    <span className="saving">{result.displayPriceLabel}</span>
+                    <span>{result.saleLabel}</span>
+                    <a href={result.purchaseUrl ?? result.infoUrl} target="_blank" rel="noreferrer">
                       View source
                     </a>
                   </div>
@@ -125,8 +133,9 @@ export function SearchDashboard() {
                     ))}
                   </div>
                 </article>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </section>

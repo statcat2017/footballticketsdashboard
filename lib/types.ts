@@ -1,3 +1,5 @@
+import type { SaleState, SourceConfidence } from "@/lib/ingestion/ticket-opportunity";
+
 export type TicketSourceKind = "official" | "trusted-resale" | "seed";
 
 export interface UserSearch {
@@ -40,4 +42,25 @@ export interface VenueLocation {
   postcode: string;
   latitude: number;
   longitude: number;
+}
+
+export interface RankedTicketOpportunityResult {
+  id: string;
+  fixtureStableKey: string;
+  title: string;
+  competition: string | null;
+  venueName: string | null;
+  kickoffAt: string | null;
+  distanceMiles: number | null;
+  displayPricePence: number | null;
+  displayPriceLabel: string;
+  saleState: SaleState;
+  saleLabel: string;
+  sourceLabel: string;
+  confidence: SourceConfidence;
+  purchaseUrl: string | null;
+  infoUrl: string;
+  score: number;
+  rankingReasons: string[];
+  warnings: string[];
 }

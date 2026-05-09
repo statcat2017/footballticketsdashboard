@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { rankTickets } from "@/lib/ranking";
+import { createAdapterContext, dulwichHamletOfficialOpportunityAdapter } from "@/lib/ingestion";
+import { rankTicketOpportunityLeads } from "@/lib/ranking";
 
 const searchSchema = z.object({
   postcode: z.string().min(5),
@@ -20,7 +21,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    return NextResponse.json({ results: rankTickets(parsed.data) });
+    const adapterResult = await dulwichHamletOfficialOpportunityAdapter.run(
+      createAdapterContext({ now: new Date() })
+    );
+
+    return NextResponse.json({
+      results: rankTicketOpportunityLeads(parsed.data, adapterResult.leads),
+      diagnostics: adapterResult.diagnostics
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Search failed." },
