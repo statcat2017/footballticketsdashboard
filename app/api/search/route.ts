@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const results = searchFixtures(getDatabase(), parsed.data);
+    const results = await searchFixtures(await getDatabase(), parsed.data);
 
     return NextResponse.json({
       results,

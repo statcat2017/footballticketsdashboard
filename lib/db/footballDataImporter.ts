@@ -1,4 +1,5 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
+import type { AppDatabase } from "@/lib/db/adapter";
 
 const footballDataBaseUrl = "https://api.football-data.org/v4";
 const competitions = ["PL", "ELC"] as const;
@@ -46,7 +47,7 @@ interface ClubRow {
 }
 
 export interface ImportFootballDataOptions {
-  db: SqliteDatabase;
+  db: SqliteDatabase | AppDatabase;
   token?: string;
   fetchImpl?: FetchLike;
   now?: Date;
@@ -73,7 +74,7 @@ export async function importFootballDataFixtures({
     throw new Error("A fetch implementation is required to import football-data fixtures.");
   }
 
-  const clubLookup = buildClubLookup(db);
+  const clubLookup = await buildClubLookup(db);
   const importedAt = now.toISOString();
   let fetched = 0;
   let imported = 0;
@@ -83,7 +84,7 @@ export async function importFootballDataFixtures({
     const response = await fetchCompetitionMatches(fetchImpl, token, competitionCode);
     fetched += response.matches.length;
 
-    const result = upsertMatches(db, response.matches, clubLookup, importedAt);
+    const result = await upsertMatches(db, response.matches, clubLookup, importedAt);
     imported += result.imported;
     skipped += result.skipped;
   }
@@ -121,11 +122,16 @@ async function fetchCompetitionMatches(
   return body;
 }
 
-function buildClubLookup(db: SqliteDatabase): Map<string, ClubRow> {
-  const clubs = db.prepare(`
-    SELECT id, name, football_data_team_id, aliases, short_name, competition_code, venue_id
-    FROM clubs
-  `).all() as ClubRow[];
+async function buildClubLookup(db: SqliteDatabase | AppDatabase): Promise<Map<string, ClubRow>> {
+  const clubs = isAppDatabase(db)
+    ? await db.all<ClubRow>(`
+        SELECT id, name, football_data_team_id, aliases, short_name, competition_code, venue_id
+        FROM clubs
+      `)
+    : (db.prepare(`
+        SELECT id, name, football_data_team_id, aliases, short_name, competition_code, venue_id
+        FROM clubs
+      `).all() as ClubRow[]);
   const lookup = new Map<string, ClubRow>();
 
   for (const club of clubs) {
@@ -143,12 +149,66 @@ function buildClubLookup(db: SqliteDatabase): Map<string, ClubRow> {
   return lookup;
 }
 
-function upsertMatches(
-  db: SqliteDatabase,
+async function upsertMatches(
+  db: SqliteDatabase | AppDatabase,
   matches: FootballDataMatch[],
   clubLookup: Map<string, ClubRow>,
   importedAt: string
-): { imported: number; skipped: number } {
+): Promise<{ imported: number; skipped: number }> {
+  if (isAppDatabase(db)) {
+    let imported = 0;
+    let skipped = 0;
+
+    for (const match of matches) {
+      const competitionCode = match.competition.code;
+
+      if (!isCompetitionCode(competitionCode)) {
+        skipped += 1;
+        continue;
+      }
+
+      const homeClub = findClub(clubLookup, match.homeTeam);
+      const awayClub = findClub(clubLookup, match.awayTeam);
+
+      if (!homeClub || !awayClub) {
+        skipped += 1;
+        continue;
+      }
+
+      await db.run(`
+        INSERT INTO fixtures (
+          source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+          kickoff_at, status, is_demo_data, is_historical, source_updated_at, imported_at
+        )
+        VALUES ('football-data', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+        ON CONFLICT(source, source_id) DO UPDATE SET
+          competition_code = excluded.competition_code,
+          home_club_id = excluded.home_club_id,
+          away_club_id = excluded.away_club_id,
+          venue_id = excluded.venue_id,
+          kickoff_at = excluded.kickoff_at,
+          status = excluded.status,
+          is_demo_data = excluded.is_demo_data,
+          is_historical = excluded.is_historical,
+          source_updated_at = excluded.source_updated_at,
+          imported_at = excluded.imported_at
+      `, [
+        String(match.id),
+        competitionCode,
+        homeClub.id,
+        awayClub.id,
+        homeClub.venue_id,
+        match.utcDate,
+        normalizeStatus(match.status),
+        match.lastUpdated ?? null,
+        importedAt
+      ]);
+      imported += 1;
+    }
+
+    return { imported, skipped };
+  }
+
   const upsertFixture = db.prepare(`
     INSERT INTO fixtures (
       source, source_id, competition_code, home_club_id, away_club_id, venue_id,
@@ -207,6 +267,10 @@ function upsertMatches(
   });
 
   return importTransaction();
+}
+
+function isAppDatabase(db: SqliteDatabase | AppDatabase): db is AppDatabase {
+  return "all" in db && "get" in db && "run" in db && "exec" in db;
 }
 
 function findClub(clubLookup: Map<string, ClubRow>, team: FootballDataTeam): ClubRow | undefined {

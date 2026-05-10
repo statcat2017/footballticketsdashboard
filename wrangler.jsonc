@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nearme-fc",
+  "account_id": "364de1251111504848513a0d6340af3a",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "fixtures.statcat.co.uk",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "football",
+      "database_id": "c7643fe6-f9f4-4752-a01e-b510fca25fb6"
+    }
+  ]
+}

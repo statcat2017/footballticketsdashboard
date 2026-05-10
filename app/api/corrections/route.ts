@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const correction = createCorrection(getDatabase(), {
+  const correction = await createCorrection(await getDatabase(), {
     ...parsed.data,
     email: parsed.data.email || undefined,
     sourceUrl: parsed.data.sourceUrl || undefined

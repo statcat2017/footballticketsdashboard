@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import type { Database as SqliteDatabase } from "better-sqlite3";
+import type { AppDatabase } from "@/lib/db/adapter";
 
 const expectedHeader = [
   "competition",
@@ -44,6 +45,20 @@ export function importClubCsv(db: SqliteDatabase, filename = "data/clubs.csv"): 
   return {
     rows: rows.length,
     imported: importRows()
+  };
+}
+
+export async function importClubCsvIntoDatabase(db: AppDatabase, filename = "data/clubs.csv"): Promise<ImportClubCsvResult> {
+  const content = fs.readFileSync(filename, "utf8");
+  const rows = parseClubCsv(content);
+
+  for (const row of rows) {
+    await upsertClubRowAsync(db, row);
+  }
+
+  return {
+    rows: rows.length,
+    imported: rows.length
   };
 }
 
@@ -157,6 +172,77 @@ function upsertClubRow(db: SqliteDatabase, row: ClubCsvRow): void {
   });
 }
 
+async function upsertClubRowAsync(db: AppDatabase, row: ClubCsvRow): Promise<void> {
+  const venueId = stableVenueId(row.competition, row.club_name);
+  const clubId = (await existingClubIdAsync(db, row)) ?? stableClubId(row.competition, row.club_name);
+
+  await db.run(`
+    INSERT INTO competitions (code, name, tier)
+    VALUES (?, ?, ?)
+    ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier
+  `, [row.competition, competitionName(row.competition), competitionTier(row.competition)]);
+
+  await db.run(`
+    INSERT INTO venues (id, name, postcode, latitude, longitude)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      postcode = excluded.postcode,
+      latitude = excluded.latitude,
+      longitude = excluded.longitude
+  `, [
+    venueId,
+    row.ground_name,
+    row.postcode,
+    Number(row.latitude),
+    Number(row.longitude)
+  ]);
+
+  await db.run(`
+    INSERT INTO clubs (
+      id, name, football_data_team_id, aliases, short_name, competition_code, venue_id,
+      official_site_url, generic_ticket_url, price_source_url, ground_source_url,
+      coordinates_source_url, verified_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      football_data_team_id = excluded.football_data_team_id,
+      aliases = excluded.aliases,
+      short_name = excluded.short_name,
+      competition_code = excluded.competition_code,
+      venue_id = excluded.venue_id,
+      official_site_url = excluded.official_site_url,
+      generic_ticket_url = excluded.generic_ticket_url,
+      price_source_url = excluded.price_source_url,
+      ground_source_url = excluded.ground_source_url,
+      coordinates_source_url = excluded.coordinates_source_url,
+      verified_at = excluded.verified_at
+  `, [
+    clubId,
+    row.club_name,
+    row.football_data_team_id ? Number(row.football_data_team_id) : null,
+    row.aliases,
+    row.club_name,
+    row.competition,
+    venueId,
+    row.official_site_url,
+    row.ticket_url,
+    row.price_source_url,
+    row.ground_source_url,
+    row.coordinates_source_url,
+    row.verified_at
+  ]);
+
+  await db.run(`
+    INSERT INTO admission_prices (club_id, label, amount_pence, source_url, verified_at, confidence)
+    VALUES (?, 'Adult from', NULL, ?, ?, 'unknown')
+    ON CONFLICT(club_id, label) DO UPDATE SET
+      source_url = excluded.source_url,
+      verified_at = excluded.verified_at
+  `, [clubId, row.price_source_url, row.verified_at]);
+}
+
 function existingClubId(db: SqliteDatabase, row: ClubCsvRow): number | null {
   if (row.football_data_team_id) {
     const byTeamId = db.prepare("SELECT id FROM clubs WHERE football_data_team_id = ?").get(Number(row.football_data_team_id)) as
@@ -169,6 +255,22 @@ function existingClubId(db: SqliteDatabase, row: ClubCsvRow): number | null {
   }
 
   const byName = db.prepare("SELECT id FROM clubs WHERE name = ?").get(row.club_name) as { id: number } | undefined;
+  return byName?.id ?? null;
+}
+
+async function existingClubIdAsync(db: AppDatabase, row: ClubCsvRow): Promise<number | null> {
+  if (row.football_data_team_id) {
+    const byTeamId = await db.get<{ id: number }>(
+      "SELECT id FROM clubs WHERE football_data_team_id = ?",
+      [Number(row.football_data_team_id)]
+    );
+
+    if (byTeamId) {
+      return byTeamId.id;
+    }
+  }
+
+  const byName = await db.get<{ id: number }>("SELECT id FROM clubs WHERE name = ?", [row.club_name]);
   return byName?.id ?? null;
 }
 

@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest";
 
 import { createCorrection } from "@/lib/corrections";
-import { createDatabase } from "@/lib/db/client";
+import { createAppDatabase } from "@/lib/db/client";
 
 describe("corrections", () => {
-  it("stores correction submissions as pending", () => {
-    const db = createDatabase();
+  it("stores correction submissions as pending", async () => {
+    const db = createAppDatabase();
 
-    const correction = createCorrection(db, {
+    const correction = await createCorrection(db, {
       fixtureId: 1,
       clubName: "Chelsea",
       priceText: "Adult tickets should be from £35",
       sourceUrl: "https://example.com/prices"
     });
 
-    const row = db.prepare("SELECT status, price_text FROM corrections WHERE id = ?").get(correction.id) as {
+    const row = await db.get<{
       status: string;
       price_text: string;
-    };
+    }>("SELECT status, price_text FROM corrections WHERE id = ?", [correction.id]);
 
-    expect(row.status).toBe("pending");
-    expect(row.price_text).toBe("Adult tickets should be from £35");
+    expect(row?.status).toBe("pending");
+    expect(row?.price_text).toBe("Adult tickets should be from £35");
   });
 });

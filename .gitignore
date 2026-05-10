@@ -5,6 +5,10 @@ dist
 coverage
 test-results
 playwright-report
+.open-next
+.wrangler
+.dev.vars
+.dev.vars.*
 .env
 .env.*
 !.env.example

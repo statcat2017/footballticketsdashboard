@@ -1,8 +1,9 @@
 import { importFootballDataFixtures } from "../lib/db/footballDataImporter.ts";
-import { defaultDatabasePath, setupDatabase } from "../lib/db/setup.ts";
+import { createAppDatabase } from "../lib/db/client.ts";
+import { defaultDatabasePath } from "../lib/db/setup.ts";
 
 const filename = process.env.SQLITE_DB_PATH ?? defaultDatabasePath;
-const db = setupDatabase(filename);
+const db = createAppDatabase(filename);
 
 try {
   const result = await importFootballDataFixtures({ db });
@@ -12,6 +13,4 @@ try {
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
-} finally {
-  db.close();
 }

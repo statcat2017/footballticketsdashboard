@@ -1,5 +1,4 @@
-import type { Database as SqliteDatabase } from "better-sqlite3";
-
+import type { AppDatabase } from "@/lib/db/adapter";
 import { distanceMiles } from "@/lib/distance";
 import { postcodeCoordinate, postcodeDistrict, normalizePostcode } from "@/lib/postcode";
 import type { FixtureResult, SearchRequest } from "@/lib/types";
@@ -41,7 +40,7 @@ export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: 
   };
 }
 
-export function searchFixtures(db: SqliteDatabase, request: SearchRequest): FixtureResult[] {
+export async function searchFixtures(db: AppDatabase, request: SearchRequest): Promise<FixtureResult[]> {
   const defaults = defaultDateRange();
   const dateRange = {
     dateFrom: request.dateFrom ?? defaults.dateFrom,
@@ -51,7 +50,9 @@ export function searchFixtures(db: SqliteDatabase, request: SearchRequest): Fixt
   const district = postcodeDistrict(normalized);
   const userLocation = postcodeCoordinate(normalized);
 
-  return queryFixtures(db, dateRange, district)
+  const rows = await queryFixtures(db, dateRange, district);
+
+  return rows
     .map((row) => toResult(row, userLocation))
     .filter((result) => request.radiusMiles === undefined || result.travel.distanceMiles <= request.radiusMiles)
     .sort((first, second) => {
@@ -66,11 +67,11 @@ export function searchFixtures(db: SqliteDatabase, request: SearchRequest): Fixt
 }
 
 function queryFixtures(
-  db: SqliteDatabase,
+  db: AppDatabase,
   request: Required<Pick<SearchRequest, "dateFrom" | "dateTo">>,
   postcodeDistrictValue: string
-): FixtureRow[] {
-  return db.prepare(`
+): Promise<FixtureRow[]> {
+  return db.all<FixtureRow>(`
     SELECT
       f.id,
       f.competition_code,
@@ -101,16 +102,16 @@ function queryFixtures(
     JOIN clubs away ON away.id = f.away_club_id
     JOIN venues v ON v.id = f.venue_id
     LEFT JOIN admission_prices ap ON ap.club_id = home.id AND ap.label = 'Adult from'
-    LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = @postcodeDistrict
-    WHERE date(f.kickoff_at) BETWEEN date(@dateFrom) AND date(@dateTo)
+    LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
+    WHERE date(f.kickoff_at) BETWEEN date(?) AND date(?)
       AND f.is_historical = 0
       AND f.status IN ('scheduled', 'finished')
     ORDER BY f.kickoff_at ASC
-  `).all({
-    dateFrom: request.dateFrom,
-    dateTo: request.dateTo,
-    postcodeDistrict: postcodeDistrictValue
-  }) as FixtureRow[];
+  `, [
+    postcodeDistrictValue,
+    request.dateFrom,
+    request.dateTo
+  ]);
 }
 
 function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: number }): FixtureResult {
