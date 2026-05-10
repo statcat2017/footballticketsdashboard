@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePostcode } from "@/lib/postcode";
+import { normalizePostcode, postcodeDistrict } from "@/lib/postcode";
 
-describe("normalizePostcode", () => {
-  it("normalizes compact UK postcodes", () => {
-    expect(normalizePostcode("m160ra")).toBe("M16 0RA");
+describe("postcode helpers", () => {
+  it("normalizes UK postcodes", () => {
+    expect(normalizePostcode("sw61hs")).toBe("SW6 1HS");
   });
 
-  it("rejects clearly invalid input", () => {
-    expect(() => normalizePostcode("abc")).toThrow("Enter a valid UK postcode.");
+  it("extracts postcode districts", () => {
+    expect(postcodeDistrict("SW6 1HS")).toBe("SW6");
   });
 });

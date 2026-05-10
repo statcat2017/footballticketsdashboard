@@ -1,66 +1,51 @@
-import type { SaleState, SourceConfidence } from "@/lib/ingestion/ticket-opportunity";
+export type CompetitionCode = "PL" | "ELC";
 
-export type TicketSourceKind = "official" | "trusted-resale" | "seed";
-
-export interface UserSearch {
+export interface SearchRequest {
   postcode: string;
-  age: number;
+  radiusMiles: number;
+  dateFrom: string;
+  dateTo: string;
 }
 
-export interface AgeRule {
-  minAge?: number;
-  maxAge?: number;
-  concessionAge?: number;
+export interface PriceSummary {
+  label: string;
+  amountPence: number | null;
+  sourceUrl: string | null;
+  verifiedAt: string | null;
+  confidence: "verified" | "seed" | "unknown";
 }
 
-export interface TicketResult {
-  id: string;
-  homeTeam: string;
-  awayTeam: string;
-  competition: string;
-  venue: string;
-  venuePostcode: string;
-  kickoff: string;
-  sourceName: string;
-  sourceKind: TicketSourceKind;
-  pricePence: number;
-  concessionPricePence?: number;
-  currency: "GBP";
-  availability: "available" | "limited" | "sold-out";
-  url: string;
-  ageRule?: AgeRule;
-}
-
-export interface RankedTicketResult extends TicketResult {
-  effectivePricePence: number;
+export interface TravelSummary {
   distanceMiles: number;
-  score: number;
-  rankingReasons: string[];
+  drivingMinutes: number | null;
+  publicTransportMinutes: number | null;
+  source: "cache" | "distance_only";
 }
 
-export interface VenueLocation {
-  postcode: string;
-  latitude: number;
-  longitude: number;
-}
-
-export interface RankedTicketOpportunityResult {
-  id: string;
-  fixtureStableKey: string;
+export interface FixtureResult {
+  id: number;
   title: string;
-  competition: string | null;
-  venueName: string | null;
+  competitionCode: CompetitionCode;
+  competitionName: string;
   kickoffAt: string | null;
-  distanceMiles: number | null;
-  displayPricePence: number | null;
-  displayPriceLabel: string;
-  saleState: SaleState;
-  saleLabel: string;
-  sourceLabel: string;
-  confidence: SourceConfidence;
-  purchaseUrl: string | null;
-  infoUrl: string;
-  score: number;
-  rankingReasons: string[];
+  venueName: string;
+  venuePostcode: string;
+  homeClub: string;
+  awayClub: string;
+  officialSiteUrl: string | null;
+  genericTicketUrl: string | null;
+  price: PriceSummary;
+  travel: TravelSummary;
+  isDemoData: boolean;
+  isHistorical: boolean;
   warnings: string[];
+}
+
+export interface CorrectionInput {
+  fixtureId?: number;
+  clubName?: string;
+  email?: string;
+  priceText: string;
+  sourceUrl?: string;
+  message?: string;
 }
