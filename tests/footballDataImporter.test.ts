@@ -6,6 +6,7 @@ import { importFootballDataFixtures } from "@/lib/db/footballDataImporter";
 describe("football-data importer", () => {
   it("requires a token", async () => {
     const db = createDatabase();
+    db.prepare("UPDATE clubs SET name = 'Arsenal Seed Name Does Not Matter' WHERE football_data_team_id = 57").run();
 
     await expect(importFootballDataFixtures({ db, token: "", fetchImpl: vi.fn() })).rejects.toThrow(
       "FOOTBALL_DATA_API_TOKEN is required"

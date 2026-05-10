@@ -33,7 +33,7 @@ interface FixtureRow {
 export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: string } {
   const from = new Date(now);
   const to = new Date(now);
-  to.setDate(to.getDate() + 14);
+  to.setDate(to.getDate() + 10);
 
   return {
     dateFrom: from.toISOString().slice(0, 10),
@@ -42,15 +42,18 @@ export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: 
 }
 
 export function searchFixtures(db: SqliteDatabase, request: SearchRequest): FixtureResult[] {
+  const defaults = defaultDateRange();
+  const dateRange = {
+    dateFrom: request.dateFrom ?? defaults.dateFrom,
+    dateTo: request.dateTo ?? defaults.dateTo
+  };
   const normalized = normalizePostcode(request.postcode);
   const district = postcodeDistrict(normalized);
   const userLocation = postcodeCoordinate(normalized);
-  const liveRows = queryFixtures(db, request, district, false);
-  const rows = liveRows.length > 0 ? liveRows : queryFixtures(db, request, district, true);
 
-  return rows
+  return queryFixtures(db, dateRange, district)
     .map((row) => toResult(row, userLocation))
-    .filter((result) => result.travel.distanceMiles <= request.radiusMiles)
+    .filter((result) => request.radiusMiles === undefined || result.travel.distanceMiles <= request.radiusMiles)
     .sort((first, second) => {
       const distance = first.travel.distanceMiles - second.travel.distanceMiles;
 
@@ -64,14 +67,9 @@ export function searchFixtures(db: SqliteDatabase, request: SearchRequest): Fixt
 
 function queryFixtures(
   db: SqliteDatabase,
-  request: SearchRequest,
-  postcodeDistrictValue: string,
-  includeHistorical: boolean
+  request: Required<Pick<SearchRequest, "dateFrom" | "dateTo">>,
+  postcodeDistrictValue: string
 ): FixtureRow[] {
-  const dateFilter = includeHistorical
-    ? "f.is_historical = 1"
-    : "date(f.kickoff_at) BETWEEN date(@dateFrom) AND date(@dateTo) AND f.is_historical = 0";
-
   return db.prepare(`
     SELECT
       f.id,
@@ -104,9 +102,10 @@ function queryFixtures(
     JOIN venues v ON v.id = f.venue_id
     LEFT JOIN admission_prices ap ON ap.club_id = home.id AND ap.label = 'Adult from'
     LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = @postcodeDistrict
-    WHERE ${dateFilter}
+    WHERE date(f.kickoff_at) BETWEEN date(@dateFrom) AND date(@dateTo)
+      AND f.is_historical = 0
       AND f.status IN ('scheduled', 'finished')
-    ORDER BY f.kickoff_at DESC
+    ORDER BY f.kickoff_at ASC
   `).all({
     dateFrom: request.dateFrom,
     dateTo: request.dateTo,

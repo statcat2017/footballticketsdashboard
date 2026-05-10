@@ -19,11 +19,17 @@ CREATE TABLE IF NOT EXISTS venues (
 CREATE TABLE IF NOT EXISTS clubs (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  football_data_team_id INTEGER UNIQUE,
+  aliases TEXT,
   short_name TEXT,
   competition_code TEXT NOT NULL REFERENCES competitions(code),
   venue_id INTEGER NOT NULL REFERENCES venues(id),
   official_site_url TEXT,
-  generic_ticket_url TEXT
+  generic_ticket_url TEXT,
+  price_source_url TEXT,
+  ground_source_url TEXT,
+  coordinates_source_url TEXT,
+  verified_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS fixtures (

@@ -6,9 +6,9 @@ import { defaultDateRange, searchFixtures } from "@/lib/search/service";
 
 const searchSchema = z.object({
   postcode: z.string().min(5),
-  radiusMiles: z.coerce.number().positive().max(200).default(20),
-  dateFrom: z.string(),
-  dateTo: z.string()
+  radiusMiles: z.coerce.number().positive().max(500).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional()
 });
 
 export async function POST(request: Request) {
@@ -16,14 +16,13 @@ export async function POST(request: Request) {
   const defaults = defaultDateRange();
   const parsed = searchSchema.safeParse({
     ...body,
-    radiusMiles: body?.radiusMiles ?? 20,
     dateFrom: body?.dateFrom ?? defaults.dateFrom,
     dateTo: body?.dateTo ?? defaults.dateTo
   });
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Enter a valid postcode, radius, and date range." },
+      { error: "Enter a valid postcode." },
       { status: 400 }
     );
   }
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
       meta: {
         dateFrom: parsed.data.dateFrom,
         dateTo: parsed.data.dateTo,
-        radiusMiles: parsed.data.radiusMiles,
+        radiusMiles: parsed.data.radiusMiles ?? null,
         usedHistoricalFallback: results.some((result) => result.isHistorical)
       }
     });

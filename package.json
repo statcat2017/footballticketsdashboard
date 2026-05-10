@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "db:setup": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-setup.ts",
+    "import:clubs": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/import-clubs.ts",
     "import:football-data": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/import-football-data.ts",
     "start": "next start",
     "lint": "eslint .",

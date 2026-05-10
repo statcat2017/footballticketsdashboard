@@ -17,6 +17,8 @@ Core tables:
 Important rules:
 
 - Fixture prices are not stored directly. Admission prices are club-level guide prices.
+- Premier League club/ground seed data lives in `data/clubs.csv` and can be imported with `npm run import:clubs`.
+- Clubs store `football_data_team_id` and aliases so live fixture imports can match teams reliably.
 - Historical demo fixtures are flagged with `is_demo_data` and `is_historical`.
 - Imported fixtures use `source = 'football-data'`, are upserted by `source_id`, and record `source_updated_at` plus `imported_at`.
 - Travel cache is keyed by postcode district and venue.

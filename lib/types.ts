@@ -2,9 +2,9 @@ export type CompetitionCode = "PL" | "ELC";
 
 export interface SearchRequest {
   postcode: string;
-  radiusMiles: number;
-  dateFrom: string;
-  dateTo: string;
+  radiusMiles?: number;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface PriceSummary {

@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>nearme.fc</title>
+    <style>
+      :root {
+        --green: #147a4d;
+        --green-dark: #0e5737;
+        --green-soft: #eef8f1;
+        --amber: #a76800;
+        --amber-soft: #fff4d6;
+        --red: #a53a2d;
+        --red-soft: #fde9e5;
+        --grey-25: #fbfcfc;
+        --grey-50: #f5f7f7;
+        --grey-100: #eef1f1;
+        --grey-200: #dce3e2;
+        --grey-300: #cbd4d2;
+        --grey-500: #6f7e7a;
+        --grey-700: #34413e;
+        --text: #17221f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background: #ffffff;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .top-nav {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 28px;
+        background: var(--grey-25);
+        border-bottom: 1px solid var(--grey-200);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: 0;
+      }
+
+      .brand-mark {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 28px;
+      }
+
+      .nav-links a {
+        color: var(--grey-500);
+        font-size: 14px;
+        text-decoration: none;
+      }
+
+      .nav-links a.active {
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      .search-bar {
+        height: 62px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 28px;
+        background: var(--grey-50);
+        border-bottom: 1px solid var(--grey-200);
+      }
+
+      .postcode-field {
+        position: relative;
+        width: 260px;
+      }
+
+      .field-icon {
+        position: absolute;
+        top: 50%;
+        left: 12px;
+        width: 16px;
+        height: 16px;
+        transform: translateY(-50%);
+        color: var(--grey-500);
+        pointer-events: none;
+      }
+
+      .postcode-field input {
+        width: 100%;
+        height: 38px;
+        padding: 0 12px 0 36px;
+        border: 1px solid var(--grey-300);
+        border-radius: 7px;
+        color: var(--text);
+        background: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .locate-button,
+      .pill,
+      .ticket-button,
+      .show-more {
+        border: 1px solid var(--grey-300);
+        border-radius: 7px;
+        background: #ffffff;
+        color: var(--grey-700);
+        cursor: default;
+      }
+
+      .locate-button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .locate-button svg {
+        width: 15px;
+        height: 15px;
+        color: var(--green);
+      }
+
+      .divider {
+        width: 1px;
+        height: 30px;
+        margin-left: 8px;
+        background: var(--grey-300);
+      }
+
+      .filters {
+        display: flex;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .pill {
+        height: 34px;
+        padding: 0 15px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .pill.active {
+        border-color: #a9d5bb;
+        color: var(--green-dark);
+        background: var(--green-soft);
+      }
+
+      .results {
+        min-height: calc(100vh - 114px);
+        padding: 24px 28px 32px;
+        background: #ffffff;
+      }
+
+      .meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        color: var(--grey-500);
+        font-size: 14px;
+      }
+
+      .meta-row strong {
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      .sort-select {
+        height: 34px;
+        min-width: 156px;
+        padding: 0 10px;
+        border: 1px solid var(--grey-300);
+        border-radius: 7px;
+        color: var(--grey-700);
+        background: #ffffff;
+        font-size: 13px;
+      }
+
+      .featured {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        margin-bottom: 18px;
+        padding: 16px 18px;
+        border: 1px solid #bfdcc9;
+        border-radius: 8px;
+        background: var(--green-soft);
+      }
+
+      .featured-badge {
+        display: inline-flex;
+        width: fit-content;
+        margin-bottom: 8px;
+        padding: 3px 8px;
+        border: 1px solid #afd2bd;
+        border-radius: 999px;
+        color: var(--green-dark);
+        background: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .featured h1 {
+        margin: 0 0 5px;
+        font-size: 20px;
+        line-height: 1.2;
+      }
+
+      .featured p {
+        margin: 0;
+        color: var(--grey-700);
+        font-size: 14px;
+      }
+
+      .ticket-button {
+        height: 38px;
+        padding: 0 16px;
+        border-color: var(--green);
+        color: #ffffff;
+        background: var(--green);
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .fixtures {
+        border: 1px solid var(--grey-200);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .grid-row {
+        display: grid;
+        grid-template-columns: 2.1fr 1.1fr 1.35fr 1.1fr 1.35fr;
+        gap: 18px;
+        align-items: center;
+      }
+
+      .grid-header {
+        min-height: 38px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--grey-200);
+        background: var(--grey-25);
+        color: var(--grey-500);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .fixture-row {
+        min-height: 76px;
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--grey-200);
+        background: #ffffff;
+      }
+
+      .fixture-row:hover {
+        background: var(--grey-50);
+      }
+
+      .fixture-row:last-of-type {
+        border-bottom: 0;
+      }
+
+      .primary {
+        font-size: 15px;
+        font-weight: 750;
+        line-height: 1.25;
+      }
+
+      .secondary {
+        margin-top: 4px;
+        color: var(--grey-500);
+        font-size: 13px;
+        line-height: 1.25;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        padding: 4px 8px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 750;
+        line-height: 1;
+      }
+
+      .available {
+        border-color: #b7dcc5;
+        color: var(--green-dark);
+        background: var(--green-soft);
+      }
+
+      .sold-out {
+        border-color: #f0beb7;
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      .limited {
+        border-color: #efd28d;
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+
+      .check-club {
+        border-color: var(--grey-300);
+        color: var(--grey-700);
+        background: var(--grey-100);
+      }
+
+      .travel-chips {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 9px;
+        border: 1px solid var(--grey-200);
+        border-radius: 999px;
+        color: var(--grey-700);
+        background: var(--grey-25);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .chip svg {
+        width: 14px;
+        height: 14px;
+        color: var(--grey-500);
+      }
+
+      .show-more {
+        width: 100%;
+        height: 44px;
+        border-width: 1px 0 0;
+        border-radius: 0;
+        color: var(--green-dark);
+        background: #ffffff;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .footer-strip {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 18px;
+        padding: 14px;
+        border-top: 1px solid var(--grey-200);
+        color: var(--grey-500);
+        font-size: 14px;
+      }
+
+      .footer-strip a {
+        color: var(--green-dark);
+        font-weight: 750;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="top-nav" aria-label="Primary navigation">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>nearme.fc</span>
+      </div>
+      <div class="nav-links">
+        <a href="#" class="active">Fixtures</a>
+        <a href="#">Grounds</a>
+        <a href="#">About</a>
+        <a href="#">Contact</a>
+      </div>
+    </nav>
+
+    <section class="search-bar" aria-label="Fixture search">
+      <label class="postcode-field">
+        <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"></path>
+          <circle cx="12" cy="10" r="3"></circle>
+        </svg>
+        <input type="text" value="SE20 7RS" aria-label="Postcode" />
+      </label>
+      <button class="locate-button" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 2v3"></path>
+          <path d="M12 19v3"></path>
+          <path d="M2 12h3"></path>
+          <path d="M19 12h3"></path>
+          <circle cx="12" cy="12" r="7"></circle>
+          <circle cx="12" cy="12" r="2"></circle>
+        </svg>
+        Locate me
+      </button>
+      <div class="divider" aria-hidden="true"></div>
+      <div class="filters" aria-label="Date filters">
+        <button class="pill active" type="button">This weekend</button>
+        <button class="pill" type="button">Next weekend</button>
+        <button class="pill" type="button">All upcoming</button>
+      </div>
+    </section>
+
+    <main class="results">
+      <div class="meta-row">
+        <div><strong>18 fixtures</strong> within reach · Sat 16 May - Sun 17 May</div>
+        <select class="sort-select" aria-label="Sort fixtures">
+          <option>Sort by distance</option>
+          <option>Sort by kick-off</option>
+          <option>Sort by admission</option>
+        </select>
+      </div>
+
+      <section class="featured" aria-label="Featured fixture">
+        <div>
+          <span class="featured-badge">Featured</span>
+          <h1>Crystal Palace vs Everton</h1>
+          <p>Premier League · Selhurst Park · Sat 16 May, 15:00 · 3.8 miles from SE20 7RS</p>
+        </div>
+        <button class="ticket-button" type="button">Get tickets</button>
+      </section>
+
+      <section class="fixtures" aria-label="Fixture list">
+        <div class="grid-row grid-header">
+          <div>Match</div>
+          <div>Competition</div>
+          <div>Venue</div>
+          <div>Admission</div>
+          <div>Travel from you</div>
+        </div>
+
+        <article class="grid-row fixture-row">
+          <div>
+            <div class="primary">Crystal Palace vs Everton</div>
+            <div class="secondary">Sat 16 May · 15:00</div>
+          </div>
+          <div>Premier League</div>
+          <div>
+            <div>Selhurst Park</div>
+            <div class="secondary">3.8 miles</div>
+          </div>
+          <div>
+            <span class="badge available">Available</span>
+            <div class="secondary">from £30</div>
+          </div>
+          <div class="travel-chips">
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M5 11h14l-2-5H7l-2 5Z"></path>
+                <path d="M5 11v6"></path>
+                <path d="M19 11v6"></path>
+                <circle cx="7" cy="17" r="2"></circle>
+                <circle cx="17" cy="17" r="2"></circle>
+              </svg>
+              18 min
+            </span>
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="6" y="3" width="12" height="14" rx="2"></rect>
+                <path d="M8 21h8"></path>
+                <path d="m9 17-2 4"></path>
+                <path d="m15 17 2 4"></path>
+                <path d="M8 8h8"></path>
+              </svg>
+              26 min
+            </span>
+          </div>
+        </article>
+
+        <article class="grid-row fixture-row">
+          <div>
+            <div class="primary">Millwall vs Hull City</div>
+            <div class="secondary">Sat 16 May · 15:00</div>
+          </div>
+          <div>Championship</div>
+          <div>
+            <div>The Den</div>
+            <div class="secondary">6.1 miles</div>
+          </div>
+          <div>
+            <span class="badge limited">Limited</span>
+            <div class="secondary">from £24</div>
+          </div>
+          <div class="travel-chips">
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M5 11h14l-2-5H7l-2 5Z"></path>
+                <path d="M5 11v6"></path>
+                <path d="M19 11v6"></path>
+                <circle cx="7" cy="17" r="2"></circle>
+                <circle cx="17" cy="17" r="2"></circle>
+              </svg>
+              28 min
+            </span>
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="6" y="3" width="12" height="14" rx="2"></rect>
+                <path d="M8 21h8"></path>
+                <path d="m9 17-2 4"></path>
+                <path d="m15 17 2 4"></path>
+                <path d="M8 8h8"></path>
+              </svg>
+              34 min
+            </span>
+          </div>
+        </article>
+
+        <article class="grid-row fixture-row">
+          <div>
+            <div class="primary">Arsenal vs Burnley</div>
+            <div class="secondary">Sun 17 May · 14:00</div>
+          </div>
+          <div>Premier League</div>
+          <div>
+            <div>Emirates Stadium</div>
+            <div class="secondary">10.7 miles</div>
+          </div>
+          <div>
+            <span class="badge sold-out">Sold out</span>
+            <div class="secondary">from £28</div>
+          </div>
+          <div class="travel-chips">
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M5 11h14l-2-5H7l-2 5Z"></path>
+                <path d="M5 11v6"></path>
+                <path d="M19 11v6"></path>
+                <circle cx="7" cy="17" r="2"></circle>
+                <circle cx="17" cy="17" r="2"></circle>
+              </svg>
+              39 min
+            </span>
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="6" y="3" width="12" height="14" rx="2"></rect>
+                <path d="M8 21h8"></path>
+                <path d="m9 17-2 4"></path>
+                <path d="m15 17 2 4"></path>
+                <path d="M8 8h8"></path>
+              </svg>
+              46 min
+            </span>
+          </div>
+        </article>
+
+        <article class="grid-row fixture-row">
+          <div>
+            <div class="primary">Brentford vs Crystal Palace</div>
+            <div class="secondary">Sun 17 May · 16:30</div>
+          </div>
+          <div>Premier League</div>
+          <div>
+            <div>Gtech Community Stadium</div>
+            <div class="secondary">14.2 miles</div>
+          </div>
+          <div>
+            <span class="badge check-club">Check club</span>
+            <div class="secondary">price TBC</div>
+          </div>
+          <div class="travel-chips">
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M5 11h14l-2-5H7l-2 5Z"></path>
+                <path d="M5 11v6"></path>
+                <path d="M19 11v6"></path>
+                <circle cx="7" cy="17" r="2"></circle>
+                <circle cx="17" cy="17" r="2"></circle>
+              </svg>
+              42 min
+            </span>
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="6" y="3" width="12" height="14" rx="2"></rect>
+                <path d="M8 21h8"></path>
+                <path d="m9 17-2 4"></path>
+                <path d="m15 17 2 4"></path>
+                <path d="M8 8h8"></path>
+              </svg>
+              58 min
+            </span>
+          </div>
+        </article>
+
+        <article class="grid-row fixture-row">
+          <div>
+            <div class="primary">Charlton Athletic vs Oxford United</div>
+            <div class="secondary">Sun 17 May · 15:00</div>
+          </div>
+          <div>Championship</div>
+          <div>
+            <div>The Valley</div>
+            <div class="secondary">7.4 miles</div>
+          </div>
+          <div>
+            <span class="badge available">Available</span>
+            <div class="secondary">from £22</div>
+          </div>
+          <div class="travel-chips">
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M5 11h14l-2-5H7l-2 5Z"></path>
+                <path d="M5 11v6"></path>
+                <path d="M19 11v6"></path>
+                <circle cx="7" cy="17" r="2"></circle>
+                <circle cx="17" cy="17" r="2"></circle>
+              </svg>
+              31 min
+            </span>
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="6" y="3" width="12" height="14" rx="2"></rect>
+                <path d="M8 21h8"></path>
+                <path d="m9 17-2 4"></path>
+                <path d="m15 17 2 4"></path>
+                <path d="M8 8h8"></path>
+              </svg>
+              40 min
+            </span>
+          </div>
+        </article>
+
+        <button class="show-more" type="button">Show more fixtures</button>
+      </section>
+
+      <footer class="footer-strip">
+        <span>Pricing incorrect or missing?</span>
+        <a href="#">Let us know</a>
+      </footer>
+    </main>
+  </body>
+</html>

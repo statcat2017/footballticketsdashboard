@@ -38,6 +38,8 @@ interface FootballDataResponse {
 interface ClubRow {
   id: number;
   name: string;
+  football_data_team_id: number | null;
+  aliases: string | null;
   short_name: string | null;
   competition_code: string;
   venue_id: number;
@@ -121,13 +123,19 @@ async function fetchCompetitionMatches(
 
 function buildClubLookup(db: SqliteDatabase): Map<string, ClubRow> {
   const clubs = db.prepare(`
-    SELECT id, name, short_name, competition_code, venue_id
+    SELECT id, name, football_data_team_id, aliases, short_name, competition_code, venue_id
     FROM clubs
   `).all() as ClubRow[];
   const lookup = new Map<string, ClubRow>();
 
   for (const club of clubs) {
-    for (const key of clubKeys(club.name, club.short_name ?? undefined)) {
+    if (club.football_data_team_id !== null) {
+      lookup.set(teamIdKey(club.football_data_team_id), club);
+    }
+
+    const aliases = club.aliases?.split("|") ?? [];
+
+    for (const key of clubKeys(club.name, club.short_name ?? undefined, ...aliases)) {
       lookup.set(key, club);
     }
   }
@@ -202,6 +210,12 @@ function upsertMatches(
 }
 
 function findClub(clubLookup: Map<string, ClubRow>, team: FootballDataTeam): ClubRow | undefined {
+  const byId = clubLookup.get(teamIdKey(team.id));
+
+  if (byId) {
+    return byId;
+  }
+
   for (const key of clubKeys(team.name, team.shortName, team.tla)) {
     const club = clubLookup.get(key);
 
@@ -211,6 +225,10 @@ function findClub(clubLookup: Map<string, ClubRow>, team: FootballDataTeam): Clu
   }
 
   return undefined;
+}
+
+function teamIdKey(id: number): string {
+  return `football-data:${id}`;
 }
 
 function clubKeys(...values: Array<string | undefined>): string[] {

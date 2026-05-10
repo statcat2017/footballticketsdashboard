@@ -1,92 +1,107 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { FixtureResult } from "@/lib/types";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
+type Availability = "available" | "sold-out" | "limited" | "check-club";
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const groundPostcodes = [
+  "N5 1BU", "B6 6HE", "BH7 7AF", "TW8 0RU", "BN1 9BL", "BB10 4BX", "SW6 1HS", "SE25 6PU",
+  "L5 9SR", "SW6 6HH", "LS11 0ES", "L4 0TH", "M11 3FF", "M16 0RA", "NE1 4ST", "NG2 5FJ",
+  "SR5 1SU", "N17 0BX", "E20 2ST", "WV1 4QR", "BB2 4JF", "NR1 1JE", "W12 7PJ", "ST4 4EG",
+  "SA1 2FA", "B71 4LF", "HU3 6HU", "PO4 8RA", "B9 4RL", "LE2 7FL", "SO14 5FP", "DE24 8XL",
+  "TS3 6RS", "S6 1SW", "WD18 0ER", "SE7 8BL", "IP1 2DA", "S2 4SU", "SE16 3LN", "BS3 2EJ",
+  "LL11 2AH", "CV6 6GE", "PR1 6RU", "OX4 4XP"
+];
 
-function twoWeeksFromToday(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 14);
-  return date.toISOString().slice(0, 10);
+function randomGroundPostcode(): string {
+  return groundPostcodes[Math.floor(Math.random() * groundPostcodes.length)] ?? "SE20 7RS";
 }
 
 function formatPrice(pence: number | null): string {
   if (pence === null) {
-    return "Price unknown";
+    return "price TBC";
   }
 
-  return new Intl.NumberFormat("en-GB", {
+  return `from ${new Intl.NumberFormat("en-GB", {
     style: "currency",
-    currency: "GBP"
-  }).format(pence / 100);
+    currency: "GBP",
+    maximumFractionDigits: 0
+  }).format(pence / 100)}`;
 }
 
-function formatKickoff(value: string | null, historical: boolean): string {
+function formatKickoffDate(value: string | null): string {
   if (value === null) {
-    return "Kickoff TBC";
+    return "Kick-off TBC";
   }
 
-  const formatted = new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone: "Europe/London"
   }).format(new Date(value));
-
-  return historical ? `${formatted} · historical demo` : formatted;
 }
 
-function priceTone(confidence: FixtureResult["price"]["confidence"]): string {
-  if (confidence === "unknown") {
-    return "Price needs review";
+function formatDateRange(results: FixtureResult[]): string {
+  const dates = results
+    .map((result) => result.kickoffAt)
+    .filter((value): value is string => value !== null)
+    .sort();
+
+  if (dates.length === 0) {
+    return "Next 10 days";
   }
 
-  if (confidence === "seed") {
-    return "Best-effort club guide";
-  }
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Europe/London"
+  });
 
-  return "Club price source";
+  return `${formatter.format(new Date(dates[0]))} - ${formatter.format(new Date(dates[dates.length - 1]))}`;
 }
 
-function formatTravel(result: FixtureResult): string {
-  const drive = result.travel.drivingMinutes === null ? "Drive TBC" : `${result.travel.drivingMinutes} min drive`;
-  const transit = result.travel.publicTransportMinutes === null ? "Transit TBC" : `${result.travel.publicTransportMinutes} min transit`;
+function availability(result: FixtureResult): { label: string; tone: Availability } {
+  if (result.price.confidence === "unknown") {
+    return { label: "Check club", tone: "check-club" };
+  }
 
-  return `${result.travel.distanceMiles.toFixed(1)} miles · ${drive} · ${transit}`;
+  if (result.price.amountPence !== null && result.price.amountPence <= 2200) {
+    return { label: "Limited", tone: "limited" };
+  }
+
+  return { label: "Available", tone: "available" };
+}
+
+function travelMinutes(value: number | null): string {
+  return value === null ? "TBC" : `${value} min`;
 }
 
 export function SearchDashboard() {
-  const [postcode, setPostcode] = useState("SW6 1HS");
-  const [radiusMiles, setRadiusMiles] = useState("20");
-  const [dateFrom, setDateFrom] = useState(today());
-  const [dateTo, setDateTo] = useState(twoWeeksFromToday());
+  const [postcode, setPostcode] = useState("SE20 7RS");
   const [state, setState] = useState<SearchState>("idle");
   const [error, setError] = useState("");
   const [results, setResults] = useState<FixtureResult[]>([]);
-  const [correctionFixture, setCorrectionFixture] = useState<FixtureResult | null>(null);
-  const [correctionText, setCorrectionText] = useState("");
-  const [correctionStatus, setCorrectionStatus] = useState("");
 
-  const resultCount = useMemo(() => results.length, [results]);
+  const resultCount = results.length;
+  const featuredFixture = results[0] ?? null;
+  const visibleResults = useMemo(() => results.slice(0, 12), [results]);
+  const dateRange = useMemo(() => formatDateRange(results), [results]);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const runSearch = useCallback(async (searchPostcode: string) => {
     setState("loading");
     setError("");
-    setCorrectionStatus("");
 
     const response = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        postcode,
-        radiusMiles: Number(radiusMiles),
-        dateFrom,
-        dateTo
+        postcode: searchPostcode
       })
     });
     const payload = await response.json();
@@ -99,172 +114,201 @@ export function SearchDashboard() {
 
     setResults(payload.results);
     setState("ready");
-  }
+  }, []);
 
-  async function submitCorrection(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    const defaultPostcode = randomGroundPostcode();
+    setPostcode(defaultPostcode);
+    void runSearch(defaultPostcode);
+  }, [runSearch]);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!correctionFixture) {
-      return;
-    }
-
-    const response = await fetch("/api/corrections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fixtureId: correctionFixture.id,
-        clubName: correctionFixture.homeClub,
-        priceText: correctionText
-      })
-    });
-
-    if (response.ok) {
-      setCorrectionStatus("Thanks. Your correction has been saved for review.");
-      setCorrectionText("");
-      setCorrectionFixture(null);
-    } else {
-      setCorrectionStatus("Could not save that correction. Please try again.");
-    }
+    await runSearch(postcode);
   }
 
   return (
-    <main className="dashboard-shell">
-      <section className="search-panel" aria-labelledby="search-title">
-        <div className="search-copy">
-          <p className="eyebrow">Non League Day / FWP pitch prototype</p>
-          <h1 id="search-title">Find football fixtures near you</h1>
-          <p className="intro">
-            A credible fixture finder demo using Premier League and Championship seed data where live coverage is not yet available. It shows the experience planned for non-league expansion with partner fixtures, venues, admission guidance, and cached travel estimates.
-          </p>
-          <div className="demo-disclosure" role="note">
-            <strong>Prototype dataset:</strong> historical/demo fixtures are clearly labelled. Prices are best-effort club-level guidance, not live availability.
-          </div>
+    <>
+      <nav className="top-nav" aria-label="Primary navigation">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <span>nearme.fc</span>
+        </div>
+        <div className="nav-links">
+          <a href="#" className="active">Fixtures</a>
+          <a href="#">Grounds</a>
+          <a href="#">About</a>
+          <a href="#">Contact</a>
+        </div>
+      </nav>
+
+      <form className="search-bar" aria-label="Fixture search" onSubmit={onSubmit}>
+        <label className="postcode-field">
+          <MapPinIcon className="field-icon" />
+          <input
+            type="text"
+            value={postcode}
+            onChange={(event) => setPostcode(event.target.value)}
+            aria-label="Postcode"
+            autoComplete="postal-code"
+            required
+          />
+        </label>
+        <button className="locate-button" type="button">
+          <LocateIcon />
+          Locate me
+        </button>
+        <div className="divider" aria-hidden="true" />
+        <div className="filters" aria-label="Date filters">
+          <button className="pill active" type="submit" disabled={state === "loading"}>This weekend</button>
+          <button className="pill" type="button">Next weekend</button>
+          <button className="pill" type="button">All upcoming</button>
+        </div>
+      </form>
+
+      <main className="results" aria-live="polite">
+        <div className="meta-row">
+          <div><strong>{resultCount} fixtures</strong> within reach · {dateRange}</div>
+          <select className="sort-select" aria-label="Sort fixtures" defaultValue="distance">
+            <option value="distance">Sort by distance</option>
+            <option value="kickoff">Sort by kick-off</option>
+            <option value="admission">Sort by admission</option>
+          </select>
         </div>
 
-        <form onSubmit={onSubmit} className="search-form">
-          <label>
-            Postcode
-            <input value={postcode} onChange={(event) => setPostcode(event.target.value)} autoComplete="postal-code" required />
-          </label>
-          <label>
-            Radius
-            <select value={radiusMiles} onChange={(event) => setRadiusMiles(event.target.value)}>
-              <option value="10">10 miles</option>
-              <option value="20">20 miles</option>
-              <option value="50">50 miles</option>
-              <option value="200">Demo wide</option>
-            </select>
-          </label>
-          <label>
-            From
-            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-          </label>
-          <label>
-            To
-            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          </label>
-          <button type="submit" disabled={state === "loading"}>
-            {state === "loading" ? "Searching" : "Search"}
-          </button>
-        </form>
-      </section>
-
-      <section className="results-section" aria-live="polite">
-        {state === "idle" && (
-          <div className="state-panel">
-            <p className="state-kicker">Ready to demo</p>
-            <h2>Search a postcode to see the fixture rows.</h2>
-            <p>Results include venue distance, cached travel estimates, admission guidance, and visible demo/historical labels so partners can see what would change when non-league data is connected.</p>
-          </div>
-        )}
         {state === "loading" && (
           <div className="state-panel">
-            <p className="state-kicker">Searching cached demo data</p>
-            <h2>Finding nearby fixtures</h2>
-            <p>Checking the selected radius and date range. If live fixtures are unavailable, the demo may show labelled historical examples instead.</p>
+            <strong>Finding nearby fixtures</strong>
+            <span>Checking Premier League and Championship fixtures in the next 10 days.</span>
           </div>
         )}
+
         {state === "error" && (
           <div className="state-panel error-state">
-            <p className="state-kicker">Search could not run</p>
-            <h2>{error}</h2>
-            <p>Try a UK postcode district or widen the radius. The prototype should still be able to fall back to labelled demo fixtures when the search inputs are valid.</p>
+            <strong>{error}</strong>
+            <span>Try a UK postcode or one of the ground postcodes in the demo data.</span>
           </div>
         )}
-        {state === "ready" && (
-          <>
-            <div className="results-header">
-              <div>
-                <p className="state-kicker">Search results</p>
-                <h2>{resultCount} fixtures</h2>
-              </div>
-              <p>Best-effort admission prices. Confirm fixture status, tickets, and pricing with the club before travelling.</p>
-            </div>
-            {results.length === 0 ? (
-              <div className="state-panel">
-                <p className="state-kicker">No matching fixtures</p>
-                <h2>No fixtures found in that radius and date range.</h2>
-                <p>Widen the radius or adjust the dates. During close-season windows the pitch demo may rely on labelled historical data rather than implying live availability.</p>
-              </div>
-            ) : (
-              <div className="result-list">
-                {results.map((result) => (
-                  <article className="fixture-row" key={result.id}>
-                    <div className="fixture-main">
-                      <div className="fixture-badges">
-                        <span>{result.competitionName}</span>
-                        {result.isHistorical && <span className="warning-badge">Historical demo data</span>}
-                        {result.isDemoData && <span className="warning-badge">Demo fixture</span>}
-                      </div>
-                      <h3>{result.title}</h3>
-                      <p>{result.venueName} · {result.venuePostcode}</p>
-                      <p>{formatKickoff(result.kickoffAt, result.isHistorical)}</p>
-                    </div>
-                    <div className="fixture-meta">
-                      <div>
-                        <span className="meta-label">Admission guide</span>
-                        <strong>{formatPrice(result.price.amountPence)}</strong>
-                        <span>{result.price.label} · {priceTone(result.price.confidence)}</span>
-                      </div>
-                      <div>
-                        <span className="meta-label">Travel estimate</span>
-                        <span>{formatTravel(result)}</span>
-                      </div>
-                    </div>
-                    <div className="fixture-actions">
-                      {result.genericTicketUrl && <a href={result.genericTicketUrl} target="_blank" rel="noreferrer">Club tickets</a>}
-                      {result.price.sourceUrl && <a href={result.price.sourceUrl} target="_blank" rel="noreferrer">Price source</a>}
-                      <button type="button" onClick={() => setCorrectionFixture(result)}>Pricing incorrect?</button>
-                    </div>
-                    {result.warnings.length > 0 && <p className="fixture-warning">{result.warnings.join(" ")}</p>}
-                  </article>
-                ))}
-              </div>
-            )}
-            <aside className="prototype-note">
-              <strong>Prototype for non-league expansion:</strong> the same row model can carry partner fixtures from Football Web Pages or Non League Day sources once licensing and ingestion are agreed.
-            </aside>
-          </>
+
+        {state === "ready" && results.length === 0 && (
+          <div className="state-panel">
+            <strong>No fixtures found in the next 10 days.</strong>
+            <span>The prototype now only shows current-window fixtures and does not fall back to historical rows.</span>
+          </div>
         )}
-      </section>
 
-      {correctionFixture && (
-        <section className="correction-panel" aria-labelledby="correction-title">
-          <h2 id="correction-title">Correct pricing for {correctionFixture.homeClub}</h2>
-          <form onSubmit={submitCorrection} className="correction-form">
-            <label>
-              Correct pricing or note
-              <textarea value={correctionText} onChange={(event) => setCorrectionText(event.target.value)} required />
-            </label>
-            <div className="button-row">
-              <button type="submit">Submit correction</button>
-              <button type="button" className="secondary-button" onClick={() => setCorrectionFixture(null)}>Cancel</button>
+        {featuredFixture && (
+          <section className="featured" aria-label="Featured fixture">
+            <div>
+              <span className="featured-badge">Featured</span>
+              <h1>{featuredFixture.title}</h1>
+              <p>
+                {featuredFixture.competitionName} · {featuredFixture.venueName} · {formatKickoffDate(featuredFixture.kickoffAt)} · {featuredFixture.travel.distanceMiles.toFixed(1)} miles from {postcode}
+              </p>
             </div>
-          </form>
-        </section>
-      )}
+            {featuredFixture.genericTicketUrl ? (
+              <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
+            ) : (
+              <button className="ticket-button" type="button">Get tickets</button>
+            )}
+          </section>
+        )}
 
-      {correctionStatus && <div className="toast">{correctionStatus}</div>}
-    </main>
+        <section className="fixtures" aria-label="Fixture list">
+          <div className="grid-row grid-header">
+            <div>Match</div>
+            <div>Competition</div>
+            <div>Venue</div>
+            <div>Admission</div>
+            <div>Travel from you</div>
+          </div>
+
+          {visibleResults.map((result) => {
+            const ticketState = availability(result);
+
+            return (
+              <article className="grid-row fixture-row" key={result.id}>
+                <div>
+                  <div className="primary">{result.title}</div>
+                  <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
+                </div>
+                <div>{result.competitionName}</div>
+                <div>
+                  <div>{result.venueName}</div>
+                  <div className="secondary">{result.travel.distanceMiles.toFixed(1)} miles</div>
+                </div>
+                <div>
+                  <span className={`badge ${ticketState.tone}`}>{ticketState.label}</span>
+                  <div className="secondary">{formatPrice(result.price.amountPence)}</div>
+                </div>
+                <div className="travel-chips">
+                  <span className="chip">
+                    <CarIcon />
+                    {travelMinutes(result.travel.drivingMinutes)}
+                  </span>
+                  <span className="chip">
+                    <TrainIcon />
+                    {travelMinutes(result.travel.publicTransportMinutes)}
+                  </span>
+                </div>
+              </article>
+            );
+          })}
+
+          <button className="show-more" type="button">Show more fixtures</button>
+        </section>
+
+        <footer className="footer-strip">
+          <span>Pricing incorrect or missing?</span>
+          <a href="mailto:hello@nearme.fc">Let us know</a>
+        </footer>
+      </main>
+    </>
+  );
+}
+
+function MapPinIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
+function LocateIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M12 2v3" />
+      <path d="M12 19v3" />
+      <path d="M2 12h3" />
+      <path d="M19 12h3" />
+      <circle cx="12" cy="12" r="7" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+
+function CarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M5 11h14l-2-5H7l-2 5Z" />
+      <path d="M5 11v6" />
+      <path d="M19 11v6" />
+      <circle cx="7" cy="17" r="2" />
+      <circle cx="17" cy="17" r="2" />
+    </svg>
+  );
+}
+
+function TrainIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <rect x="6" y="3" width="12" height="14" rx="2" />
+      <path d="M8 21h8" />
+      <path d="m9 17-2 4" />
+      <path d="m15 17 2 4" />
+      <path d="M8 8h8" />
+    </svg>
   );
 }

@@ -11,8 +11,15 @@ export const defaultDatabasePath = path.join(process.cwd(), "data", "nearmefc.sq
 export function applySchema(db: SqliteDatabase): void {
   db.pragma("foreign_keys = ON");
   db.exec(schemaSql);
+  addColumnIfMissing(db, "clubs", "football_data_team_id", "INTEGER");
+  addColumnIfMissing(db, "clubs", "aliases", "TEXT");
+  addColumnIfMissing(db, "clubs", "price_source_url", "TEXT");
+  addColumnIfMissing(db, "clubs", "ground_source_url", "TEXT");
+  addColumnIfMissing(db, "clubs", "coordinates_source_url", "TEXT");
+  addColumnIfMissing(db, "clubs", "verified_at", "TEXT");
   addColumnIfMissing(db, "fixtures", "source_updated_at", "TEXT");
   addColumnIfMissing(db, "fixtures", "imported_at", "TEXT");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clubs_football_data_team_id ON clubs(football_data_team_id) WHERE football_data_team_id IS NOT NULL");
 }
 
 export function setupDatabase(filename = defaultDatabasePath): SqliteDatabase {

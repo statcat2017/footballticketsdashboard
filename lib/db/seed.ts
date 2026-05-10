@@ -29,22 +29,26 @@ export function seedDatabase(db: SqliteDatabase): void {
     insertVenue.run(6, "St Andrew's", "B9 4RL", 52.4756, -1.8682);
 
     const insertClub = db.prepare(`
-      INSERT INTO clubs (id, name, short_name, competition_code, venue_id, official_site_url, generic_ticket_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, competition_code, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
+        football_data_team_id = excluded.football_data_team_id,
+        aliases = excluded.aliases,
         short_name = excluded.short_name,
         competition_code = excluded.competition_code,
         venue_id = excluded.venue_id,
         official_site_url = excluded.official_site_url,
-        generic_ticket_url = excluded.generic_ticket_url
+        generic_ticket_url = excluded.generic_ticket_url,
+        price_source_url = excluded.price_source_url,
+        verified_at = excluded.verified_at
     `);
-    insertClub.run(1, "Chelsea", "Chelsea", "PL", 1, "https://www.chelseafc.com/", "https://www.chelseafc.com/en/tickets");
-    insertClub.run(2, "Arsenal", "Arsenal", "PL", 3, "https://www.arsenal.com/", "https://www.arsenal.com/tickets");
-    insertClub.run(3, "Manchester United", "Man Utd", "PL", 4, "https://www.manutd.com/", "https://tickets.manutd.com/");
-    insertClub.run(4, "Queens Park Rangers", "QPR", "ELC", 2, "https://www.qpr.co.uk/", "https://www.eticketing.co.uk/qpr/");
-    insertClub.run(5, "Norwich City", "Norwich", "ELC", 5, "https://www.canaries.co.uk/", "https://tickets.canaries.co.uk/");
-    insertClub.run(6, "Birmingham City", "Birmingham", "ELC", 6, "https://www.bcfc.com/", "https://www.bcfc.com/tickets/");
+    insertClub.run(1, "Chelsea", 61, "Chelsea FC|Chelsea", "Chelsea", "PL", 1, "https://www.chelseafc.com/", "https://www.chelseafc.com/en/tickets", "https://www.chelseafc.com/en/tickets", "2026-05-10");
+    insertClub.run(2, "Arsenal", 57, "Arsenal FC|Arsenal", "Arsenal", "PL", 3, "https://www.arsenal.com/", "https://www.arsenal.com/tickets", "https://www.arsenal.com/tickets", "2026-05-10");
+    insertClub.run(3, "Manchester United", 66, "Manchester United FC|Manchester United|Man United|Man Utd", "Man Utd", "PL", 4, "https://www.manutd.com/", "https://tickets.manutd.com/", "https://tickets.manutd.com/", "2026-05-10");
+    insertClub.run(4, "Queens Park Rangers", 69, "Queens Park Rangers FC|Queens Park Rangers|QPR", "QPR", "ELC", 2, "https://www.qpr.co.uk/", "https://www.eticketing.co.uk/qpr/", "https://www.eticketing.co.uk/qpr/", "2026-05-10");
+    insertClub.run(5, "Norwich City", 68, "Norwich City FC|Norwich City|Norwich", "Norwich", "ELC", 5, "https://www.canaries.co.uk/", "https://tickets.canaries.co.uk/", "https://tickets.canaries.co.uk/", "2026-05-10");
+    insertClub.run(6, "Birmingham City", 332, "Birmingham City FC|Birmingham City|Birmingham", "Birmingham", "ELC", 6, "https://www.bcfc.com/", "https://www.bcfc.com/tickets/", "https://www.bcfc.com/tickets/", "2026-05-10");
 
     const insertPrice = db.prepare(`
       INSERT INTO admission_prices (club_id, label, amount_pence, source_url, verified_at, confidence)
