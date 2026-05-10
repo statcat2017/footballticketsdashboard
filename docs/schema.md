@@ -1,6 +1,8 @@
 # SQLite Schema
 
-The app initializes SQLite automatically from `lib/db/schema.ts`.
+Run `npm run db:setup` to create or update `data/nearmefc.sqlite`, apply the schema from `lib/db/schema.ts`, and seed demo data. The setup is idempotent, so it can be rerun safely.
+
+To reset local data, delete `data/nearmefc.sqlite` and run `npm run db:setup` again. The SQLite file and WAL/SHM sidecars are ignored by git.
 
 Core tables:
 
@@ -16,5 +18,6 @@ Important rules:
 
 - Fixture prices are not stored directly. Admission prices are club-level guide prices.
 - Historical demo fixtures are flagged with `is_demo_data` and `is_historical`.
+- Imported fixtures use `source = 'football-data'`, are upserted by `source_id`, and record `source_updated_at` plus `imported_at`.
 - Travel cache is keyed by postcode district and venue.
 - Corrections are saved as `pending`; they never update live data automatically.

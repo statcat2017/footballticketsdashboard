@@ -37,7 +37,26 @@ function formatKickoff(value: string | null, historical: boolean): string {
     timeZone: "Europe/London"
   }).format(new Date(value));
 
-  return historical ? `${formatted} (historical demo)` : formatted;
+  return historical ? `${formatted} · historical demo` : formatted;
+}
+
+function priceTone(confidence: FixtureResult["price"]["confidence"]): string {
+  if (confidence === "unknown") {
+    return "Price needs review";
+  }
+
+  if (confidence === "seed") {
+    return "Best-effort club guide";
+  }
+
+  return "Club price source";
+}
+
+function formatTravel(result: FixtureResult): string {
+  const drive = result.travel.drivingMinutes === null ? "Drive TBC" : `${result.travel.drivingMinutes} min drive`;
+  const transit = result.travel.publicTransportMinutes === null ? "Transit TBC" : `${result.travel.publicTransportMinutes} min transit`;
+
+  return `${result.travel.distanceMiles.toFixed(1)} miles · ${drive} · ${transit}`;
 }
 
 export function SearchDashboard() {
@@ -111,12 +130,15 @@ export function SearchDashboard() {
   return (
     <main className="dashboard-shell">
       <section className="search-panel" aria-labelledby="search-title">
-        <div>
-          <p className="eyebrow">Near Me FC demo</p>
+        <div className="search-copy">
+          <p className="eyebrow">Non League Day / FWP pitch prototype</p>
           <h1 id="search-title">Find football fixtures near you</h1>
           <p className="intro">
-            Prototype shown with Premier League and Championship data. Built to demonstrate the fixture finder we want to extend into non-league football with partner data.
+            A credible fixture finder demo using Premier League and Championship seed data where live coverage is not yet available. It shows the experience planned for non-league expansion with partner fixtures, venues, admission guidance, and cached travel estimates.
           </p>
+          <div className="demo-disclosure" role="note">
+            <strong>Prototype dataset:</strong> historical/demo fixtures are clearly labelled. Prices are best-effort club-level guidance, not live availability.
+          </div>
         </div>
 
         <form onSubmit={onSubmit} className="search-form">
@@ -149,48 +171,79 @@ export function SearchDashboard() {
 
       <section className="results-section" aria-live="polite">
         {state === "idle" && (
-          <div className="empty-state">Search a postcode to see nearby fixtures, admission prices, and cached travel estimates.</div>
+          <div className="state-panel">
+            <p className="state-kicker">Ready to demo</p>
+            <h2>Search a postcode to see the fixture rows.</h2>
+            <p>Results include venue distance, cached travel estimates, admission guidance, and visible demo/historical labels so partners can see what would change when non-league data is connected.</p>
+          </div>
         )}
-        {state === "error" && <div className="error-state">{error}</div>}
+        {state === "loading" && (
+          <div className="state-panel">
+            <p className="state-kicker">Searching cached demo data</p>
+            <h2>Finding nearby fixtures</h2>
+            <p>Checking the selected radius and date range. If live fixtures are unavailable, the demo may show labelled historical examples instead.</p>
+          </div>
+        )}
+        {state === "error" && (
+          <div className="state-panel error-state">
+            <p className="state-kicker">Search could not run</p>
+            <h2>{error}</h2>
+            <p>Try a UK postcode district or widen the radius. The prototype should still be able to fall back to labelled demo fixtures when the search inputs are valid.</p>
+          </div>
+        )}
         {state === "ready" && (
           <>
             <div className="results-header">
-              <h2>{resultCount} fixtures</h2>
-              <span>Best-effort prices. Confirm with the club before travelling.</span>
+              <div>
+                <p className="state-kicker">Search results</p>
+                <h2>{resultCount} fixtures</h2>
+              </div>
+              <p>Best-effort admission prices. Confirm fixture status, tickets, and pricing with the club before travelling.</p>
             </div>
             {results.length === 0 ? (
-              <div className="empty-state">No fixtures found in that radius and date range.</div>
+              <div className="state-panel">
+                <p className="state-kicker">No matching fixtures</p>
+                <h2>No fixtures found in that radius and date range.</h2>
+                <p>Widen the radius or adjust the dates. During close-season windows the pitch demo may rely on labelled historical data rather than implying live availability.</p>
+              </div>
             ) : (
               <div className="result-list">
                 {results.map((result) => (
-                  <article className="fixture-card" key={result.id}>
+                  <article className="fixture-row" key={result.id}>
                     <div className="fixture-main">
-                      <p className="competition">{result.competitionName}</p>
+                      <div className="fixture-badges">
+                        <span>{result.competitionName}</span>
+                        {result.isHistorical && <span className="warning-badge">Historical demo data</span>}
+                        {result.isDemoData && <span className="warning-badge">Demo fixture</span>}
+                      </div>
                       <h3>{result.title}</h3>
                       <p>{result.venueName} · {result.venuePostcode}</p>
                       <p>{formatKickoff(result.kickoffAt, result.isHistorical)}</p>
                     </div>
                     <div className="fixture-meta">
-                      <strong>{formatPrice(result.price.amountPence)}</strong>
-                      <span>{result.price.label}</span>
-                      <span>{result.travel.distanceMiles.toFixed(1)} miles</span>
-                      <span>{result.travel.drivingMinutes === null ? "Drive TBC" : `${result.travel.drivingMinutes} min drive`}</span>
-                      <span>{result.travel.publicTransportMinutes === null ? "Transit TBC" : `${result.travel.publicTransportMinutes} min transit`}</span>
+                      <div>
+                        <span className="meta-label">Admission guide</span>
+                        <strong>{formatPrice(result.price.amountPence)}</strong>
+                        <span>{result.price.label} · {priceTone(result.price.confidence)}</span>
+                      </div>
+                      <div>
+                        <span className="meta-label">Travel estimate</span>
+                        <span>{formatTravel(result)}</span>
+                      </div>
                     </div>
                     <div className="fixture-actions">
                       {result.genericTicketUrl && <a href={result.genericTicketUrl} target="_blank" rel="noreferrer">Club tickets</a>}
                       {result.price.sourceUrl && <a href={result.price.sourceUrl} target="_blank" rel="noreferrer">Price source</a>}
                       <button type="button" onClick={() => setCorrectionFixture(result)}>Pricing incorrect?</button>
                     </div>
-                    <div className="fixture-badges">
-                      {result.isHistorical && <span>Historical demo data</span>}
-                      {result.isDemoData && <span>Demo fixture</span>}
-                      <span>{result.price.confidence === "unknown" ? "Price unknown" : "Best-effort price"}</span>
-                    </div>
+                    {result.warnings.length > 0 && <p className="fixture-warning">{result.warnings.join(" ")}</p>}
                   </article>
                 ))}
               </div>
             )}
+            <aside className="prototype-note">
+              <strong>Prototype for non-league expansion:</strong> the same row model can carry partner fixtures from Football Web Pages or Non League Day sources once licensing and ingestion are agreed.
+            </aside>
           </>
         )}
       </section>

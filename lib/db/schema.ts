@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS fixtures (
   status TEXT NOT NULL CHECK (status IN ('scheduled', 'postponed', 'cancelled', 'finished', 'unknown')),
   is_demo_data INTEGER NOT NULL DEFAULT 0 CHECK (is_demo_data IN (0, 1)),
   is_historical INTEGER NOT NULL DEFAULT 0 CHECK (is_historical IN (0, 1)),
+  source_updated_at TEXT,
+  imported_at TEXT,
   UNIQUE (source, source_id)
 );
 

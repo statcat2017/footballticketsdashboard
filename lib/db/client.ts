@@ -1,24 +1,17 @@
-import Database from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import path from "node:path";
 
-import { seedDatabase } from "@/lib/db/seed";
-import { schemaSql } from "@/lib/db/schema";
+import { defaultDatabasePath, setupDatabase } from "@/lib/db/setup";
 
 let database: SqliteDatabase | null = null;
 
 export function createDatabase(filename = ":memory:"): SqliteDatabase {
-  const db = new Database(filename);
-  db.pragma("foreign_keys = ON");
-  db.exec(schemaSql);
-  seedDatabase(db);
-  return db;
+  return setupDatabase(filename);
 }
 
 export function getDatabase(): SqliteDatabase {
   if (!database) {
     const configuredPath = process.env.SQLITE_DB_PATH;
-    const filename = configuredPath ?? path.join(process.cwd(), "data", "nearmefc.sqlite");
+    const filename = configuredPath ?? defaultDatabasePath;
     database = createDatabase(filename);
   }
 
