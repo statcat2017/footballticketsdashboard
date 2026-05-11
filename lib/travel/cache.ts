@@ -2,6 +2,7 @@ import type { AppDatabase } from "../db/adapter.ts";
 import { distanceMiles } from "../distance.ts";
 import { postcodeCoordinate, postcodeDistrict, type Coordinate } from "../postcode.ts";
 import { lookupTravelEstimate, type TravelProvidersConfig } from "./providers.ts";
+import { defaultDateRange } from "../date.ts";
 
 interface VenueRow {
   venue_id: number;
@@ -38,17 +39,6 @@ interface TravelCacheEntryInput {
   venue: VenueRow;
   providers: TravelProvidersConfig;
   fetchImpl?: typeof fetch;
-}
-
-function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: string } {
-  const from = new Date(now);
-  const to = new Date(now);
-  to.setDate(to.getDate() + 10);
-
-  return {
-    dateFrom: from.toISOString().slice(0, 10),
-    dateTo: to.toISOString().slice(0, 10)
-  };
 }
 
 export async function listMissingTravelCacheVenues(

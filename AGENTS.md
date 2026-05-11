@@ -14,6 +14,12 @@ Build a simple web app that shows nearby upcoming football fixtures, where they 
 - Cache travel by postcode district and venue; never block search if travel APIs are unavailable.
 - Store correction submissions as pending review; never auto-apply them.
 
+## Workflow
+
+- Before making any code changes, create a new branch off `main` with a descriptive name (e.g., `feat/dashboard-polish`, `fix/error-handling`).
+- Never commit or push directly to `main`. Always open a PR for review.
+- If a branch already exists for the task, check it out and work there.
+
 ## Deferred
 
 - Non-league fixture ingestion until a data partnership/source is agreed.

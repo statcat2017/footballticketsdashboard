@@ -3,6 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { buildClubLookup, findClub, normalizeStatus, type ClubRow } from "../lib/db/clubLookup.ts";
+import { escapeSql } from "../lib/db/sql.ts";
+
 const databaseName = process.argv[2];
 const token = process.env.FOOTBALL_DATA_API_TOKEN;
 
@@ -111,15 +114,6 @@ if (statements.length > 0) {
 
 console.log(`football-data import complete: fetched ${fetched}, imported ${imported}, skipped ${skipped}`);
 
-interface ClubRow {
-  id: number;
-  name: string;
-  football_data_team_id: number | null;
-  aliases: string | null;
-  short_name: string | null;
-  venue_id: number;
-}
-
 function fetchClubRows(databaseNameValue: string): ClubRow[] {
   return queryRows<ClubRow>(
     databaseNameValue,
@@ -135,90 +129,4 @@ function queryRows<T>(databaseNameValue: string, sql: string): T[] {
   );
   const parsed = JSON.parse(output) as Array<{ results?: T[] }>;
   return parsed[0]?.results ?? [];
-}
-
-function buildClubLookup(clubs: ClubRow[]): Map<string, ClubRow> {
-  const lookup = new Map<string, ClubRow>();
-
-  for (const club of clubs) {
-    if (club.football_data_team_id !== null) {
-      lookup.set(teamIdKey(club.football_data_team_id), club);
-    }
-
-    const aliases = club.aliases?.split("|") ?? [];
-
-    for (const key of clubKeys(club.name, club.short_name ?? undefined, ...aliases)) {
-      lookup.set(key, club);
-    }
-  }
-
-  return lookup;
-}
-
-function findClub(
-  clubLookup: Map<string, ClubRow>,
-  team: { id: number; name: string; shortName?: string; tla?: string }
-): ClubRow | undefined {
-  const byId = clubLookup.get(teamIdKey(team.id));
-
-  if (byId) {
-    return byId;
-  }
-
-  for (const key of clubKeys(team.name, team.shortName, team.tla)) {
-    const club = clubLookup.get(key);
-
-    if (club) {
-      return club;
-    }
-  }
-
-  return undefined;
-}
-
-function teamIdKey(id: number): string {
-  return `football-data:${id}`;
-}
-
-function clubKeys(...values: Array<string | undefined>): string[] {
-  return values
-    .filter((value): value is string => Boolean(value))
-    .flatMap((value) => {
-      const normalized = normalizeClubName(value);
-      const withoutSuffix = normalized.replace(/\b(afc|fc|football club)\b/g, "").replace(/\s+/g, " ").trim();
-      return [normalized, withoutSuffix];
-    });
-}
-
-function normalizeClubName(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeStatus(status: string): "scheduled" | "postponed" | "cancelled" | "finished" | "unknown" {
-  switch (status) {
-    case "SCHEDULED":
-    case "TIMED":
-    case "IN_PLAY":
-    case "PAUSED":
-      return "scheduled";
-    case "POSTPONED":
-    case "SUSPENDED":
-      return "postponed";
-    case "CANCELLED":
-      return "cancelled";
-    case "FINISHED":
-    case "AWARDED":
-      return "finished";
-    default:
-      return "unknown";
-  }
-}
-
-function escapeSql(value: string): string {
-  return value.replaceAll("'", "''");
 }
