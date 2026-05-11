@@ -1,7 +1,9 @@
 import type { AppDatabase } from "@/lib/db/adapter";
 import { distanceMiles } from "@/lib/distance";
-import { postcodeCoordinate, postcodeDistrict, normalizePostcode } from "@/lib/postcode";
+import { resolvePostcodeOrigin } from "@/lib/postcode";
+import { buildTravelCacheEntry, upsertTravelCacheRow } from "@/lib/travel/cache";
 import type { FixtureResult, SearchRequest } from "@/lib/types";
+import type { TravelProviderRuntimeConfig } from "@/lib/runtime-env";
 
 interface FixtureRow {
   id: number;
@@ -29,6 +31,7 @@ interface FixtureRow {
   cached_distance_miles: number | null;
   driving_minutes: number | null;
   public_transport_minutes: number | null;
+  travel_source?: "cache" | "live" | "distance_only";
 }
 
 export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: string } {
@@ -42,20 +45,23 @@ export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: 
   };
 }
 
-export async function searchFixtures(db: AppDatabase, request: SearchRequest): Promise<FixtureResult[]> {
+export async function searchFixtures(
+  db: AppDatabase,
+  request: SearchRequest,
+  options: { travelProviders?: TravelProviderRuntimeConfig } = {}
+): Promise<FixtureResult[]> {
   const defaults = defaultDateRange();
   const dateRange = {
     dateFrom: request.dateFrom ?? defaults.dateFrom,
     dateTo: request.dateTo ?? defaults.dateTo
   };
-  const normalized = normalizePostcode(request.postcode);
-  const district = postcodeDistrict(normalized);
-  const userLocation = postcodeCoordinate(normalized);
+  const origin = await resolvePostcodeOrigin(request.postcode);
 
-  const rows = await queryFixtures(db, dateRange, district);
+  const rows = await queryFixtures(db, dateRange, origin.district);
+  const enrichedRows = await enrichTravelRows(db, rows, origin, options.travelProviders);
 
-  return rows
-    .map((row) => toResult(row, userLocation))
+  return enrichedRows
+    .map((row) => toResult(row, origin.coordinate))
     .filter((result) => request.radiusMiles === undefined || result.travel.distanceMiles <= request.radiusMiles)
     .sort((first, second) => {
       const distance = first.travel.distanceMiles - second.travel.distanceMiles;
@@ -162,10 +168,97 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
       distanceMiles: Math.round(distance * 10) / 10,
       drivingMinutes: row.driving_minutes,
       publicTransportMinutes: row.public_transport_minutes,
-      source: row.cached_distance_miles === null ? "distance_only" : "cache"
+      source: row.travel_source ?? (row.cached_distance_miles === null ? "distance_only" : "cache")
     },
     isDemoData: row.is_demo_data === 1,
     isHistorical: row.is_historical === 1,
     warnings
   };
+}
+
+async function enrichTravelRows(
+  db: AppDatabase,
+  rows: FixtureRow[],
+  origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
+  travelProviders?: TravelProviderRuntimeConfig
+): Promise<FixtureRow[]> {
+  const openRouteServiceApiKey = travelProviders?.openRouteServiceApiKey ?? process.env.OPENROUTESERVICE_API_KEY;
+  const travelTimeAppId = travelProviders?.travelTimeAppId ?? process.env.TRAVELTIME_APP_ID;
+  const travelTimeApiKey = travelProviders?.travelTimeApiKey ?? process.env.TRAVELTIME_API_KEY;
+
+  if (!openRouteServiceApiKey && !(travelTimeAppId && travelTimeApiKey)) {
+    return rows;
+  }
+
+  const byVenue = new Map<number, ReturnType<typeof buildTravelCacheEntry>>();
+
+  for (const row of rows) {
+    if (row.cached_distance_miles !== null || byVenue.has(row.venue_id)) {
+      continue;
+    }
+
+    byVenue.set(row.venue_id, buildTravelCacheEntry({
+      postcodeDistrictValue: origin.district,
+      origin: origin.coordinate,
+      venue: {
+        venue_id: row.venue_id,
+        venue_name: row.venue_name,
+        latitude: row.latitude,
+        longitude: row.longitude
+      },
+      providers: {
+        openRouteServiceApiKey,
+        travelTimeAppId,
+        travelTimeApiKey
+      }
+    }));
+  }
+
+  const entries = new Map<number, Awaited<ReturnType<typeof buildTravelCacheEntry>>>();
+
+  for (const [venueId, promise] of byVenue.entries()) {
+    const entry = await promise;
+    entries.set(venueId, entry);
+
+    if (!entry.provider) {
+      continue;
+    }
+
+    await upsertTravelCacheRow(
+      db,
+      origin.district,
+      venueId,
+      entry.distanceMiles,
+      entry.drivingMinutes,
+      entry.publicTransportMinutes,
+      entry.provider,
+      new Date().toISOString()
+    );
+  }
+
+  return rows.map((row) => {
+    if (row.cached_distance_miles !== null) {
+      return {
+        ...row,
+        travel_source: "cache"
+      };
+    }
+
+    const entry = entries.get(row.venue_id);
+
+    if (!entry?.provider) {
+      return {
+        ...row,
+        travel_source: "distance_only"
+      };
+    }
+
+    return {
+      ...row,
+      cached_distance_miles: entry.distanceMiles,
+      driving_minutes: entry.drivingMinutes,
+      public_transport_minutes: entry.publicTransportMinutes,
+      travel_source: "live"
+    };
+  });
 }

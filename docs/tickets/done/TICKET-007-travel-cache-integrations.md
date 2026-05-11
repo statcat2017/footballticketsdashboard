@@ -1,6 +1,6 @@
 # TICKET-007: Travel Cache Integrations
 
-Status: open
+Status: done
 Owner: Backend
 Priority: medium
 Depends on: TICKET-004
@@ -26,3 +26,6 @@ Add useful travel estimates while keeping the app free or near-free to run.
 ## Verification
 
 - Mocked API tests for success, failure, and missing-key fallback.
+- `npm run travel:fill -- "SW6 1HS"`
+- `npm run build`
+- [docs/travel-cache.md](/Users/ben/footballticketsdashboard/docs/travel-cache.md:1)

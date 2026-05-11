@@ -7,28 +7,31 @@ Depends on: TICKET-003
 
 ## Purpose
 
-Turn correction submissions into an inbox-driven data-quality workflow.
+Provide the parent workflow for turning correction submissions into an inbox-driven data-quality system.
 
 ## Work
 
-- Route public correction submissions into a dedicated corrections inbox created specifically for this purpose.
-- Have an agent monitor that inbox, research incoming claims, and assess whether the submitted information can be validated.
-- If the agent can validate the correction with sufficient confidence, update the relevant database records automatically.
-- If the agent cannot validate the correction confidently, escalate it to a site admin review queue instead of applying it automatically.
-- Maintain an audit trail of the original message, research outcome, and any automated or manual decision taken.
-- Maintain a list of trusted contacts whose corrections can be incorporated into the database immediately, subject to minimal logging and provenance capture.
+- Define the end-to-end correction workflow across intake, validation, escalation, trusted-contact handling, and database application.
+- Coordinate the child tickets that implement each stage of the workflow.
+- Ensure the final system preserves provenance, auditability, and operational clarity.
+
+## Child Tickets
+
+- `TICKET-017` Correction Inbox Intake
+- `TICKET-018` Agent Correction Validation Workflow
+- `TICKET-019` Trusted Contacts Registry And Fast Path
+- `TICKET-020` Correction Admin Review Queue
+- `TICKET-021` Correction Application Layer
 
 ## Acceptance Criteria
 
 - Public users cannot directly change live data.
-- Validated corrections applied by the agent update displayed data.
-- Unverified or disputed corrections are pushed to site admin for review instead of being auto-applied.
-- Trusted contacts can submit corrections that are immediately written to the database and marked with trusted provenance.
-- Rejected or superseded corrections remain stored for audit.
+- The system supports a dedicated correction intake path, agent validation, admin escalation, and trusted-contact fast-path handling.
+- Validated corrections update displayed data through a traceable application layer.
+- Rejected, escalated, and superseded corrections remain stored for audit.
 
 ## Verification
 
-- Correction intake tests.
-- Trusted-contact handling tests.
-- Manual review and escalation flow.
-- Audit trail check for auto-applied and escalated corrections.
+- Child tickets are completed and linked back to this workflow.
+- End-to-end correction flow is tested from intake through application or escalation.
+- Audit trail is preserved for auto-applied, trusted, escalated, and rejected corrections.
