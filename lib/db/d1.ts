@@ -1,5 +1,5 @@
-import { createD1AppDatabase, type AppDatabase, type D1DatabaseLike } from "@/lib/db/adapter";
-import { schemaSql } from "@/lib/db/schema";
+import { createD1AppDatabase, type AppDatabase, type D1DatabaseLike } from "./adapter.ts";
+import { schemaSql } from "./schema.ts";
 
 const d1SeedStatements = [
   "INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier",

@@ -1,5 +1,6 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import type { AppDatabase } from "@/lib/db/adapter";
+import type { AppDatabase } from "./adapter.ts";
+import { buildClubLookup, findClub, normalizeStatus, type ClubRow, type FootballDataTeam } from "./clubLookup.ts";
 
 const footballDataBaseUrl = "https://api.football-data.org/v4";
 const competitions = ["PL", "ELC"] as const;
@@ -12,13 +13,6 @@ type FetchLike = (input: string, init?: { headers?: Record<string, string> }) =>
   statusText: string;
   json: () => Promise<unknown>;
 }>;
-
-interface FootballDataTeam {
-  id: number;
-  name: string;
-  shortName?: string;
-  tla?: string;
-}
 
 interface FootballDataMatch {
   id: number;
@@ -34,16 +28,6 @@ interface FootballDataMatch {
 
 interface FootballDataResponse {
   matches: FootballDataMatch[];
-}
-
-interface ClubRow {
-  id: number;
-  name: string;
-  football_data_team_id: number | null;
-  aliases: string | null;
-  short_name: string | null;
-  competition_code: string;
-  venue_id: number;
 }
 
 export interface ImportFootballDataOptions {
@@ -74,7 +58,7 @@ export async function importFootballDataFixtures({
     throw new Error("A fetch implementation is required to import football-data fixtures.");
   }
 
-  const clubLookup = await buildClubLookup(db);
+  const clubLookup = await buildClubLookupFromDb(db);
   const importedAt = now.toISOString();
   let fetched = 0;
   let imported = 0;
@@ -122,31 +106,18 @@ async function fetchCompetitionMatches(
   return body;
 }
 
-async function buildClubLookup(db: SqliteDatabase | AppDatabase): Promise<Map<string, ClubRow>> {
+async function buildClubLookupFromDb(db: SqliteDatabase | AppDatabase): Promise<Map<string, ClubRow>> {
   const clubs = isAppDatabase(db)
     ? await db.all<ClubRow>(`
-        SELECT id, name, football_data_team_id, aliases, short_name, competition_code, venue_id
+        SELECT id, name, football_data_team_id, aliases, short_name, venue_id
         FROM clubs
       `)
     : (db.prepare(`
-        SELECT id, name, football_data_team_id, aliases, short_name, competition_code, venue_id
+        SELECT id, name, football_data_team_id, aliases, short_name, venue_id
         FROM clubs
       `).all() as ClubRow[]);
-  const lookup = new Map<string, ClubRow>();
 
-  for (const club of clubs) {
-    if (club.football_data_team_id !== null) {
-      lookup.set(teamIdKey(club.football_data_team_id), club);
-    }
-
-    const aliases = club.aliases?.split("|") ?? [];
-
-    for (const key of clubKeys(club.name, club.short_name ?? undefined, ...aliases)) {
-      lookup.set(key, club);
-    }
-  }
-
-  return lookup;
+  return buildClubLookup(clubs);
 }
 
 async function upsertMatches(
@@ -271,67 +242,6 @@ async function upsertMatches(
 
 function isAppDatabase(db: SqliteDatabase | AppDatabase): db is AppDatabase {
   return "all" in db && "get" in db && "run" in db && "exec" in db;
-}
-
-function findClub(clubLookup: Map<string, ClubRow>, team: FootballDataTeam): ClubRow | undefined {
-  const byId = clubLookup.get(teamIdKey(team.id));
-
-  if (byId) {
-    return byId;
-  }
-
-  for (const key of clubKeys(team.name, team.shortName, team.tla)) {
-    const club = clubLookup.get(key);
-
-    if (club) {
-      return club;
-    }
-  }
-
-  return undefined;
-}
-
-function teamIdKey(id: number): string {
-  return `football-data:${id}`;
-}
-
-function clubKeys(...values: Array<string | undefined>): string[] {
-  return values
-    .filter((value): value is string => Boolean(value))
-    .flatMap((value) => {
-      const normalized = normalizeClubName(value);
-      const withoutSuffix = normalized.replace(/\b(afc|fc|football club)\b/g, "").replace(/\s+/g, " ").trim();
-      return [normalized, withoutSuffix];
-    });
-}
-
-function normalizeClubName(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeStatus(status: string): "scheduled" | "postponed" | "cancelled" | "finished" | "unknown" {
-  switch (status) {
-    case "SCHEDULED":
-    case "TIMED":
-    case "IN_PLAY":
-    case "PAUSED":
-      return "scheduled";
-    case "POSTPONED":
-    case "SUSPENDED":
-      return "postponed";
-    case "CANCELLED":
-      return "cancelled";
-    case "FINISHED":
-    case "AWARDED":
-      return "finished";
-    default:
-      return "unknown";
-  }
 }
 
 function isCompetitionCode(value: string): value is CompetitionCode {
