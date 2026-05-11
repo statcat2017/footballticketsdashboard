@@ -50,6 +50,15 @@ const POSTCODE_COORDINATES: Record<string, Coordinate> = {
   "OX4 4XP": { latitude: 51.717071, longitude: -1.210938 }
 };
 
+const AREA_FALLBACK_COORDINATES = buildAreaFallbackCoordinates();
+
+export interface ResolvedPostcodeOrigin {
+  normalized: string;
+  district: string;
+  coordinate: Coordinate;
+  source: "known" | "api" | "fallback";
+}
+
 export function normalizePostcode(postcode: string): string {
   const compact = postcode.replace(/\s+/g, "").toUpperCase();
 
@@ -69,18 +78,101 @@ export function postcodeCoordinate(postcode: string): Coordinate {
   return POSTCODE_COORDINATES[normalized] ?? districtFallbackCoordinate(postcodeDistrict(normalized));
 }
 
+export async function resolvePostcodeOrigin(
+  postcode: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<ResolvedPostcodeOrigin> {
+  const normalized = normalizePostcode(postcode);
+  const district = postcodeDistrict(normalized);
+  const known = POSTCODE_COORDINATES[normalized];
+
+  if (known) {
+    return {
+      normalized,
+      district,
+      coordinate: known,
+      source: "known"
+    };
+  }
+
+  const apiCoordinate = await lookupPostcodeCoordinate(normalized, fetchImpl);
+
+  if (apiCoordinate) {
+    return {
+      normalized,
+      district,
+      coordinate: apiCoordinate,
+      source: "api"
+    };
+  }
+
+  return {
+    normalized,
+    district,
+    coordinate: districtFallbackCoordinate(district),
+    source: "fallback"
+  };
+}
+
 function districtFallbackCoordinate(district: string): Coordinate {
-  if (district.startsWith("SW") || district.startsWith("W")) {
-    return { latitude: 51.49, longitude: -0.2 };
-  }
+  const area = district.match(/^[A-Z]+/)?.[0];
 
-  if (district.startsWith("M")) {
-    return { latitude: 53.4808, longitude: -2.2426 };
-  }
-
-  if (district.startsWith("L")) {
-    return { latitude: 53.4084, longitude: -2.9916 };
+  if (area && AREA_FALLBACK_COORDINATES[area]) {
+    return AREA_FALLBACK_COORDINATES[area];
   }
 
   return { latitude: 51.5074, longitude: -0.1278 };
+}
+
+async function lookupPostcodeCoordinate(postcode: string, fetchImpl: typeof fetch): Promise<Coordinate | null> {
+  const baseUrl = process.env.POSTCODES_IO_BASE_URL ?? "https://api.postcodes.io";
+  const compact = postcode.replace(/\s+/g, "");
+
+  try {
+    const response = await fetchImpl(`${baseUrl}/postcodes/${compact}`);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json() as {
+      result?: {
+        latitude?: number;
+        longitude?: number;
+      };
+    };
+    const latitude = payload.result?.latitude;
+    const longitude = payload.result?.longitude;
+
+    if (typeof latitude !== "number" || typeof longitude !== "number") {
+      return null;
+    }
+
+    return { latitude, longitude };
+  } catch {
+    return null;
+  }
+}
+
+function buildAreaFallbackCoordinates(): Record<string, Coordinate> {
+  const grouped = new Map<string, Array<Coordinate>>();
+
+  for (const [postcode, coordinate] of Object.entries(POSTCODE_COORDINATES)) {
+    const area = postcode.match(/^[A-Z]+/)?.[0];
+
+    if (!area) {
+      continue;
+    }
+
+    const existing = grouped.get(area) ?? [];
+    existing.push(coordinate);
+    grouped.set(area, existing);
+  }
+
+  return Object.fromEntries(Array.from(grouped.entries()).map(([area, coordinates]) => {
+    const latitude = coordinates.reduce((sum, coordinate) => sum + coordinate.latitude, 0) / coordinates.length;
+    const longitude = coordinates.reduce((sum, coordinate) => sum + coordinate.longitude, 0) / coordinates.length;
+
+    return [area, { latitude, longitude }];
+  }));
 }

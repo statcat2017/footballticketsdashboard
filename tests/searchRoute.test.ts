@@ -6,6 +6,7 @@ const defaultDateRange = vi.fn(() => ({
   dateFrom: "2026-05-11",
   dateTo: "2026-05-21"
 }));
+const scheduleSearchTravelBackfill = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
   getDatabase
@@ -14,6 +15,10 @@ vi.mock("@/lib/db/client", () => ({
 vi.mock("@/lib/search/service", () => ({
   defaultDateRange,
   searchFixtures
+}));
+
+vi.mock("@/lib/travel/backfill", () => ({
+  scheduleSearchTravelBackfill
 }));
 
 afterEach(() => {
@@ -35,6 +40,7 @@ describe("search API route", () => {
       error: "Enter a valid UK postcode."
     });
     expect(searchFixtures).not.toHaveBeenCalled();
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
   });
 
   it("returns a 400 for malformed dates", async () => {
@@ -125,6 +131,21 @@ describe("search API route", () => {
       radiusMiles: 25,
       dateFrom: "2026-05-11",
       dateTo: "2026-05-21"
+    }, {
+      travelProviders: {
+        openRouteServiceApiKey: undefined,
+        travelTimeAppId: undefined,
+        travelTimeApiKey: undefined
+      }
+    });
+    expect(scheduleSearchTravelBackfill).toHaveBeenCalledWith(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-05-11",
+      dateTo: "2026-05-21"
+    }, {
+      openRouteServiceApiKey: undefined,
+      travelTimeAppId: undefined,
+      travelTimeApiKey: undefined
     });
 
     expect(response.status).toBe(200);
@@ -165,6 +186,7 @@ describe("search API route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Unknown postcode district."
     });
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
   });
 
   it("returns a 500 for unexpected backend failures", async () => {
@@ -184,5 +206,6 @@ describe("search API route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Search failed."
     });
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
   });
 });

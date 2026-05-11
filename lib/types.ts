@@ -21,7 +21,7 @@ export interface TravelSummary {
   distanceMiles: number;
   drivingMinutes: number | null;
   publicTransportMinutes: number | null;
-  source: "cache" | "distance_only";
+  source: "cache" | "live" | "distance_only";
 }
 
 export interface FixtureResult {

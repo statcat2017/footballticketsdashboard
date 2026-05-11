@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAppDatabase } from "@/lib/db/client";
 import { searchFixtures } from "@/lib/search/service";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.OPENROUTESERVICE_API_KEY;
+  delete process.env.POSTCODES_IO_BASE_URL;
+});
 
 describe("fixture search", () => {
   it("does not fall back to historical demo fixtures when the live date range is empty", async () => {
@@ -84,6 +90,58 @@ describe("fixture search", () => {
       sourceUrl: "https://example.com/non-league-day",
       confidence: "verified",
       isOverride: true
+    });
+  });
+
+  it("uses exact postcode coordinates and live driving lookup on first search when cache is missing", async () => {
+    const db = createAppDatabase();
+    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
+    process.env.POSTCODES_IO_BASE_URL = "https://postcodes.test";
+
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        result: {
+          latitude: 52.549,
+          longitude: -1.816
+        }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        routes: [
+          {
+            summary: {
+              duration: 900
+            }
+          }
+        ]
+      }), { status: 200 })));
+
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'chelsea-b75', 'PL', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const results = await searchFixtures(db, {
+      postcode: "B75 5AQ",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    });
+
+    expect(results[0]?.travel.drivingMinutes).toBe(15);
+    expect(results[0]?.travel.source).toBe("live");
+
+    const cached = await db.get<{ provider: string; driving_minutes: number }>(`
+      SELECT provider, driving_minutes
+      FROM travel_cache
+      WHERE postcode_district = 'B75' AND venue_id = 1
+    `);
+
+    expect(cached).toEqual({
+      provider: "openrouteservice",
+      driving_minutes: 15
     });
   });
 });

@@ -17,4 +17,7 @@ interface D1Database {
 
 interface CloudflareEnv {
   DB: D1Database;
+  OPENROUTESERVICE_API_KEY?: string;
+  TRAVELTIME_APP_ID?: string;
+  TRAVELTIME_API_KEY?: string;
 }
