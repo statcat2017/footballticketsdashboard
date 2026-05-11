@@ -105,23 +105,28 @@ export function SearchDashboard() {
     setState("loading");
     setError("");
 
-    const response = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        postcode: searchPostcode
-      })
-    });
-    const payload = await response.json();
+    try {
+      const response = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postcode: searchPostcode
+        })
+      });
+      const payload = await response.json();
 
-    if (!response.ok) {
-      setError(payload.error ?? "Search failed.");
+      if (!response.ok) {
+        setError(payload.error ?? "Search failed.");
+        setState("error");
+        return;
+      }
+
+      setResults(payload.results);
+      setState("ready");
+    } catch {
+      setError("Network error — check your connection.");
       setState("error");
-      return;
     }
-
-    setResults(payload.results);
-    setState("ready");
   }, []);
 
   useEffect(() => {
@@ -175,14 +180,16 @@ export function SearchDashboard() {
       </form>
 
       <main className="results" aria-live="polite">
-        <div className="meta-row">
-          <div><strong>{resultCount} fixtures</strong> within reach · {dateRange}</div>
-          <select className="sort-select" aria-label="Sort fixtures" defaultValue="distance">
-            <option value="distance">Sort by distance</option>
-            <option value="kickoff">Sort by kick-off</option>
-            <option value="admission">Sort by admission</option>
-          </select>
-        </div>
+        {state === "ready" && (
+          <div className="meta-row">
+            <div><strong>{resultCount} fixtures</strong> within reach · {dateRange}</div>
+            <select className="sort-select" aria-label="Sort fixtures" defaultValue="distance">
+              <option value="distance">Sort by distance</option>
+              <option value="kickoff">Sort by kick-off</option>
+              <option value="admission">Sort by admission</option>
+            </select>
+          </div>
+        )}
 
         {state === "loading" && (
           <div className="state-panel">
@@ -205,7 +212,7 @@ export function SearchDashboard() {
           </div>
         )}
 
-        {featuredFixture && (
+        {state === "ready" && featuredFixture && (
           <section className="featured" aria-label="Featured fixture">
             <div>
               <span className="featured-badge">Featured</span>
@@ -222,49 +229,51 @@ export function SearchDashboard() {
           </section>
         )}
 
-        <section className="fixtures" aria-label="Fixture list">
-          <div className="grid-row grid-header">
-            <div>Match</div>
-            <div>Competition</div>
-            <div>Venue</div>
-            <div>Admission</div>
-            <div>Travel from you</div>
-          </div>
+        {state === "ready" && (
+          <section className="fixtures" aria-label="Fixture list">
+            <div className="grid-row grid-header">
+              <div>Match</div>
+              <div>Competition</div>
+              <div>Venue</div>
+              <div>Admission</div>
+              <div>Travel from you</div>
+            </div>
 
-          {visibleResults.map((result) => {
-            const ticketState = availability(result);
+            {visibleResults.map((result) => {
+              const ticketState = availability(result);
 
-            return (
-              <article className="grid-row fixture-row" key={result.id}>
-                <div>
-                  <div className="primary">{result.title}</div>
-                  <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
-                </div>
-                <div>{result.competitionName}</div>
-                <div>
-                  <div>{result.venueName}</div>
-                  <div className="secondary">{result.travel.distanceMiles.toFixed(1)} miles</div>
-                </div>
-                <div>
-                  <span className={`badge ${ticketState.tone}`}>{ticketState.label}</span>
-                  <div className="secondary">{formatPriceLine(result)}</div>
-                </div>
-                <div className="travel-chips">
-                  <span className="chip">
-                    <CarIcon />
-                    {travelMinutes(result.travel.drivingMinutes)}
-                  </span>
-                  <span className="chip">
-                    <TrainIcon />
-                    {travelMinutes(result.travel.publicTransportMinutes)}
-                  </span>
-                </div>
-              </article>
-            );
-          })}
+              return (
+                <article className="grid-row fixture-row" key={result.id}>
+                  <div>
+                    <div className="primary">{result.title}</div>
+                    <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
+                  </div>
+                  <div>{result.competitionName}</div>
+                  <div>
+                    <div>{result.venueName}</div>
+                    <div className="secondary">{result.travel.distanceMiles.toFixed(1)} miles</div>
+                  </div>
+                  <div>
+                    <span className={`badge ${ticketState.tone}`}>{ticketState.label}</span>
+                    <div className="secondary">{formatPriceLine(result)}</div>
+                  </div>
+                  <div className="travel-chips">
+                    <span className="chip">
+                      <CarIcon />
+                      {travelMinutes(result.travel.drivingMinutes)}
+                    </span>
+                    <span className="chip">
+                      <TrainIcon />
+                      {travelMinutes(result.travel.publicTransportMinutes)}
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
 
-          <button className="show-more" type="button">Show more fixtures</button>
-        </section>
+            <button className="show-more" type="button">Show more fixtures</button>
+          </section>
+        )}
 
         <footer className="footer-strip">
           <span>Pricing incorrect or missing?</span>
