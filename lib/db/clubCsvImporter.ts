@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import type { AppDatabase } from "@/lib/db/adapter";
+import type { AppDatabase } from "./adapter.ts";
+import { competitionName, competitionTier } from "./competition.ts";
 
 const expectedHeader = [
   "competition",
@@ -305,30 +306,6 @@ function validateRow(row: ClubCsvRow, rowNumber: number): void {
       }
     }
   }
-}
-
-function competitionName(code: string): string {
-  if (code === "PL") {
-    return "Premier League";
-  }
-
-  if (code === "ELC") {
-    return "Championship";
-  }
-
-  return code;
-}
-
-function competitionTier(code: string): number {
-  if (code === "PL") {
-    return 1;
-  }
-
-  if (code === "ELC") {
-    return 2;
-  }
-
-  return 2;
 }
 
 function parseCsvLine(line: string): string[] {
