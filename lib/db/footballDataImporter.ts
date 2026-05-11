@@ -1,6 +1,33 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import type { AppDatabase } from "./adapter.ts";
-import { buildClubLookup, findClub, normalizeStatus, type ClubRow, type FootballDataTeam } from "./clubLookup.ts";
+import { buildClubLookup, findClub, normalizeStatus, type ClubRow } from "./clubLookup.ts";
+import { z } from "zod";
+
+const footballDataMatchSchema = z.object({
+  id: z.number(),
+  utcDate: z.string().nullable(),
+  status: z.string(),
+  lastUpdated: z.string().nullable().optional(),
+  competition: z.object({
+    code: z.string()
+  }),
+  homeTeam: z.object({
+    id: z.number(),
+    name: z.string(),
+    shortName: z.string().nullable().optional().transform((value) => value ?? undefined),
+    tla: z.string().nullable().optional().transform((value) => value ?? undefined)
+  }),
+  awayTeam: z.object({
+    id: z.number(),
+    name: z.string(),
+    shortName: z.string().nullable().optional().transform((value) => value ?? undefined),
+    tla: z.string().nullable().optional().transform((value) => value ?? undefined)
+  })
+});
+
+const footballDataResponseSchema = z.object({
+  matches: z.array(footballDataMatchSchema)
+});
 
 const footballDataBaseUrl = "https://api.football-data.org/v4";
 const competitions = ["PL", "ELC"] as const;
@@ -14,21 +41,7 @@ type FetchLike = (input: string, init?: { headers?: Record<string, string> }) =>
   json: () => Promise<unknown>;
 }>;
 
-interface FootballDataMatch {
-  id: number;
-  utcDate: string | null;
-  status: string;
-  lastUpdated?: string;
-  competition: {
-    code: string;
-  };
-  homeTeam: FootballDataTeam;
-  awayTeam: FootballDataTeam;
-}
-
-interface FootballDataResponse {
-  matches: FootballDataMatch[];
-}
+type FootballDataMatch = z.infer<typeof footballDataMatchSchema>;
 
 export interface ImportFootballDataOptions {
   db: SqliteDatabase | AppDatabase;
@@ -85,7 +98,7 @@ async function fetchCompetitionMatches(
   fetchImpl: FetchLike,
   token: string,
   competitionCode: CompetitionCode
-): Promise<FootballDataResponse> {
+): Promise<z.infer<typeof footballDataResponseSchema>> {
   const url = `${footballDataBaseUrl}/competitions/${competitionCode}/matches`;
   const response = await fetchImpl(url, {
     headers: {
@@ -97,13 +110,7 @@ async function fetchCompetitionMatches(
     throw new Error(`football-data request failed for ${competitionCode}: ${response.status} ${response.statusText}`);
   }
 
-  const body = await response.json();
-
-  if (!isFootballDataResponse(body)) {
-    throw new Error(`football-data response for ${competitionCode} did not include a matches array.`);
-  }
-
-  return body;
+  return footballDataResponseSchema.parse(await response.json());
 }
 
 async function buildClubLookupFromDb(db: SqliteDatabase | AppDatabase): Promise<Map<string, ClubRow>> {
@@ -246,8 +253,4 @@ function isAppDatabase(db: SqliteDatabase | AppDatabase): db is AppDatabase {
 
 function isCompetitionCode(value: string): value is CompetitionCode {
   return competitions.includes(value as CompetitionCode);
-}
-
-function isFootballDataResponse(value: unknown): value is FootballDataResponse {
-  return Boolean(value && typeof value === "object" && Array.isArray((value as { matches?: unknown }).matches));
 }

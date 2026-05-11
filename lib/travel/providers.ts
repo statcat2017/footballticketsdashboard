@@ -1,4 +1,5 @@
 import type { Coordinate } from "../postcode.ts";
+import { z } from "zod";
 
 export interface TravelProvidersConfig {
   openRouteServiceApiKey?: string;
@@ -19,6 +20,24 @@ interface FetchJsonOptions {
   fetchImpl?: typeof fetch;
 }
 
+const openRouteServiceResponseSchema = z.object({
+  routes: z.array(z.object({
+    summary: z.object({
+      duration: z.number()
+    }).optional()
+  })).optional()
+});
+
+const travelTimeResponseSchema = z.object({
+  results: z.array(z.object({
+    locations: z.array(z.object({
+      properties: z.array(z.object({
+        travel_time: z.number()
+      }))
+    })).optional()
+  })).optional()
+});
+
 function nextWeekdayMorningIso(now = new Date()): string {
   const value = new Date(now);
   value.setUTCDate(value.getUTCDate() + 1);
@@ -31,7 +50,7 @@ function nextWeekdayMorningIso(now = new Date()): string {
   return value.toISOString();
 }
 
-async function fetchJson<T>(url: string, options: FetchJsonOptions = {}): Promise<T> {
+async function fetchJson<T>(url: string, schema: z.ZodType<T>, options: FetchJsonOptions = {}): Promise<T> {
   const response = await (options.fetchImpl ?? fetch)(url, {
     method: options.method ?? "GET",
     headers: options.headers,
@@ -42,7 +61,8 @@ async function fetchJson<T>(url: string, options: FetchJsonOptions = {}): Promis
     throw new Error(`Provider request failed with ${response.status}.`);
   }
 
-  return response.json() as Promise<T>;
+  const data = await response.json();
+  return schema.parse(data);
 }
 
 export async function lookupOpenRouteServiceDrivingMinutes(
@@ -51,26 +71,24 @@ export async function lookupOpenRouteServiceDrivingMinutes(
   apiKey: string,
   fetchImpl?: typeof fetch
 ): Promise<number> {
-  const payload = await fetchJson<{
-    routes?: Array<{
-      summary?: {
-        duration?: number;
-      };
-    }>;
-  }>("https://api.openrouteservice.org/v2/directions/driving-car", {
-    method: "POST",
-    headers: {
-      Authorization: apiKey,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      coordinates: [
-        [from.longitude, from.latitude],
-        [to.longitude, to.latitude]
-      ]
-    }),
-    fetchImpl
-  });
+  const payload = await fetchJson(
+    "https://api.openrouteservice.org/v2/directions/driving-car",
+    openRouteServiceResponseSchema,
+    {
+      method: "POST",
+      headers: {
+        Authorization: apiKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        coordinates: [
+          [from.longitude, from.latitude],
+          [to.longitude, to.latitude]
+        ]
+      }),
+      fetchImpl
+    }
+  );
 
   const durationSeconds = payload.routes?.[0]?.summary?.duration;
 
@@ -88,54 +106,50 @@ export async function lookupTravelTimePublicTransportMinutes(
   apiKey: string,
   fetchImpl?: typeof fetch
 ): Promise<number> {
-  const payload = await fetchJson<{
-    results?: Array<{
-      locations?: Array<{
-        properties?: Array<{
-          travel_time?: number;
-        }>;
-      }>;
-    }>;
-  }>("https://api.traveltimeapp.com/v4/time-filter", {
-    method: "POST",
-    headers: {
-      "X-Application-Id": appId,
-      "X-Api-Key": apiKey,
-      "Content-Type": "application/json",
-      Accept: "application/json"
-    },
-    body: JSON.stringify({
-      locations: [
-        {
-          id: "origin",
-          coords: {
-            lat: from.latitude,
-            lng: from.longitude
-          }
-        },
-        {
-          id: "destination",
-          coords: {
-            lat: to.latitude,
-            lng: to.longitude
-          }
-        }
-      ],
-      departure_searches: [
-        {
-          id: "origin-to-destination",
-          departure_location_id: "origin",
-          arrival_location_ids: ["destination"],
-          transportation: {
-            type: "public_transport"
+  const payload = await fetchJson(
+    "https://api.traveltimeapp.com/v4/time-filter",
+    travelTimeResponseSchema,
+    {
+      method: "POST",
+      headers: {
+        "X-Application-Id": appId,
+        "X-Api-Key": apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({
+        locations: [
+          {
+            id: "origin",
+            coords: {
+              lat: from.latitude,
+              lng: from.longitude
+            }
           },
-          departure_time: nextWeekdayMorningIso(),
-          properties: ["travel_time"]
-        }
-      ]
-    }),
-    fetchImpl
-  });
+          {
+            id: "destination",
+            coords: {
+              lat: to.latitude,
+              lng: to.longitude
+            }
+          }
+        ],
+        departure_searches: [
+          {
+            id: "origin-to-destination",
+            departure_location_id: "origin",
+            arrival_location_ids: ["destination"],
+            transportation: {
+              type: "public_transport"
+            },
+            departure_time: nextWeekdayMorningIso(),
+            properties: ["travel_time"]
+          }
+        ]
+      }),
+      fetchImpl
+    }
+  );
 
   const travelTimeSeconds = payload.results?.[0]?.locations?.[0]?.properties?.[0]?.travel_time;
 
