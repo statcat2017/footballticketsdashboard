@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 import { parseClubCsv } from "../lib/db/clubCsvImporter.ts";
+import { competitionName, competitionTier } from "../lib/db/competition.ts";
+import { escapeSql } from "../lib/db/sql.ts";
 
 const databaseName = process.argv[2];
 const csvPath = process.argv[3] ?? "data/clubs.csv";
@@ -117,30 +119,6 @@ function querySingleNumber(databaseNameValue: string, sql: string): number | nul
   return typeof value === "number" ? value : null;
 }
 
-function competitionName(code: string): string {
-  if (code === "PL") {
-    return "Premier League";
-  }
-
-  if (code === "ELC") {
-    return "Championship";
-  }
-
-  return code;
-}
-
-function competitionTier(code: string): number {
-  if (code === "PL") {
-    return 1;
-  }
-
-  if (code === "ELC") {
-    return 2;
-  }
-
-  return 2;
-}
-
 function stableId(value: string): number {
   let hash = 0;
 
@@ -149,8 +127,4 @@ function stableId(value: string): number {
   }
 
   return Math.abs(hash) + 1000;
-}
-
-function escapeSql(value: string): string {
-  return value.replaceAll("'", "''");
 }

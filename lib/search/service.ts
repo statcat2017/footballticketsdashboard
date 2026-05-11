@@ -4,6 +4,7 @@ import { resolvePostcodeOrigin } from "@/lib/postcode";
 import { buildTravelCacheEntry, upsertTravelCacheRow } from "@/lib/travel/cache";
 import type { FixtureResult, SearchRequest } from "@/lib/types";
 import type { TravelProviderRuntimeConfig } from "@/lib/runtime-env";
+import { defaultDateRange } from "@/lib/date";
 
 interface FixtureRow {
   id: number;
@@ -32,17 +33,6 @@ interface FixtureRow {
   driving_minutes: number | null;
   public_transport_minutes: number | null;
   travel_source?: "cache" | "live" | "distance_only";
-}
-
-export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: string } {
-  const from = new Date(now);
-  const to = new Date(now);
-  to.setDate(to.getDate() + 10);
-
-  return {
-    dateFrom: from.toISOString().slice(0, 10),
-    dateTo: to.toISOString().slice(0, 10)
-  };
 }
 
 export async function searchFixtures(

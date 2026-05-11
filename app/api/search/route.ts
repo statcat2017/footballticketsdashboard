@@ -3,7 +3,8 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db/client";
 import { getTravelProviderRuntimeConfig } from "@/lib/runtime-env";
-import { defaultDateRange, searchFixtures } from "@/lib/search/service";
+import { searchFixtures } from "@/lib/search/service";
+import { defaultDateRange } from "@/lib/date";
 import { scheduleSearchTravelBackfill } from "@/lib/travel/backfill";
 
 const postcodePattern = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
