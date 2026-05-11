@@ -65,9 +65,9 @@ ON CONFLICT(id) DO UPDATE SET
   coordinates_source_url = excluded.coordinates_source_url,
   verified_at = excluded.verified_at;
 
-INSERT INTO admission_prices (club_id, label, amount_pence, source_url, verified_at, confidence)
-VALUES (${clubId}, 'Adult from', NULL, ${row.price_source_url ? `'${escapeSql(row.price_source_url)}'` : "NULL"}, '${escapeSql(row.verified_at)}', 'unknown')
-ON CONFLICT(club_id, label) DO UPDATE SET
+INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence)
+VALUES (${clubId}, NULL, NULL, NULL, ${row.price_source_url ? `'${escapeSql(row.price_source_url)}'` : "NULL"}, '${escapeSql(row.verified_at)}', 'unknown')
+ON CONFLICT(club_id) DO UPDATE SET
   source_url = excluded.source_url,
   verified_at = excluded.verified_at;
 `);

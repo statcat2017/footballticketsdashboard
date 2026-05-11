@@ -8,11 +8,13 @@ export interface SearchRequest {
 }
 
 export interface PriceSummary {
-  label: string;
-  amountPence: number | null;
+  saleMode: "all_ticket" | "pay_on_gate" | null;
+  adultPricePence: number | null;
+  concessionPricePence: number | null;
   sourceUrl: string | null;
   verifiedAt: string | null;
   confidence: "verified" | "seed" | "unknown";
+  isOverride: boolean;
 }
 
 export interface TravelSummary {

@@ -20,6 +20,22 @@ export function applySchema(db: SqliteDatabase): void {
   addColumnIfMissing(db, "fixtures", "source_updated_at", "TEXT");
   addColumnIfMissing(db, "fixtures", "imported_at", "TEXT");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clubs_football_data_team_id ON clubs(football_data_team_id) WHERE football_data_team_id IS NOT NULL");
+  db.exec(`
+    INSERT INTO club_ticket_prices (
+      club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence
+    )
+    SELECT
+      club_id,
+      NULL,
+      MAX(amount_pence),
+      NULL,
+      MAX(source_url),
+      MAX(verified_at),
+      COALESCE(MAX(confidence), 'unknown')
+    FROM admission_prices
+    GROUP BY club_id
+    ON CONFLICT(club_id) DO NOTHING
+  `);
 }
 
 export function setupDatabase(filename = defaultDatabasePath): SqliteDatabase {

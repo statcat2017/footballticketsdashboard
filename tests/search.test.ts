@@ -39,5 +39,51 @@ describe("fixture search", () => {
       "Birmingham City vs Queens Park Rangers"
     ]);
     expect(results.some((result) => result.travel.source === "distance_only")).toBe(true);
+    expect(results[0]?.price).toMatchObject({
+      saleMode: "all_ticket",
+      adultPricePence: 3000,
+      concessionPricePence: 2000,
+      isOverride: false
+    });
+  });
+
+  it("prefers fixture price overrides over the club default", async () => {
+    const db = createAppDatabase();
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'chelsea-offer', 'PL', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const fixture = await db.get<{ id: number }>(`
+      SELECT id
+      FROM fixtures
+      WHERE source = 'test' AND source_id = 'chelsea-offer'
+    `);
+
+    await db.run(`
+      INSERT INTO fixture_ticket_price_overrides (
+        fixture_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, note, confidence
+      )
+      VALUES (?, 'pay_on_gate', 1000, 700, 'https://example.com/non-league-day', '2026-05-11', 'Non League Day offer', 'verified')
+    `, [fixture?.id ?? 0]);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    });
+
+    expect(results[0]?.title).toBe("Chelsea vs Arsenal");
+    expect(results[0]?.price).toMatchObject({
+      saleMode: "pay_on_gate",
+      adultPricePence: 1000,
+      concessionPricePence: 700,
+      sourceUrl: "https://example.com/non-league-day",
+      confidence: "verified",
+      isOverride: true
+    });
   });
 });

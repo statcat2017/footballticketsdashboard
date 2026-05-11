@@ -19,16 +19,24 @@ function randomGroundPostcode(): string {
   return groundPostcodes[Math.floor(Math.random() * groundPostcodes.length)] ?? "SE20 7RS";
 }
 
-function formatPrice(pence: number | null): string {
+function formatMoney(pence: number | null): string {
   if (pence === null) {
-    return "price TBC";
+    return "TBC";
   }
 
-  return `from ${new Intl.NumberFormat("en-GB", {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency: "GBP",
     maximumFractionDigits: 0
-  }).format(pence / 100)}`;
+  }).format(pence / 100);
+}
+
+function formatPriceLine(result: FixtureResult): string {
+  if (result.price.adultPricePence === null && result.price.concessionPricePence === null) {
+    return "price TBC";
+  }
+
+  return `${formatMoney(result.price.adultPricePence)} conc ${formatMoney(result.price.concessionPricePence)}`;
 }
 
 function formatKickoffDate(value: string | null): string {
@@ -67,15 +75,15 @@ function formatDateRange(results: FixtureResult[]): string {
 }
 
 function availability(result: FixtureResult): { label: string; tone: Availability } {
-  if (result.price.confidence === "unknown") {
+  if (result.price.saleMode === null || result.price.confidence === "unknown") {
     return { label: "Check club", tone: "check-club" };
   }
 
-  if (result.price.amountPence !== null && result.price.amountPence <= 2200) {
-    return { label: "Limited", tone: "limited" };
+  if (result.price.saleMode === "pay_on_gate") {
+    return { label: "Pay on gate", tone: "limited" };
   }
 
-  return { label: "Available", tone: "available" };
+  return { label: "All ticket", tone: "available" };
 }
 
 function travelMinutes(value: number | null): string {
@@ -239,7 +247,7 @@ export function SearchDashboard() {
                 </div>
                 <div>
                   <span className={`badge ${ticketState.tone}`}>{ticketState.label}</span>
-                  <div className="secondary">{formatPrice(result.price.amountPence)}</div>
+                  <div className="secondary">{formatPriceLine(result)}</div>
                 </div>
                 <div className="travel-chips">
                   <span className="chip">

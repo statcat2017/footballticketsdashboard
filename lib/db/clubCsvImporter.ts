@@ -160,9 +160,11 @@ function upsertClubRow(db: SqliteDatabase, row: ClubCsvRow): void {
   });
 
   db.prepare(`
-    INSERT INTO admission_prices (club_id, label, amount_pence, source_url, verified_at, confidence)
-    VALUES (@clubId, 'Adult from', NULL, @sourceUrl, @verifiedAt, 'unknown')
-    ON CONFLICT(club_id, label) DO UPDATE SET
+    INSERT INTO club_ticket_prices (
+      club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence
+    )
+    VALUES (@clubId, NULL, NULL, NULL, @sourceUrl, @verifiedAt, 'unknown')
+    ON CONFLICT(club_id) DO UPDATE SET
       source_url = excluded.source_url,
       verified_at = excluded.verified_at
   `).run({
@@ -235,9 +237,11 @@ async function upsertClubRowAsync(db: AppDatabase, row: ClubCsvRow): Promise<voi
   ]);
 
   await db.run(`
-    INSERT INTO admission_prices (club_id, label, amount_pence, source_url, verified_at, confidence)
-    VALUES (?, 'Adult from', NULL, ?, ?, 'unknown')
-    ON CONFLICT(club_id, label) DO UPDATE SET
+    INSERT INTO club_ticket_prices (
+      club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence
+    )
+    VALUES (?, NULL, NULL, NULL, ?, ?, 'unknown')
+    ON CONFLICT(club_id) DO UPDATE SET
       source_url = excluded.source_url,
       verified_at = excluded.verified_at
   `, [clubId, row.price_source_url, row.verified_at]);

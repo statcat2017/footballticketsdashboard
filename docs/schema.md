@@ -10,13 +10,16 @@ Core tables:
 - `venues`
 - `clubs`
 - `fixtures`
-- `admission_prices`
+- `club_ticket_prices`
+- `fixture_ticket_price_overrides`
 - `travel_cache`
 - `corrections`
 
 Important rules:
 
-- Fixture prices are not stored directly. Admission prices are club-level guide prices.
+- Club ticket prices store the default `adult`, `concession`, and `sale_mode` values for each club.
+- Fixture-specific offers or exceptions are stored in `fixture_ticket_price_overrides` and take precedence over the club default.
+- `admission_prices` remains as a legacy table for migration compatibility with older local databases.
 - Premier League club/ground seed data lives in `data/clubs.csv` and can be imported with `npm run import:clubs`.
 - Clubs store `football_data_team_id` and aliases so live fixture imports can match teams reliably.
 - Historical demo fixtures are flagged with `is_demo_data` and `is_historical`.

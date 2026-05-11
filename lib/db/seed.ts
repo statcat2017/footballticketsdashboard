@@ -51,20 +51,24 @@ export function seedDatabase(db: SqliteDatabase): void {
     insertClub.run(6, "Birmingham City", 332, "Birmingham City FC|Birmingham City|Birmingham", "Birmingham", "ELC", 6, "https://www.bcfc.com/", "https://www.bcfc.com/tickets/", "https://www.bcfc.com/tickets/", "2026-05-10");
 
     const insertPrice = db.prepare(`
-      INSERT INTO admission_prices (club_id, label, amount_pence, source_url, verified_at, confidence)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(club_id, label) DO UPDATE SET
-        amount_pence = excluded.amount_pence,
+      INSERT INTO club_ticket_prices (
+        club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(club_id) DO UPDATE SET
+        sale_mode = excluded.sale_mode,
+        adult_price_pence = excluded.adult_price_pence,
+        concession_price_pence = excluded.concession_price_pence,
         source_url = excluded.source_url,
         verified_at = excluded.verified_at,
         confidence = excluded.confidence
     `);
-    insertPrice.run(1, "Adult from", 3000, "https://www.chelseafc.com/en/tickets", "2026-05-10", "seed");
-    insertPrice.run(2, "Adult from", 2800, "https://www.arsenal.com/tickets", "2026-05-10", "seed");
-    insertPrice.run(3, "Adult from", 3100, "https://tickets.manutd.com/", "2026-05-10", "seed");
-    insertPrice.run(4, "Adult from", 2200, "https://www.eticketing.co.uk/qpr/", "2026-05-10", "seed");
-    insertPrice.run(5, "Adult from", 2500, "https://tickets.canaries.co.uk/", "2026-05-10", "seed");
-    insertPrice.run(6, "Adult from", 2000, "https://www.bcfc.com/tickets/", "2026-05-10", "seed");
+    insertPrice.run(1, "all_ticket", 3000, 2000, "https://www.chelseafc.com/en/tickets", "2026-05-10", "seed");
+    insertPrice.run(2, "all_ticket", 2800, 1800, "https://www.arsenal.com/tickets", "2026-05-10", "seed");
+    insertPrice.run(3, "all_ticket", 3100, 2100, "https://tickets.manutd.com/", "2026-05-10", "seed");
+    insertPrice.run(4, "pay_on_gate", 2200, 1500, "https://www.eticketing.co.uk/qpr/", "2026-05-10", "seed");
+    insertPrice.run(5, "all_ticket", 2500, 1700, "https://tickets.canaries.co.uk/", "2026-05-10", "seed");
+    insertPrice.run(6, "pay_on_gate", 2000, 1200, "https://www.bcfc.com/tickets/", "2026-05-10", "seed");
 
     const insertFixture = db.prepare(`
       INSERT INTO fixtures (

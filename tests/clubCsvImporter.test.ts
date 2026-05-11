@@ -46,5 +46,19 @@ describe("club CSV importer", () => {
       venue_name: "Test Ground",
       postcode: "AA1 1AA"
     });
+
+    const ticketPrice = db.prepare(`
+      SELECT sale_mode, adult_price_pence, concession_price_pence, confidence, source_url
+      FROM club_ticket_prices
+      WHERE club_id = (SELECT id FROM clubs WHERE name = 'Test United')
+    `).get();
+
+    expect(ticketPrice).toEqual({
+      sale_mode: null,
+      adult_price_pence: null,
+      concession_price_pence: null,
+      confidence: "unknown",
+      source_url: "https://test.example/prices"
+    });
   });
 });

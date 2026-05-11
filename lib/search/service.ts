@@ -19,11 +19,13 @@ interface FixtureRow {
   venue_postcode: string;
   latitude: number;
   longitude: number;
-  price_label: string | null;
-  amount_pence: number | null;
+  sale_mode: "all_ticket" | "pay_on_gate" | null;
+  adult_price_pence: number | null;
+  concession_price_pence: number | null;
   source_url: string | null;
   verified_at: string | null;
   price_confidence: "verified" | "seed" | "unknown" | null;
+  has_price_override: number;
   cached_distance_miles: number | null;
   driving_minutes: number | null;
   public_transport_minutes: number | null;
@@ -88,11 +90,13 @@ function queryFixtures(
       v.postcode as venue_postcode,
       v.latitude,
       v.longitude,
-      ap.label as price_label,
-      ap.amount_pence,
-      ap.source_url,
-      ap.verified_at,
-      ap.confidence as price_confidence,
+      COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
+      COALESCE(fpo.adult_price_pence, ctp.adult_price_pence) as adult_price_pence,
+      COALESCE(fpo.concession_price_pence, ctp.concession_price_pence) as concession_price_pence,
+      COALESCE(fpo.source_url, ctp.source_url) as source_url,
+      COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
+      COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
+      CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       tc.distance_miles as cached_distance_miles,
       tc.driving_minutes,
       tc.public_transport_minutes
@@ -101,7 +105,8 @@ function queryFixtures(
     JOIN clubs home ON home.id = f.home_club_id
     JOIN clubs away ON away.id = f.away_club_id
     JOIN venues v ON v.id = f.venue_id
-    LEFT JOIN admission_prices ap ON ap.club_id = home.id AND ap.label = 'Adult from'
+    LEFT JOIN club_ticket_prices ctp ON ctp.club_id = home.id
+    LEFT JOIN fixture_ticket_price_overrides fpo ON fpo.fixture_id = f.id
     LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
     WHERE date(f.kickoff_at) BETWEEN date(?) AND date(?)
       AND f.is_historical = 0
@@ -145,11 +150,13 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     officialSiteUrl: row.official_site_url,
     genericTicketUrl: row.generic_ticket_url,
     price: {
-      label: row.price_label ?? "Price unknown",
-      amountPence: row.amount_pence,
+      saleMode: row.sale_mode,
+      adultPricePence: row.adult_price_pence,
+      concessionPricePence: row.concession_price_pence,
       sourceUrl: row.source_url,
       verifiedAt: row.verified_at,
-      confidence: row.price_confidence ?? "unknown"
+      confidence: row.price_confidence ?? "unknown",
+      isOverride: row.has_price_override === 1
     },
     travel: {
       distanceMiles: Math.round(distance * 10) / 10,
