@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export interface Coordinate {
   latitude: number;
   longitude: number;
@@ -49,6 +51,13 @@ const POSTCODE_COORDINATES: Record<string, Coordinate> = {
   "PR1 6RU": { latitude: 53.772236, longitude: -2.689327 },
   "OX4 4XP": { latitude: 51.717071, longitude: -1.210938 }
 };
+
+const postcodesIoResponseSchema = z.object({
+  result: z.object({
+    latitude: z.number(),
+    longitude: z.number()
+  }).optional()
+});
 
 const AREA_FALLBACK_COORDINATES = buildAreaFallbackCoordinates();
 
@@ -135,20 +144,14 @@ async function lookupPostcodeCoordinate(postcode: string, fetchImpl: typeof fetc
       return null;
     }
 
-    const payload = await response.json() as {
-      result?: {
-        latitude?: number;
-        longitude?: number;
-      };
-    };
-    const latitude = payload.result?.latitude;
-    const longitude = payload.result?.longitude;
+    const parsed = postcodesIoResponseSchema.parse(await response.json());
+    const result = parsed.result;
 
-    if (typeof latitude !== "number" || typeof longitude !== "number") {
+    if (!result) {
       return null;
     }
 
-    return { latitude, longitude };
+    return { latitude: result.latitude, longitude: result.longitude };
   } catch {
     return null;
   }
