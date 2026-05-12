@@ -326,12 +326,6 @@ select {
   background: var(--green-soft);
 }
 
-.sold-out {
-  border-color: #f0beb7;
-  color: var(--red);
-  background: var(--red-soft);
-}
-
 .limited {
   border-color: #efd28d;
   color: var(--amber);
