@@ -50,17 +50,6 @@ CREATE TABLE IF NOT EXISTS fixtures (
   UNIQUE (source, source_id)
 );
 
-CREATE TABLE IF NOT EXISTS admission_prices (
-  id INTEGER PRIMARY KEY,
-  club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-  label TEXT NOT NULL,
-  amount_pence INTEGER,
-  source_url TEXT,
-  verified_at TEXT,
-  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'seed', 'unknown')),
-  UNIQUE (club_id, label)
-);
-
 CREATE TABLE IF NOT EXISTS club_ticket_prices (
   club_id INTEGER PRIMARY KEY REFERENCES clubs(id) ON DELETE CASCADE,
   sale_mode TEXT CHECK (sale_mode IN ('all_ticket', 'pay_on_gate') OR sale_mode IS NULL),
@@ -110,4 +99,8 @@ CREATE INDEX IF NOT EXISTS idx_fixtures_kickoff ON fixtures(kickoff_at);
 CREATE INDEX IF NOT EXISTS idx_fixtures_competition ON fixtures(competition_code);
 CREATE INDEX IF NOT EXISTS idx_travel_cache_lookup ON travel_cache(postcode_district, venue_id);
 CREATE INDEX IF NOT EXISTS idx_fixture_ticket_price_overrides_fixture ON fixture_ticket_price_overrides(fixture_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_home_club ON fixtures(home_club_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_away_club ON fixtures(away_club_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_venue ON fixtures(venue_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_kickoff_status ON fixtures(kickoff_at, status, is_historical);
 `;
