@@ -19,7 +19,7 @@ function isMissingCloudflareContextError(error: unknown): boolean {
 export async function getCloudflareEnv(key: string): Promise<string | undefined> {
   try {
     const context = await getCloudflareContext({ async: true });
-    const env = context.env as Record<string, string | undefined>;
+    const env = context.env as unknown as Record<string, string | undefined>;
     return env[key] ?? process.env[key];
   } catch (error) {
     if (!isMissingCloudflareContextError(error)) {
