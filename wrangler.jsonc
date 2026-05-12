@@ -16,7 +16,7 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "OPENROUTESERVICE_API_KEY": "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImVmOTQ2MGZkYWU3YjRhMTk5NWUwODA1MGYwNjcwYmIzIiwiaCI6Im11cm11cjY0In0="
+    "POSTCODES_IO_BASE_URL": "https://api.postcodes.io"
   },
   "d1_databases": [
     {
