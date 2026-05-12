@@ -1,10 +1,9 @@
 export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: string } {
-  const from = new Date(now);
-  const to = new Date(now);
-  to.setDate(to.getDate() + 10);
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
+  const from = fmt.format(now);
 
-  return {
-    dateFrom: from.toISOString().slice(0, 10),
-    dateTo: to.toISOString().slice(0, 10)
-  };
+  const endDate = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+  const to = fmt.format(endDate);
+
+  return { dateFrom: from, dateTo: to };
 }
