@@ -94,24 +94,59 @@ export function SearchDashboard() {
   const [postcode, setPostcode] = useState("SE20 7RS");
   const [state, setState] = useState<SearchState>("idle");
   const [error, setError] = useState("");
+  const [geoError, setGeoError] = useState("");
   const [results, setResults] = useState<FixtureResult[]>([]);
+  const [activeFilter, setActiveFilter] = useState<"this_weekend" | "next_weekend" | "all_upcoming">("all_upcoming");
+  const [activeSort, setActiveSort] = useState<"distance" | "kickoff" | "admission">("distance");
+  const [visibleCount, setVisibleCount] = useState(12);
 
   const resultCount = results.length;
   const featuredFixture = results[0] ?? null;
-  const visibleResults = useMemo(() => results.slice(0, 12), [results]);
+  const sortedResults = useMemo(() => {
+    const sorted = [...results];
+    switch (activeSort) {
+      case "distance":
+        sorted.sort((a, b) => a.travel.distanceMiles - b.travel.distanceMiles);
+        break;
+      case "kickoff":
+        sorted.sort((a, b) => {
+          if (a.kickoffAt === null && b.kickoffAt === null) return 0;
+          if (a.kickoffAt === null) return 1;
+          if (b.kickoffAt === null) return -1;
+          return new Date(a.kickoffAt).getTime() - new Date(b.kickoffAt).getTime();
+        });
+        break;
+      case "admission":
+        sorted.sort((a, b) => {
+          if (a.price.adultPricePence === null && b.price.adultPricePence === null) return 0;
+          if (a.price.adultPricePence === null) return 1;
+          if (b.price.adultPricePence === null) return -1;
+          return a.price.adultPricePence - b.price.adultPricePence;
+        });
+        break;
+    }
+    return sorted;
+  }, [results, activeSort]);
+  const visibleResults = useMemo(() => sortedResults.slice(0, visibleCount), [sortedResults, visibleCount]);
   const dateRange = useMemo(() => formatDateRange(results), [results]);
 
-  const runSearch = useCallback(async (searchPostcode: string) => {
+  function formatIsoDate(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  const runSearch = useCallback(async (searchPostcode: string, startDate?: string, endDate?: string) => {
     setState("loading");
     setError("");
+    setGeoError("");
 
     try {
+      const body: Record<string, unknown> = { postcode: searchPostcode };
+      if (startDate) body.dateFrom = startDate;
+      if (endDate) body.dateTo = endDate;
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          postcode: searchPostcode
-        })
+        body: JSON.stringify(body)
       });
       const payload = await response.json();
 
@@ -130,14 +165,65 @@ export function SearchDashboard() {
   }, []);
 
   useEffect(() => {
-    const defaultPostcode = randomGroundPostcode();
-    setPostcode(defaultPostcode);
-    void runSearch(defaultPostcode);
-  }, [runSearch]);
+    setPostcode(randomGroundPostcode());
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setActiveFilter("all_upcoming");
     await runSearch(postcode);
+  }
+
+  function handleLocateMe() {
+    setGeoError("");
+    if (!navigator.geolocation) {
+      setGeoError("Geolocation is not supported by your browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const resp = await fetch(`https://api.postcodes.io/postcodes?lon=${longitude}&lat=${latitude}`);
+          const data = await resp.json();
+          if (data.result && data.result.length > 0) {
+            const nearestPostcode = data.result[0].postcode;
+            setPostcode(nearestPostcode);
+            setActiveFilter("all_upcoming");
+            await runSearch(nearestPostcode);
+          } else {
+            setGeoError("Could not find a postcode for your location.");
+          }
+        } catch {
+          setGeoError("Failed to look up postcode. Try entering manually.");
+        }
+      },
+      () => {
+        setGeoError("Location access denied or unavailable. Enter a postcode manually.");
+      }
+    );
+  }
+
+  function handleThisWeekend() {
+    setActiveFilter("this_weekend");
+    const today = new Date();
+    const end = new Date(today);
+    end.setDate(end.getDate() + 3);
+    void runSearch(postcode, formatIsoDate(today), formatIsoDate(end));
+  }
+
+  function handleNextWeekend() {
+    setActiveFilter("next_weekend");
+    const start = new Date();
+    start.setDate(start.getDate() + 7);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 3);
+    void runSearch(postcode, formatIsoDate(start), formatIsoDate(end));
+  }
+
+  function handleAllUpcoming() {
+    setActiveFilter("all_upcoming");
+    void runSearch(postcode);
   }
 
   return (
@@ -167,15 +253,16 @@ export function SearchDashboard() {
             required
           />
         </label>
-        <button className="locate-button" type="button">
+        <button className="locate-button" type="button" onClick={handleLocateMe}>
           <LocateIcon />
           Locate me
         </button>
+        {geoError && <span className="geo-error">{geoError}</span>}
         <div className="divider" aria-hidden="true" />
         <div className="filters" aria-label="Date filters">
-          <button className="pill active" type="submit" disabled={state === "loading"}>This weekend</button>
-          <button className="pill" type="button">Next weekend</button>
-          <button className="pill" type="button">All upcoming</button>
+          <button className={`pill ${activeFilter === "this_weekend" ? "active" : ""}`} type="button" onClick={handleThisWeekend} disabled={state === "loading"}>This weekend</button>
+          <button className={`pill ${activeFilter === "next_weekend" ? "active" : ""}`} type="button" onClick={handleNextWeekend} disabled={state === "loading"}>Next weekend</button>
+          <button className={`pill ${activeFilter === "all_upcoming" ? "active" : ""}`} type="button" onClick={handleAllUpcoming} disabled={state === "loading"}>All upcoming</button>
         </div>
       </form>
 
@@ -183,7 +270,7 @@ export function SearchDashboard() {
         {state === "ready" && (
           <div className="meta-row">
             <div><strong>{resultCount} fixtures</strong> within reach · {dateRange}</div>
-            <select className="sort-select" aria-label="Sort fixtures" defaultValue="distance">
+            <select className="sort-select" aria-label="Sort fixtures" value={activeSort} onChange={(event) => setActiveSort(event.target.value as typeof activeSort)}>
               <option value="distance">Sort by distance</option>
               <option value="kickoff">Sort by kick-off</option>
               <option value="admission">Sort by admission</option>
@@ -222,7 +309,7 @@ export function SearchDashboard() {
               </p>
             </div>
             {featuredFixture.genericTicketUrl ? (
-              <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
+              <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noopener noreferrer">Get tickets</a>
             ) : (
               <button className="ticket-button" type="button">Get tickets</button>
             )}
@@ -271,7 +358,9 @@ export function SearchDashboard() {
               );
             })}
 
-            <button className="show-more" type="button">Show more fixtures</button>
+            {visibleCount < results.length && (
+              <button className="show-more" type="button" onClick={() => setVisibleCount((prev) => prev + 12)}>Show more fixtures</button>
+            )}
           </section>
         )}
 
