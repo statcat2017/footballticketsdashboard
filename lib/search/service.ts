@@ -204,8 +204,13 @@ async function enrichTravelRows(
     }));
   }
 
-  const entryResults = await Promise.all(
-    Array.from(byVenue.entries()).map(async ([venueId, promise]) => {
+  const MAX_CONCURRENT = 4;
+  const venueArray = Array.from(byVenue.entries());
+  const entryResults: Array<[number, Awaited<ReturnType<typeof buildTravelCacheEntry>>]> = [];
+
+  for (let i = 0; i < venueArray.length; i += MAX_CONCURRENT) {
+    const chunk = venueArray.slice(i, i + MAX_CONCURRENT);
+    const chunkResults = await Promise.all(chunk.map(async ([venueId, promise]) => {
       const entry = await promise;
       if (entry.provider) {
         await upsertTravelCacheRow(
@@ -220,8 +225,9 @@ async function enrichTravelRows(
         );
       }
       return [venueId, entry] as const;
-    })
-  );
+    }));
+    entryResults.push(...chunkResults);
+  }
   const entries = new Map(entryResults);
 
   return rows.map((row) => {
