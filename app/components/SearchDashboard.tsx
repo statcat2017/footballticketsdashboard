@@ -98,7 +98,7 @@ function toDateString(date: Date): string {
 function computeDateRange(filter: string): { dateFrom: string; dateTo: string } {
   const today = new Date();
   const dayOfWeek = today.getDay();
-  const daysUntilSaturday = dayOfWeek === 6 ? 0 : (6 - dayOfWeek + 7) % 7 || 7;
+  const daysUntilSaturday = dayOfWeek === 0 ? -1 : dayOfWeek === 6 ? 0 : (6 - dayOfWeek + 7) % 7 || 7;
 
   const saturday = new Date(today);
   saturday.setDate(today.getDate() + daysUntilSaturday);
@@ -216,6 +216,8 @@ export function SearchDashboard() {
         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
       });
       const { latitude, longitude } = position.coords;
+      // postcodes.io is a free public API (no key required). Could be routed through a server proxy
+      // if a configured base URL is needed later, but direct client-side use is acceptable for the MVP.
       const res = await fetch(`https://api.postcodes.io/postcodes?latitude=${latitude}&longitude=${longitude}`);
       const data = await res.json();
       const pc: string | undefined = data.result?.[0]?.postcode;
