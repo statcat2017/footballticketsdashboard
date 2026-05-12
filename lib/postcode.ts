@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getCloudflareEnv } from "@/lib/runtime-env";
 
 export interface Coordinate {
   latitude: number;
@@ -104,7 +105,8 @@ export async function resolvePostcodeOrigin(
     };
   }
 
-  const apiCoordinate = await lookupPostcodeCoordinate(normalized, fetchImpl);
+  const postcodesIoBaseUrl = await getCloudflareEnv("POSTCODES_IO_BASE_URL") ?? "https://api.postcodes.io";
+  const apiCoordinate = await lookupPostcodeCoordinate(normalized, fetchImpl, postcodesIoBaseUrl);
 
   if (apiCoordinate) {
     return {
@@ -133,12 +135,15 @@ function districtFallbackCoordinate(district: string): Coordinate {
   return { latitude: 51.5074, longitude: -0.1278 };
 }
 
-async function lookupPostcodeCoordinate(postcode: string, fetchImpl: typeof fetch): Promise<Coordinate | null> {
-  const baseUrl = process.env.POSTCODES_IO_BASE_URL ?? "https://api.postcodes.io";
+async function lookupPostcodeCoordinate(
+  postcode: string,
+  fetchImpl: typeof fetch,
+  postcodesIoBaseUrl = "https://api.postcodes.io"
+): Promise<Coordinate | null> {
   const compact = postcode.replace(/\s+/g, "");
 
   try {
-    const response = await fetchImpl(`${baseUrl}/postcodes/${compact}`);
+    const response = await fetchImpl(`${postcodesIoBaseUrl}/postcodes/${compact}`);
 
     if (!response.ok) {
       return null;

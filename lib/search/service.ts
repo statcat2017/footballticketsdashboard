@@ -4,6 +4,7 @@ import { resolvePostcodeOrigin } from "@/lib/postcode";
 import { buildTravelCacheEntry, upsertTravelCacheRow } from "@/lib/travel/cache";
 import type { FixtureResult, SearchRequest } from "@/lib/types";
 import type { TravelProviderRuntimeConfig } from "@/lib/runtime-env";
+import { getCloudflareEnv } from "@/lib/runtime-env";
 import { defaultDateRange } from "@/lib/date";
 
 interface FixtureRow {
@@ -172,9 +173,9 @@ async function enrichTravelRows(
   origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
   travelProviders?: TravelProviderRuntimeConfig
 ): Promise<FixtureRow[]> {
-  const openRouteServiceApiKey = travelProviders?.openRouteServiceApiKey ?? process.env.OPENROUTESERVICE_API_KEY;
-  const travelTimeAppId = travelProviders?.travelTimeAppId ?? process.env.TRAVELTIME_APP_ID;
-  const travelTimeApiKey = travelProviders?.travelTimeApiKey ?? process.env.TRAVELTIME_API_KEY;
+  const openRouteServiceApiKey = travelProviders?.openRouteServiceApiKey ?? await getCloudflareEnv("OPENROUTESERVICE_API_KEY");
+  const travelTimeAppId = travelProviders?.travelTimeAppId ?? await getCloudflareEnv("TRAVELTIME_APP_ID");
+  const travelTimeApiKey = travelProviders?.travelTimeApiKey ?? await getCloudflareEnv("TRAVELTIME_API_KEY");
 
   if (!openRouteServiceApiKey && !(travelTimeAppId && travelTimeApiKey)) {
     return rows;

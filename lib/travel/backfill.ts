@@ -1,22 +1,23 @@
 import type { AppDatabase } from "@/lib/db/adapter";
 import type { TravelProviderRuntimeConfig } from "@/lib/runtime-env";
+import { getCloudflareEnv } from "@/lib/runtime-env";
 import type { SearchRequest } from "@/lib/types";
 import { fillTravelCacheForPostcode } from "@/lib/travel/cache";
 
-function travelProviderConfig() {
+async function travelProviderConfig(): Promise<TravelProviderRuntimeConfig> {
   return {
-    openRouteServiceApiKey: process.env.OPENROUTESERVICE_API_KEY,
-    travelTimeAppId: process.env.TRAVELTIME_APP_ID,
-    travelTimeApiKey: process.env.TRAVELTIME_API_KEY
+    openRouteServiceApiKey: await getCloudflareEnv("OPENROUTESERVICE_API_KEY"),
+    travelTimeAppId: await getCloudflareEnv("TRAVELTIME_APP_ID"),
+    travelTimeApiKey: await getCloudflareEnv("TRAVELTIME_API_KEY")
   };
 }
 
-export function scheduleSearchTravelBackfill(
+export async function scheduleSearchTravelBackfill(
   db: AppDatabase,
   request: Required<Pick<SearchRequest, "postcode" | "dateFrom" | "dateTo">>,
   travelProviders?: TravelProviderRuntimeConfig
-): void {
-  const config = travelProviders ?? travelProviderConfig();
+): Promise<void> {
+  const config = travelProviders ?? await travelProviderConfig();
 
   if (!hasAnyTravelProviderConfig(config)) {
     return;
