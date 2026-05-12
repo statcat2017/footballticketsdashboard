@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
-import { parseClubCsv } from "../lib/db/clubCsvImporter.ts";
+import { parseClubCsv, stableId } from "../lib/db/clubCsvImporter.ts";
 import { competitionName, competitionTier } from "../lib/db/competition.ts";
 import { escapeSql } from "../lib/db/sql.ts";
 
@@ -119,12 +119,4 @@ function querySingleNumber(databaseNameValue: string, sql: string): number | nul
   return typeof value === "number" ? value : null;
 }
 
-function stableId(value: string): number {
-  let hash = 0;
 
-  for (const char of value) {
-    hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  }
-
-  return Math.abs(hash) + 1000;
-}
