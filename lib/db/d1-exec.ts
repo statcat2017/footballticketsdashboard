@@ -60,6 +60,35 @@ export function executeD1Json<T>(name: string, sql: string, params: QueryParam[]
 
 function interpolateSql(sql: string, params: QueryParam[]): string {
   let index = 0;
+  let result = "";
+  let inString = false;
 
-  return sql.replace(/\?/g, () => escapeSqlValue(params[index++]));
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+
+    if (inString) {
+      if (ch === "'") {
+        if (i + 1 < sql.length && sql[i + 1] === "'") {
+          result += "''";
+          i++;
+        } else {
+          inString = false;
+          result += "'";
+        }
+      } else {
+        result += ch;
+      }
+    } else {
+      if (ch === "'") {
+        inString = true;
+        result += "'";
+      } else if (ch === "?") {
+        result += escapeSqlValue(params[index++]);
+      } else {
+        result += ch;
+      }
+    }
+  }
+
+  return result;
 }
