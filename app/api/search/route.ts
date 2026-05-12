@@ -21,7 +21,10 @@ function isValidIsoDate(value: string): boolean {
 
 const searchSchema = z.object({
   postcode: z.string().trim().regex(postcodePattern, "Enter a valid UK postcode."),
-  radiusMiles: z.coerce.number().positive().max(500).optional(),
+  radiusMiles: z.preprocess(
+    (v) => (v === null || v === undefined || v === "" ? undefined : Number(v)),
+    z.number().positive().max(500).optional()
+  ),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional()
 }).superRefine((value, context) => {
@@ -59,7 +62,7 @@ function isClientSearchError(error: unknown): error is Error {
     return false;
   }
 
-  return error.message.startsWith("Enter a valid") || error.message.startsWith("Unknown postcode");
+  return error.message.startsWith("Enter a valid");
 }
 
 export async function POST(request: Request) {

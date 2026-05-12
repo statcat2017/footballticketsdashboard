@@ -172,7 +172,7 @@ describe("search API route", () => {
     });
   });
 
-  it("returns a 400 when the search service raises an input error", async () => {
+  it("returns a 500 when the search service raises an input error", async () => {
     const db = { kind: "db" };
     getDatabase.mockResolvedValue(db);
     searchFixtures.mockRejectedValue(new Error("Unknown postcode district."));
@@ -185,9 +185,9 @@ describe("search API route", () => {
       body: JSON.stringify({ postcode: "ZZ1 1ZZ" })
     }));
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
-      error: "Unknown postcode district."
+      error: "Search failed."
     });
     expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
   });
