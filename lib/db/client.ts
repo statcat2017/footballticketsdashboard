@@ -22,10 +22,19 @@ export async function getDatabase(): Promise<AppDatabase> {
     return cloudflareDatabase;
   }
 
+  // Safe singleton: createAppDatabase() / new Database() is synchronous with
+  // no inner await, so the null check and assignment run in one microtask tick.
+  // Two concurrent requests that both pass the await above will still serialise
+  // their continuations — the first assigns `database`, the second sees it set.
   if (!database) {
-    const configuredPath = process.env.SQLITE_DB_PATH;
-    const filename = configuredPath ?? defaultDatabasePath;
-    database = createAppDatabase(filename);
+    try {
+      const configuredPath = process.env.SQLITE_DB_PATH;
+      const filename = configuredPath ?? defaultDatabasePath;
+      database = createAppDatabase(filename);
+    } catch (err) {
+      console.error("Failed to create SQLite database:", err);
+      throw err;
+    }
   }
 
   return database;
