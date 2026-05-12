@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FixtureResult } from "@/lib/types";
+import { defaultDateRange } from "@/lib/date";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
-type Availability = "available" | "sold-out" | "limited" | "check-club";
+type Availability = "available" | "limited" | "check-club";
 
 const groundPostcodes = [
   "N5 1BU", "B6 6HE", "BH7 7AF", "TW8 0RU", "BN1 9BL", "BB10 4BX", "SW6 1HS", "SE25 6PU",
@@ -90,18 +91,73 @@ function travelMinutes(value: number | null): string {
   return value === null ? "TBC" : `${value} min`;
 }
 
+function toDateString(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function computeDateRange(filter: string): { dateFrom: string; dateTo: string } {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const daysUntilSaturday = dayOfWeek === 0 ? -1 : dayOfWeek === 6 ? 0 : (6 - dayOfWeek + 7) % 7 || 7;
+
+  const saturday = new Date(today);
+  saturday.setDate(today.getDate() + daysUntilSaturday);
+  const sunday = new Date(saturday);
+  sunday.setDate(saturday.getDate() + 1);
+
+  if (filter === "this-weekend") {
+    return { dateFrom: toDateString(saturday), dateTo: toDateString(sunday) };
+  }
+
+  if (filter === "next-weekend") {
+    const nextSaturday = new Date(saturday);
+    nextSaturday.setDate(saturday.getDate() + 7);
+    const nextSunday = new Date(sunday);
+    nextSunday.setDate(sunday.getDate() + 7);
+    return { dateFrom: toDateString(nextSaturday), dateTo: toDateString(nextSunday) };
+  }
+
+  return defaultDateRange(today);
+}
+
 export function SearchDashboard() {
   const [postcode, setPostcode] = useState("SE20 7RS");
   const [state, setState] = useState<SearchState>("idle");
   const [error, setError] = useState("");
   const [results, setResults] = useState<FixtureResult[]>([]);
+  const [geoState, setGeoState] = useState<"idle" | "locating" | "failed">("idle");
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [sortKey, setSortKey] = useState<"distance" | "kickoff" | "admission">("distance");
+  const [dateFilter, setDateFilter] = useState<"this-weekend" | "next-weekend" | "all-upcoming">("all-upcoming");
+  const abortRef = useRef<AbortController | null>(null);
 
-  const resultCount = results.length;
-  const featuredFixture = results[0] ?? null;
-  const visibleResults = useMemo(() => results.slice(0, 12), [results]);
-  const dateRange = useMemo(() => formatDateRange(results), [results]);
+  const sortedResults = useMemo(() => {
+    const sorted = [...results];
+    sorted.sort((a, b) => {
+      if (sortKey === "distance") {
+        return a.travel.distanceMiles - b.travel.distanceMiles;
+      }
+      if (sortKey === "kickoff") {
+        return (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? "");
+      }
+      if (sortKey === "admission") {
+        const aVal = a.price.adultPricePence ?? Number.MAX_SAFE_INTEGER;
+        const bVal = b.price.adultPricePence ?? Number.MAX_SAFE_INTEGER;
+        return aVal - bVal;
+      }
+      return 0;
+    });
+    return sorted;
+  }, [results, sortKey]);
 
-  const runSearch = useCallback(async (searchPostcode: string) => {
+  const resultCount = sortedResults.length;
+  const featuredFixture = sortedResults[0] ?? null;
+  const visibleResults = useMemo(() => sortedResults.slice(0, visibleCount), [sortedResults, visibleCount]);
+  const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
+
+  const runSearch = useCallback(async (searchPostcode: string, options?: { dateFrom?: string; dateTo?: string }) => {
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
     setState("loading");
     setError("");
 
@@ -110,8 +166,11 @@ export function SearchDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          postcode: searchPostcode
-        })
+          postcode: searchPostcode,
+          dateFrom: options?.dateFrom,
+          dateTo: options?.dateTo
+        }),
+        signal: abortRef.current.signal
       });
       const payload = await response.json();
 
@@ -123,7 +182,10 @@ export function SearchDashboard() {
 
       setResults(payload.results);
       setState("ready");
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       setError("Network error — check your connection.");
       setState("error");
     }
@@ -133,11 +195,41 @@ export function SearchDashboard() {
     const defaultPostcode = randomGroundPostcode();
     setPostcode(defaultPostcode);
     void runSearch(defaultPostcode);
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [runSearch]);
+
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [results]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runSearch(postcode);
+    await runSearch(postcode, computeDateRange(dateFilter));
+  }
+
+  async function handleLocate() {
+    setGeoState("locating");
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+      });
+      const { latitude, longitude } = position.coords;
+      // postcodes.io is a free public API (no key required). Could be routed through a server proxy
+      // if a configured base URL is needed later, but direct client-side use is acceptable for the MVP.
+      const res = await fetch(`https://api.postcodes.io/postcodes?latitude=${latitude}&longitude=${longitude}`);
+      const data = await res.json();
+      const pc: string | undefined = data.result?.[0]?.postcode;
+      if (!pc) throw new Error("No postcode found");
+      setPostcode(pc);
+      setGeoState("idle");
+      await runSearch(pc, computeDateRange(dateFilter));
+    } catch {
+      setGeoState("failed");
+      setError("Could not determine your location. Enable location services or type a postcode.");
+      setState("error");
+    }
   }
 
   return (
@@ -167,15 +259,15 @@ export function SearchDashboard() {
             required
           />
         </label>
-        <button className="locate-button" type="button">
+        <button className="locate-button" type="button" onClick={handleLocate} disabled={state === "loading" || geoState === "locating"}>
           <LocateIcon />
-          Locate me
+          {geoState === "locating" ? "Locating..." : "Locate me"}
         </button>
         <div className="divider" aria-hidden="true" />
         <div className="filters" aria-label="Date filters">
-          <button className="pill active" type="submit" disabled={state === "loading"}>This weekend</button>
-          <button className="pill" type="button">Next weekend</button>
-          <button className="pill" type="button">All upcoming</button>
+          <button className={`pill ${dateFilter === "this-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("this-weekend"); void runSearch(postcode, computeDateRange("this-weekend")); }}>This weekend</button>
+          <button className={`pill ${dateFilter === "next-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("next-weekend"); void runSearch(postcode, computeDateRange("next-weekend")); }}>Next weekend</button>
+          <button className={`pill ${dateFilter === "all-upcoming" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("all-upcoming"); void runSearch(postcode, computeDateRange("all-upcoming")); }}>All upcoming</button>
         </div>
       </form>
 
@@ -183,7 +275,7 @@ export function SearchDashboard() {
         {state === "ready" && (
           <div className="meta-row">
             <div><strong>{resultCount} fixtures</strong> within reach · {dateRange}</div>
-            <select className="sort-select" aria-label="Sort fixtures" defaultValue="distance">
+            <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => setSortKey(event.target.value as typeof sortKey)}>
               <option value="distance">Sort by distance</option>
               <option value="kickoff">Sort by kick-off</option>
               <option value="admission">Sort by admission</option>
@@ -271,7 +363,9 @@ export function SearchDashboard() {
               );
             })}
 
-            <button className="show-more" type="button">Show more fixtures</button>
+            {visibleCount < sortedResults.length && (
+              <button className="show-more" type="button" onClick={() => setVisibleCount(sortedResults.length)}>Show more fixtures</button>
+            )}
           </section>
         )}
 
