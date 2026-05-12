@@ -12,8 +12,11 @@ vi.mock("@/lib/db/client", () => ({
   getDatabase
 }));
 
+vi.mock("@/lib/date", () => ({
+  defaultDateRange
+}));
+
 vi.mock("@/lib/search/service", () => ({
-  defaultDateRange,
   searchFixtures
 }));
 
