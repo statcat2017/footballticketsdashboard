@@ -1,10 +1,10 @@
-import type { AppDatabase } from "@/lib/db/adapter";
-import { distanceMiles } from "@/lib/distance";
-import { resolvePostcodeOrigin } from "@/lib/postcode";
-import { buildTravelCacheEntry, upsertTravelCacheRow } from "@/lib/travel/cache";
-import type { FixtureResult, SearchRequest } from "@/lib/types";
-import type { TravelProviderRuntimeConfig } from "@/lib/runtime-env";
-import { defaultDateRange } from "@/lib/date";
+import type { AppDatabase } from "../db/adapter.ts";
+import { distanceMiles } from "../distance.ts";
+import { resolvePostcodeOrigin } from "../postcode.ts";
+import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
+import type { FixtureResult, SearchRequest } from "../types.ts";
+import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
+import { defaultDateRange } from "../date.ts";
 
 interface FixtureRow {
   id: number;
@@ -204,27 +204,25 @@ async function enrichTravelRows(
     }));
   }
 
-  const entries = new Map<number, Awaited<ReturnType<typeof buildTravelCacheEntry>>>();
-
-  for (const [venueId, promise] of byVenue.entries()) {
-    const entry = await promise;
-    entries.set(venueId, entry);
-
-    if (!entry.provider) {
-      continue;
-    }
-
-    await upsertTravelCacheRow(
-      db,
-      origin.district,
-      venueId,
-      entry.distanceMiles,
-      entry.drivingMinutes,
-      entry.publicTransportMinutes,
-      entry.provider,
-      new Date().toISOString()
-    );
-  }
+  const entryResults = await Promise.all(
+    Array.from(byVenue.entries()).map(async ([venueId, promise]) => {
+      const entry = await promise;
+      if (entry.provider) {
+        await upsertTravelCacheRow(
+          db,
+          origin.district,
+          venueId,
+          entry.distanceMiles,
+          entry.drivingMinutes,
+          entry.publicTransportMinutes,
+          entry.provider,
+          new Date().toISOString()
+        );
+      }
+      return [venueId, entry] as const;
+    })
+  );
+  const entries = new Map(entryResults);
 
   return rows.map((row) => {
     if (row.cached_distance_miles !== null) {

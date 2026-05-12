@@ -1,7 +1,7 @@
-import type { AppDatabase } from "@/lib/db/adapter";
-import type { TravelProviderRuntimeConfig } from "@/lib/runtime-env";
-import type { SearchRequest } from "@/lib/types";
-import { fillTravelCacheForPostcode } from "@/lib/travel/cache";
+import type { AppDatabase } from "../db/adapter.ts";
+import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
+import type { SearchRequest } from "../types.ts";
+import { fillTravelCacheForPostcode } from "./cache.ts";
 
 function travelProviderConfig() {
   return {
