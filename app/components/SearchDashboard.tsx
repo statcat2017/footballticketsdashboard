@@ -101,7 +101,6 @@ export function SearchDashboard() {
   const [visibleCount, setVisibleCount] = useState(12);
 
   const resultCount = results.length;
-  const featuredFixture = results[0] ?? null;
   const sortedResults = useMemo(() => {
     const sorted = [...results];
     switch (activeSort) {
@@ -127,6 +126,7 @@ export function SearchDashboard() {
     }
     return sorted;
   }, [results, activeSort]);
+  const featuredFixture = sortedResults[0] ?? null;
   const visibleResults = useMemo(() => sortedResults.slice(0, visibleCount), [sortedResults, visibleCount]);
   const dateRange = useMemo(() => formatDateRange(results), [results]);
 
@@ -157,6 +157,7 @@ export function SearchDashboard() {
       }
 
       setResults(payload.results);
+      setVisibleCount(12);
       setState("ready");
     } catch {
       setError("Network error — check your connection.");
@@ -204,21 +205,29 @@ export function SearchDashboard() {
     );
   }
 
+  function upcomingSaturday(from: Date): Date {
+    const date = new Date(from);
+    const day = date.getDay(); // 0=Sun, 6=Sat
+    const offset = (6 - day + 7) % 7;
+    date.setDate(date.getDate() + offset);
+    return date;
+  }
+
   function handleThisWeekend() {
     setActiveFilter("this_weekend");
-    const today = new Date();
-    const end = new Date(today);
-    end.setDate(end.getDate() + 3);
-    void runSearch(postcode, formatIsoDate(today), formatIsoDate(end));
+    const sat = upcomingSaturday(new Date());
+    const sun = new Date(sat);
+    sun.setDate(sun.getDate() + 1);
+    void runSearch(postcode, formatIsoDate(sat), formatIsoDate(sun));
   }
 
   function handleNextWeekend() {
     setActiveFilter("next_weekend");
-    const start = new Date();
-    start.setDate(start.getDate() + 7);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 3);
-    void runSearch(postcode, formatIsoDate(start), formatIsoDate(end));
+    const sat = upcomingSaturday(new Date());
+    sat.setDate(sat.getDate() + 7);
+    const sun = new Date(sat);
+    sun.setDate(sun.getDate() + 1);
+    void runSearch(postcode, formatIsoDate(sat), formatIsoDate(sun));
   }
 
   function handleAllUpcoming() {
