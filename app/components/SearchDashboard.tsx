@@ -205,29 +205,34 @@ export function SearchDashboard() {
     );
   }
 
-  function upcomingSaturday(from: Date): Date {
-    const date = new Date(from);
-    const day = date.getDay(); // 0=Sun, 6=Sat
-    const offset = (6 - day + 7) % 7;
-    date.setDate(date.getDate() + offset);
-    return date;
+  function thisWeekendFriday(from: Date): Date {
+    const d = new Date(from);
+    const day = d.getDay();
+    if (day >= 2 && day <= 4) {
+      d.setDate(d.getDate() + (5 - day));
+    } else {
+      d.setDate(d.getDate() - ((day + 2) % 7));
+    }
+    return d;
   }
 
   function handleThisWeekend() {
     setActiveFilter("this_weekend");
-    const sat = upcomingSaturday(new Date());
-    const sun = new Date(sat);
-    sun.setDate(sun.getDate() + 1);
-    void runSearch(postcode, formatIsoDate(sat), formatIsoDate(sun));
+    const today = new Date();
+    const fri = thisWeekendFriday(today);
+    const mon = new Date(fri);
+    mon.setDate(mon.getDate() + 3);
+    const start = today > fri ? today : fri;
+    void runSearch(postcode, formatIsoDate(start), formatIsoDate(mon));
   }
 
   function handleNextWeekend() {
     setActiveFilter("next_weekend");
-    const sat = upcomingSaturday(new Date());
-    sat.setDate(sat.getDate() + 7);
-    const sun = new Date(sat);
-    sun.setDate(sun.getDate() + 1);
-    void runSearch(postcode, formatIsoDate(sat), formatIsoDate(sun));
+    const fri = thisWeekendFriday(new Date());
+    fri.setDate(fri.getDate() + 7);
+    const mon = new Date(fri);
+    mon.setDate(mon.getDate() + 3);
+    void runSearch(postcode, formatIsoDate(fri), formatIsoDate(mon));
   }
 
   function handleAllUpcoming() {
