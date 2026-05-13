@@ -52,3 +52,13 @@ npm run build
 ## Secrets
 
 - API keys (OpenRouteService, TravelTime, Football Data) live in Cloudflare Secrets for production and in `.dev.vars` for local development. Never commit API keys to `wrangler.jsonc`.
+
+## Pre-commit Hook
+
+A pre-commit hook at `.husky/pre-commit` scans staged files for secret-like patterns (API keys, tokens). If triggered, review the flagged files and use `git commit --no-verify` only if you are certain the matches are false positives.
+
+## Secrets Rotation
+
+- Rotate `.dev.vars` secrets quarterly or immediately if a leak is suspected.
+- Run `npm run lint && npm run test && npm run build` after rotating any key that affects runtime behavior.
+- Never commit `.dev.vars` or any file containing real secret values.

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Pre-commit hook — prevent secrets from being committed
+. "$(dirname "$0")/_/husky.sh" 2>/dev/null || true
+
+echo "🔍 Scanning staged files for potential secrets..."
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$FILES" ]; then
+  exit 0
+fi
+
+# Patterns that look like secrets
+PATTERNS='API_KEY|API_SECRET|ACCESS_TOKEN|SECRET_KEY|PRIVATE_KEY|GH_TOKEN|FOOTBALL_DATA|OPENROUTE|password\s*=|secret\s*='
+
+MATCHES=$(echo "$FILES" | xargs grep -l -E "$PATTERNS" 2>/dev/null || true)
+
+if [ -n "$MATCHES" ]; then
+  echo "⚠️  WARNING: Possible secrets found in staged files:"
+  echo "$MATCHES"
+  echo ""
+  echo "If these are false positives, use git add with care."
+  echo "To bypass: git commit --no-verify"
+  exit 1
+fi
+
+echo "✅ No secrets detected."
