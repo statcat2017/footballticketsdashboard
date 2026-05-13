@@ -7,19 +7,6 @@ import { defaultDateRange } from "@/lib/date";
 type SearchState = "idle" | "loading" | "ready" | "error";
 type Availability = "available" | "limited" | "check-club";
 
-const groundPostcodes = [
-  "N5 1BU", "B6 6HE", "BH7 7AF", "TW8 0RU", "BN1 9BL", "BB10 4BX", "SW6 1HS", "SE25 6PU",
-  "L5 9SR", "SW6 6HH", "LS11 0ES", "L4 0TH", "M11 3FF", "M16 0RA", "NE1 4ST", "NG2 5FJ",
-  "SR5 1SU", "N17 0BX", "E20 2ST", "WV1 4QR", "BB2 4JF", "NR1 1JE", "W12 7PJ", "ST4 4EG",
-  "SA1 2FA", "B71 4LF", "HU3 6HU", "PO4 8RA", "B9 4RL", "LE2 7FL", "SO14 5FP", "DE24 8XL",
-  "TS3 6RS", "S6 1SW", "WD18 0ER", "SE7 8BL", "IP1 2DA", "S2 4SU", "SE16 3LN", "BS3 2EJ",
-  "LL11 2AH", "CV6 6GE", "PR1 6RU", "OX4 4XP"
-];
-
-function randomGroundPostcode(): string {
-  return groundPostcodes[Math.floor(Math.random() * groundPostcodes.length)] ?? "SE20 7RS";
-}
-
 function formatMoney(pence: number | null): string {
   if (pence === null) {
     return "TBC";
@@ -196,12 +183,11 @@ export function SearchDashboard() {
   }, []);
 
   useEffect(() => {
-    const defaultPostcode = randomGroundPostcode();
-    setPostcode(defaultPostcode);
-    void runSearch(defaultPostcode);
+    void runSearch(postcode);
     return () => {
       abortRef.current?.abort();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSearch]);
 
   useEffect(() => {
