@@ -107,28 +107,4 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
   }
 }
 
-function esc(value: string): string {
-  return value.replaceAll("'", "''");
-}
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const d1SeedStatements = [
-  ...SEED_DATA.competitions.map(c =>
-    `INSERT INTO competitions (code, name, tier) VALUES ('${esc(c.code)}', '${esc(c.name)}', ${c.tier}) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier`
-  ),
-  ...SEED_DATA.venues.map(v =>
-    `INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (${v.id}, '${esc(v.name)}', '${esc(v.postcode)}', ${v.latitude}, ${v.longitude}) ON CONFLICT(id) DO UPDATE SET name = excluded.name, postcode = excluded.postcode, latitude = excluded.latitude, longitude = excluded.longitude`
-  ),
-  ...SEED_DATA.clubs.map(cl =>
-    `INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, competition_code, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at) VALUES (${cl.id}, '${esc(cl.name)}', ${cl.football_data_team_id}, '${esc(cl.aliases)}', '${esc(cl.short_name)}', '${esc(cl.competition_code)}', ${cl.venue_id}, '${esc(cl.official_site_url)}', '${esc(cl.generic_ticket_url)}', '${esc(cl.price_source_url)}', '${esc(cl.verified_at)}') ON CONFLICT(id) DO UPDATE SET name = excluded.name, football_data_team_id = excluded.football_data_team_id, aliases = excluded.aliases, short_name = excluded.short_name, competition_code = excluded.competition_code, venue_id = excluded.venue_id, official_site_url = excluded.official_site_url, generic_ticket_url = excluded.generic_ticket_url, price_source_url = excluded.price_source_url, verified_at = excluded.verified_at`
-  ),
-  ...SEED_DATA.club_ticket_prices.map(p =>
-    `INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence) VALUES (${p.club_id}, '${esc(p.sale_mode)}', ${p.adult_price_pence}, ${p.concession_price_pence}, '${esc(p.source_url)}', '${esc(p.verified_at)}', '${esc(p.confidence)}') ON CONFLICT(club_id) DO UPDATE SET sale_mode = excluded.sale_mode, adult_price_pence = excluded.adult_price_pence, concession_price_pence = excluded.concession_price_pence, source_url = excluded.source_url, verified_at = excluded.verified_at, confidence = excluded.confidence`
-  ),
-  ...SEED_DATA.fixtures.map(f =>
-    `INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, status, is_demo_data, is_historical) VALUES ('${esc(f.source)}', '${esc(f.source_id)}', '${esc(f.competition_code)}', ${f.home_club_id}, ${f.away_club_id}, ${f.venue_id}, '${esc(f.kickoff_at)}', '${esc(f.status)}', ${f.is_demo_data}, ${f.is_historical}) ON CONFLICT(source, source_id) DO UPDATE SET competition_code = excluded.competition_code, home_club_id = excluded.home_club_id, away_club_id = excluded.away_club_id, venue_id = excluded.venue_id, kickoff_at = excluded.kickoff_at, status = excluded.status, is_demo_data = excluded.is_demo_data, is_historical = excluded.is_historical`
-  ),
-  ...SEED_DATA.travel_cache.map(t =>
-    `INSERT INTO travel_cache (postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at) VALUES ('${esc(t.postcode_district)}', ${t.venue_id}, ${t.distance_miles}, ${t.driving_minutes}, ${t.public_transport_minutes}, '${esc(t.provider)}', '${esc(t.calculated_at)}') ON CONFLICT(postcode_district, venue_id) DO UPDATE SET distance_miles = excluded.distance_miles, driving_minutes = excluded.driving_minutes, public_transport_minutes = excluded.public_transport_minutes, provider = excluded.provider, calculated_at = excluded.calculated_at`
-  )
-];
