@@ -18,15 +18,15 @@ const db = createD1AppDatabase({
         return stmt;
       },
       async all<T>() {
-        const parsed = executeD1Json<T>(databaseName, query, boundValues);
+        const parsed = await executeD1Json<T>(databaseName, query, boundValues);
         return { results: parsed.results ?? [] };
       },
       async first<T>() {
-        const parsed = executeD1Json<T>(databaseName, query, boundValues);
+        const parsed = await executeD1Json<T>(databaseName, query, boundValues);
         return parsed.results?.[0] ?? null;
       },
       async run() {
-        const parsed = executeD1Json(databaseName, query, boundValues);
+        const parsed = await executeD1Json(databaseName, query, boundValues);
         return {
           success: true,
           meta: {
