@@ -81,10 +81,6 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertFixture.run(f.source, f.source_id, f.competition_code, f.home_club_id, f.away_club_id, f.venue_id, f.kickoff_at, f.status, f.is_demo_data, f.is_historical);
     }
 
-    const demoDate = new Date();
-    demoDate.setDate(demoDate.getDate() + 5);
-    insertFixture.run("seed_demo", "e2e-live", "PL", 1, 2, 1, demoDate.toISOString(), "scheduled", 0, 0);
-
     const insertTravel = db.prepare(`
       INSERT INTO travel_cache (
         postcode_district, venue_id, distance_miles, driving_minutes,
