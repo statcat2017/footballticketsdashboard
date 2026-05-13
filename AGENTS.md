@@ -29,13 +29,8 @@ When resolving a GitHub issue:
    git config user.name "statcat2017-bots"
    git config user.email "statcat2017-bots@users.noreply.github.com"
    ```
-3. Authenticate `gh` CLI with the bots account token:
-   ```bash
-   export GH_TOKEN="<statcat2017-bots-personal-access-token>"
-   ```
-   This ensures PRs are created as `statcat2017-bots` and can be reviewed by `statcat2017`.
-4. Push the branch and open a PR against `main` referencing the issue number.
-5. Request review from `statcat2017` on the PR.
+3. Push the branch and open a PR against `main` referencing the issue number.
+4. Request review from `statcat2017` on the PR.
 
 ## Deferred
 
