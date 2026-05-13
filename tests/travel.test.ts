@@ -195,7 +195,7 @@ describe("travel cache fill command path", () => {
 
     const result = await fillTravelCacheForPostcode(db, "B9 4RL", {
       dateFrom: "2026-05-10",
-      dateTo: "2026-05-20"
+      dateTo: "2026-05-15"
     });
 
     expect(result).toMatchObject({

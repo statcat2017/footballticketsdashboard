@@ -15,8 +15,8 @@ describe("fixture search", () => {
 
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
-      dateFrom: "2026-05-10",
-      dateTo: "2026-05-20"
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-05"
     });
 
     expect(results).toEqual([]);
@@ -37,7 +37,7 @@ describe("fixture search", () => {
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
       dateFrom: "2026-05-10",
-      dateTo: "2026-05-20"
+      dateTo: "2026-05-15"
     });
 
     expect(results.map((result) => result.title)).toEqual([
