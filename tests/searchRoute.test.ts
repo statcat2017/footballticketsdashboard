@@ -46,6 +46,77 @@ describe("search API route", () => {
     expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
   });
 
+  it("returns a 400 for a non-UK postcode format", async () => {
+    const { POST } = await import("@/app/api/search/route");
+
+    const response = await POST(new Request("http://localhost/api/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postcode: "12345" })
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Enter a valid UK postcode."
+    });
+    expect(searchFixtures).not.toHaveBeenCalled();
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
+  });
+
+  it("returns a 400 for invalid postcode characters", async () => {
+    const { POST } = await import("@/app/api/search/route");
+
+    const response = await POST(new Request("http://localhost/api/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postcode: "!!!!!!" })
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Enter a valid UK postcode."
+    });
+    expect(searchFixtures).not.toHaveBeenCalled();
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
+  });
+
+  it("returns a 400 for a too-short postcode", async () => {
+    const { POST } = await import("@/app/api/search/route");
+
+    const response = await POST(new Request("http://localhost/api/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postcode: "A1" })
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Enter a valid UK postcode."
+    });
+    expect(searchFixtures).not.toHaveBeenCalled();
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
+  });
+
+  it("returns a 400 for a valid-format postcode that the service rejects as unknown", async () => {
+    const db = { kind: "db" };
+    getDatabase.mockResolvedValue(db);
+    searchFixtures.mockRejectedValue(new Error("Enter a valid postcode district."));
+
+    const { POST } = await import("@/app/api/search/route");
+
+    const response = await POST(new Request("http://localhost/api/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postcode: "ZZ1 1ZZ" })
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Enter a valid postcode district."
+    });
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
+  });
+
   it("returns a 400 for malformed dates", async () => {
     const { POST } = await import("@/app/api/search/route");
 
