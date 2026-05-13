@@ -7,6 +7,13 @@ function radians(degrees: number): number {
 }
 
 export function distanceMiles(from: Coordinate, to: Coordinate): number {
+  if (
+    !Number.isFinite(from.latitude) || !Number.isFinite(from.longitude) ||
+    !Number.isFinite(to.latitude) || !Number.isFinite(to.longitude)
+  ) {
+    throw new Error("Invalid coordinates passed to distanceMiles");
+  }
+
   const dLat = radians(to.latitude - from.latitude);
   const dLon = radians(to.longitude - from.longitude);
   const lat1 = radians(from.latitude);
