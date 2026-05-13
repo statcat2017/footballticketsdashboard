@@ -1,6 +1,6 @@
 import { fillTravelCacheForPostcode } from "../lib/travel/cache.ts";
 import { createD1AppDatabase, type AppDatabase, type QueryParam } from "../lib/db/adapter.ts";
-import { createD1PreparedStatement, executeD1 } from "../lib/db/d1-exec.ts";
+import { executeD1, executeD1Json } from "../lib/db/d1-exec.ts";
 
 const databaseName = process.argv[2];
 const postcode = process.argv[3];
@@ -20,14 +20,23 @@ const db = createD1AppDatabase({
         boundValues = values;
         return stmt;
       },
-      all<T>() {
-        return createD1PreparedStatement(databaseName, query, boundValues).all<T>();
+      async all<T>() {
+        const parsed = executeD1Json<T>(databaseName, query, boundValues);
+        return { results: parsed.results ?? [] };
       },
-      first<T>() {
-        return createD1PreparedStatement(databaseName, query, boundValues).first<T>();
+      async first<T>() {
+        const parsed = executeD1Json<T>(databaseName, query, boundValues);
+        return parsed.results?.[0] ?? null;
       },
-      run() {
-        return createD1PreparedStatement(databaseName, query, boundValues).run();
+      async run() {
+        const parsed = executeD1Json(databaseName, query, boundValues);
+        return {
+          success: true,
+          meta: {
+            last_row_id: parsed.meta?.last_row_id,
+            changes: parsed.meta?.changes
+          }
+        };
       }
     };
     return stmt;
