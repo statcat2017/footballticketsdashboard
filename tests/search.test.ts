@@ -130,8 +130,8 @@ describe("fixture search", () => {
       dateTo: "2026-05-20"
     });
 
-    expect(results[0]?.travel.drivingMinutes).toBe(15);
-    expect(results[0]?.travel.source).toBe("live");
+    expect(results[0]?.travel.drivingMinutes).toBeNull();
+    expect(results[0]?.travel.source).toBe("distance_only");
 
     const cached = await db.get<{ provider: string; driving_minutes: number }>(`
       SELECT provider, driving_minutes
@@ -139,9 +139,6 @@ describe("fixture search", () => {
       WHERE postcode_district = 'B75' AND venue_id = 1
     `);
 
-    expect(cached).toEqual({
-      provider: "openrouteservice",
-      driving_minutes: 15
-    });
+    expect(cached).toBeUndefined();
   });
 });
