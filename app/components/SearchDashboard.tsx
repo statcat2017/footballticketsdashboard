@@ -290,7 +290,7 @@ export function SearchDashboard() {
         {state === "ready" && results.length === 0 && (
           <div className="state-panel">
             <strong>No fixtures found in the next 10 days.</strong>
-            <span>The prototype now only shows current-window fixtures and does not fall back to historical rows.</span>
+            <span>Try a different postcode, expand your search to &quot;All upcoming&quot;, or check back later for new fixtures.</span>
           </div>
         )}
 
