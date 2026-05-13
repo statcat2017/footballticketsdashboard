@@ -6,6 +6,29 @@ export interface TravelProviderRuntimeConfig {
   travelTimeApiKey?: string;
 }
 
+const MISSING_CONTEXT_CODE = "ERR_MISSING_CLOUDFLARE_CONTEXT";
+
+function isMissingCloudflareContextError(error: unknown): boolean {
+  if (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === MISSING_CONTEXT_CODE) {
+    return true;
+  }
+
+  return error instanceof Error && error.message.includes("getCloudflareContext");
+}
+
+export async function getCloudflareEnv(key: string): Promise<string | undefined> {
+  try {
+    const context = await getCloudflareContext({ async: true });
+    const env = context.env as unknown as Record<string, string | undefined>;
+    return env[key] ?? process.env[key];
+  } catch (error) {
+    if (!isMissingCloudflareContextError(error)) {
+      throw error;
+    }
+    return process.env[key];
+  }
+}
+
 export async function getTravelProviderRuntimeConfig(): Promise<TravelProviderRuntimeConfig> {
   try {
     const context = await getCloudflareContext({ async: true });
@@ -16,7 +39,11 @@ export async function getTravelProviderRuntimeConfig(): Promise<TravelProviderRu
       travelTimeAppId: env.TRAVELTIME_APP_ID ?? process.env.TRAVELTIME_APP_ID,
       travelTimeApiKey: env.TRAVELTIME_API_KEY ?? process.env.TRAVELTIME_API_KEY
     };
-  } catch {
+  } catch (error) {
+    if (!isMissingCloudflareContextError(error)) {
+      throw error;
+    }
+
     return {
       openRouteServiceApiKey: process.env.OPENROUTESERVICE_API_KEY,
       travelTimeAppId: process.env.TRAVELTIME_APP_ID,

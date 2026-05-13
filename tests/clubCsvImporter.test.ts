@@ -23,14 +23,14 @@ describe("club CSV importer", () => {
     ]);
   });
 
-  it("imports clubs and venues idempotently", () => {
+  it("imports clubs and venues idempotently", async () => {
     const db = createDatabase();
     const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "clubs-csv-"));
     const filename = path.join(dirname, "clubs.csv");
     fs.writeFileSync(filename, csv);
 
-    expect(importClubCsv(db, filename)).toEqual({ rows: 1, imported: 1 });
-    expect(importClubCsv(db, filename)).toEqual({ rows: 1, imported: 1 });
+    expect(await importClubCsv(db, filename)).toEqual({ rows: 1, imported: 1 });
+    expect(await importClubCsv(db, filename)).toEqual({ rows: 1, imported: 1 });
 
     const row = db.prepare(`
       SELECT c.name, c.football_data_team_id, c.aliases, v.name as venue_name, v.postcode

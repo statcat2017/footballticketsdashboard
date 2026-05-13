@@ -1,5 +1,5 @@
 import { fillTravelCacheForPostcode } from "../lib/travel/cache.ts";
-import { createD1AppDatabase, type AppDatabase } from "../lib/db/adapter.ts";
+import { createD1AppDatabase, type AppDatabase, type QueryParam } from "../lib/db/adapter.ts";
 import { createD1PreparedStatement, executeD1 } from "../lib/db/d1-exec.ts";
 
 const databaseName = process.argv[2];
@@ -14,20 +14,23 @@ if (!databaseName || !postcode) {
 
 const db = createD1AppDatabase({
   prepare(query: string) {
-    return {
-      bind(...values: Parameters<typeof createD1PreparedStatement>[2]) {
-        return createD1PreparedStatement(databaseName, query, values);
+    let boundValues: QueryParam[] = [];
+    const stmt = {
+      bind(...values: QueryParam[]) {
+        boundValues = values;
+        return stmt;
       },
-      all() {
-        return createD1PreparedStatement(databaseName, query, []).all();
+      all<T>() {
+        return createD1PreparedStatement(databaseName, query, boundValues).all<T>();
       },
-      first() {
-        return createD1PreparedStatement(databaseName, query, []).first();
+      first<T>() {
+        return createD1PreparedStatement(databaseName, query, boundValues).first<T>();
       },
       run() {
-        return createD1PreparedStatement(databaseName, query, []).run();
+        return createD1PreparedStatement(databaseName, query, boundValues).run();
       }
     };
+    return stmt;
   },
   async exec(query: string) {
     executeD1(databaseName, query);

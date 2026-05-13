@@ -4,6 +4,7 @@ import { resolvePostcodeOrigin } from "../postcode.ts";
 import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
+import { getCloudflareEnv } from "../runtime-env.ts";
 import { defaultDateRange } from "../date.ts";
 
 interface FixtureRow {
@@ -172,9 +173,9 @@ async function enrichTravelRows(
   origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
   travelProviders?: TravelProviderRuntimeConfig
 ): Promise<FixtureRow[]> {
-  const openRouteServiceApiKey = travelProviders?.openRouteServiceApiKey ?? process.env.OPENROUTESERVICE_API_KEY;
-  const travelTimeAppId = travelProviders?.travelTimeAppId ?? process.env.TRAVELTIME_APP_ID;
-  const travelTimeApiKey = travelProviders?.travelTimeApiKey ?? process.env.TRAVELTIME_API_KEY;
+  const openRouteServiceApiKey = travelProviders?.openRouteServiceApiKey ?? await getCloudflareEnv("OPENROUTESERVICE_API_KEY");
+  const travelTimeAppId = travelProviders?.travelTimeAppId ?? await getCloudflareEnv("TRAVELTIME_APP_ID");
+  const travelTimeApiKey = travelProviders?.travelTimeApiKey ?? await getCloudflareEnv("TRAVELTIME_API_KEY");
 
   if (!openRouteServiceApiKey && !(travelTimeAppId && travelTimeApiKey)) {
     return rows;
@@ -206,7 +207,7 @@ async function enrichTravelRows(
 
   const MAX_CONCURRENT = 4;
   const venueArray = Array.from(byVenue.entries());
-  const entryResults: Array<[number, Awaited<ReturnType<typeof buildTravelCacheEntry>>]> = [];
+  const entryResults: Array<readonly [number, Awaited<ReturnType<typeof buildTravelCacheEntry>>]> = [];
 
   for (let i = 0; i < venueArray.length; i += MAX_CONCURRENT) {
     const chunk = venueArray.slice(i, i + MAX_CONCURRENT);

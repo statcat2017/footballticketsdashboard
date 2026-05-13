@@ -97,24 +97,28 @@ function toDateString(date: Date): string {
 
 function computeDateRange(filter: string): { dateFrom: string; dateTo: string } {
   const today = new Date();
-  const dayOfWeek = today.getDay();
-  const daysUntilSaturday = dayOfWeek === 0 ? -1 : dayOfWeek === 6 ? 0 : (6 - dayOfWeek + 7) % 7 || 7;
+  const day = today.getDay();
 
-  const saturday = new Date(today);
-  saturday.setDate(today.getDate() + daysUntilSaturday);
-  const sunday = new Date(saturday);
-  sunday.setDate(saturday.getDate() + 1);
+  const friday = new Date(today);
+  if (day >= 2 && day <= 4) {
+    friday.setDate(today.getDate() + (5 - day));
+  } else {
+    friday.setDate(today.getDate() - ((day + 2) % 7));
+  }
 
   if (filter === "this-weekend") {
-    return { dateFrom: toDateString(saturday), dateTo: toDateString(sunday) };
+    const start = today > friday ? today : friday;
+    const monday = new Date(friday);
+    monday.setDate(friday.getDate() + 3);
+    return { dateFrom: toDateString(start), dateTo: toDateString(monday) };
   }
 
   if (filter === "next-weekend") {
-    const nextSaturday = new Date(saturday);
-    nextSaturday.setDate(saturday.getDate() + 7);
-    const nextSunday = new Date(sunday);
-    nextSunday.setDate(sunday.getDate() + 7);
-    return { dateFrom: toDateString(nextSaturday), dateTo: toDateString(nextSunday) };
+    const nextFriday = new Date(friday);
+    nextFriday.setDate(friday.getDate() + 7);
+    const nextMonday = new Date(nextFriday);
+    nextMonday.setDate(nextFriday.getDate() + 3);
+    return { dateFrom: toDateString(nextFriday), dateTo: toDateString(nextMonday) };
   }
 
   return defaultDateRange(today);
@@ -364,7 +368,7 @@ export function SearchDashboard() {
             })}
 
             {visibleCount < sortedResults.length && (
-              <button className="show-more" type="button" onClick={() => setVisibleCount(sortedResults.length)}>Show more fixtures</button>
+              <button className="show-more" type="button" onClick={() => setVisibleCount((prev) => prev + 12)}>Show more fixtures</button>
             )}
           </section>
         )}

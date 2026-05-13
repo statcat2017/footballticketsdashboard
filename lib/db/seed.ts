@@ -1,6 +1,5 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
-
-const now = "2026-05-10T00:00:00.000Z";
+import { SEED_DATA } from "./d1.ts";
 
 export function seedDatabase(db: SqliteDatabase): void {
   const seed = db.transaction(() => {
@@ -9,8 +8,9 @@ export function seedDatabase(db: SqliteDatabase): void {
       VALUES (?, ?, ?)
       ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier
     `);
-    insertCompetition.run("PL", "Premier League", 1);
-    insertCompetition.run("ELC", "Championship", 2);
+    for (const c of SEED_DATA.competitions) {
+      insertCompetition.run(c.code, c.name, c.tier);
+    }
 
     const insertVenue = db.prepare(`
       INSERT INTO venues (id, name, postcode, latitude, longitude)
@@ -21,12 +21,9 @@ export function seedDatabase(db: SqliteDatabase): void {
         latitude = excluded.latitude,
         longitude = excluded.longitude
     `);
-    insertVenue.run(1, "Stamford Bridge", "SW6 1HS", 51.4817, -0.191);
-    insertVenue.run(2, "Loftus Road", "W12 7PJ", 51.509, -0.2321);
-    insertVenue.run(3, "Emirates Stadium", "N5 1BU", 51.5549, -0.1084);
-    insertVenue.run(4, "Old Trafford", "M16 0RA", 53.4631, -2.2913);
-    insertVenue.run(5, "Carrow Road", "NR1 1JE", 52.6221, 1.3091);
-    insertVenue.run(6, "St Andrew's", "B9 4RL", 52.4756, -1.8682);
+    for (const v of SEED_DATA.venues) {
+      insertVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude);
+    }
 
     const insertClub = db.prepare(`
       INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, competition_code, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at)
@@ -43,12 +40,9 @@ export function seedDatabase(db: SqliteDatabase): void {
         price_source_url = excluded.price_source_url,
         verified_at = excluded.verified_at
     `);
-    insertClub.run(1, "Chelsea", 61, "Chelsea FC|Chelsea", "Chelsea", "PL", 1, "https://www.chelseafc.com/", "https://www.chelseafc.com/en/tickets", "https://www.chelseafc.com/en/tickets", "2026-05-10");
-    insertClub.run(2, "Arsenal", 57, "Arsenal FC|Arsenal", "Arsenal", "PL", 3, "https://www.arsenal.com/", "https://www.arsenal.com/tickets", "https://www.arsenal.com/tickets", "2026-05-10");
-    insertClub.run(3, "Manchester United", 66, "Manchester United FC|Manchester United|Man United|Man Utd", "Man Utd", "PL", 4, "https://www.manutd.com/", "https://tickets.manutd.com/", "https://tickets.manutd.com/", "2026-05-10");
-    insertClub.run(4, "Queens Park Rangers", 69, "Queens Park Rangers FC|Queens Park Rangers|QPR", "QPR", "ELC", 2, "https://www.qpr.co.uk/", "https://www.eticketing.co.uk/qpr/", "https://www.eticketing.co.uk/qpr/", "2026-05-10");
-    insertClub.run(5, "Norwich City", 68, "Norwich City FC|Norwich City|Norwich", "Norwich", "ELC", 5, "https://www.canaries.co.uk/", "https://tickets.canaries.co.uk/", "https://tickets.canaries.co.uk/", "2026-05-10");
-    insertClub.run(6, "Birmingham City", 332, "Birmingham City FC|Birmingham City|Birmingham", "Birmingham", "ELC", 6, "https://www.bcfc.com/", "https://www.bcfc.com/tickets/", "https://www.bcfc.com/tickets/", "2026-05-10");
+    for (const cl of SEED_DATA.clubs) {
+      insertClub.run(cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name, cl.competition_code, cl.venue_id, cl.official_site_url, cl.generic_ticket_url, cl.price_source_url, cl.verified_at);
+    }
 
     const insertPrice = db.prepare(`
       INSERT INTO club_ticket_prices (
@@ -63,12 +57,9 @@ export function seedDatabase(db: SqliteDatabase): void {
         verified_at = excluded.verified_at,
         confidence = excluded.confidence
     `);
-    insertPrice.run(1, "all_ticket", 3000, 2000, "https://www.chelseafc.com/en/tickets", "2026-05-10", "seed");
-    insertPrice.run(2, "all_ticket", 2800, 1800, "https://www.arsenal.com/tickets", "2026-05-10", "seed");
-    insertPrice.run(3, "all_ticket", 3100, 2100, "https://tickets.manutd.com/", "2026-05-10", "seed");
-    insertPrice.run(4, "pay_on_gate", 2200, 1500, "https://www.eticketing.co.uk/qpr/", "2026-05-10", "seed");
-    insertPrice.run(5, "all_ticket", 2500, 1700, "https://tickets.canaries.co.uk/", "2026-05-10", "seed");
-    insertPrice.run(6, "pay_on_gate", 2000, 1200, "https://www.bcfc.com/tickets/", "2026-05-10", "seed");
+    for (const p of SEED_DATA.club_ticket_prices) {
+      insertPrice.run(p.club_id, p.sale_mode, p.adult_price_pence, p.concession_price_pence, p.source_url, p.verified_at, p.confidence);
+    }
 
     const insertFixture = db.prepare(`
       INSERT INTO fixtures (
@@ -86,10 +77,9 @@ export function seedDatabase(db: SqliteDatabase): void {
         is_demo_data = excluded.is_demo_data,
         is_historical = excluded.is_historical
     `);
-    insertFixture.run("historical_seed", "pl-che-ars-2025-05-18", "PL", 1, 2, 1, "2025-05-18T15:00:00.000Z", "finished", 1, 1);
-    insertFixture.run("historical_seed", "elc-qpr-nor-2025-05-03", "ELC", 4, 5, 2, "2025-05-03T14:00:00.000Z", "finished", 1, 1);
-    insertFixture.run("historical_seed", "pl-mut-che-2025-05-25", "PL", 3, 1, 4, "2025-05-25T15:00:00.000Z", "finished", 1, 1);
-    insertFixture.run("historical_seed", "elc-bir-qpr-2025-04-26", "ELC", 6, 4, 6, "2025-04-26T14:00:00.000Z", "finished", 1, 1);
+    for (const f of SEED_DATA.fixtures) {
+      insertFixture.run(f.source, f.source_id, f.competition_code, f.home_club_id, f.away_club_id, f.venue_id, f.kickoff_at, f.status, f.is_demo_data, f.is_historical);
+    }
 
     const insertTravel = db.prepare(`
       INSERT INTO travel_cache (
@@ -104,12 +94,9 @@ export function seedDatabase(db: SqliteDatabase): void {
         provider = excluded.provider,
         calculated_at = excluded.calculated_at
     `);
-    insertTravel.run("SW6", 1, 0.4, 6, 8, "seed", now);
-    insertTravel.run("SW6", 2, 3.7, 22, 28, "seed", now);
-    insertTravel.run("SW6", 3, 8.8, 42, 43, "seed", now);
-    insertTravel.run("W12", 1, 3.5, 20, 27, "seed", now);
-    insertTravel.run("W12", 2, 0.3, 4, 6, "seed", now);
-    insertTravel.run("M16", 4, 0.3, 4, 7, "seed", now);
+    for (const t of SEED_DATA.travel_cache) {
+      insertTravel.run(t.postcode_district, t.venue_id, t.distance_miles, t.driving_minutes, t.public_transport_minutes, t.provider, t.calculated_at);
+    }
   });
 
   seed();
