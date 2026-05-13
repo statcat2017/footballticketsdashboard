@@ -24,10 +24,11 @@ Build a simple web app that shows nearby upcoming football fixtures, where they 
 
 When resolving a GitHub issue:
 1. Create a new branch off `main` specific to the issue, using the format `fix/issue-{number}-{short-description}` or `feat/issue-{number}-{short-description}`.
-2. Always author commits as `statcat2017-bots` so the account owner can review as `statcat2017`. Configure Git for this session with:
+2. Always author commits and open PRs as `statcat2017-bots` so the account owner can review as `statcat2017`. Configure Git and authenticate for this session with:
    ```bash
    git config user.name "statcat2017-bots"
    git config user.email "statcat2017-bots@users.noreply.github.com"
+   export GH_TOKEN="$(grep ^GH_TOKEN= .dev.vars | cut -d= -f2)"
    ```
 3. Push the branch and open a PR against `main` referencing the issue number.
 4. Request review from `statcat2017` on the PR.
