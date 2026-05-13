@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FixtureResult } from "@/lib/types";
-import { defaultDateRange } from "@/lib/date";
+import { computeDateRange } from "@/lib/date";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
 type Availability = "available" | "limited" | "check-club";
@@ -76,39 +76,6 @@ function availability(result: FixtureResult): { label: string; tone: Availabilit
 
 function travelMinutes(value: number | null): string {
   return value === null ? "TBC" : `${value} min`;
-}
-
-function toDateString(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function computeDateRange(filter: string): { dateFrom: string; dateTo: string } {
-  const today = new Date();
-  const day = today.getDay();
-
-  const friday = new Date(today);
-  if (day >= 2 && day <= 4) {
-    friday.setDate(today.getDate() + (5 - day));
-  } else {
-    friday.setDate(today.getDate() - ((day + 2) % 7));
-  }
-
-  if (filter === "this-weekend") {
-    const start = today > friday ? today : friday;
-    const monday = new Date(friday);
-    monday.setDate(friday.getDate() + 3);
-    return { dateFrom: toDateString(start), dateTo: toDateString(monday) };
-  }
-
-  if (filter === "next-weekend") {
-    const nextFriday = new Date(friday);
-    nextFriday.setDate(friday.getDate() + 7);
-    const nextMonday = new Date(nextFriday);
-    nextMonday.setDate(nextFriday.getDate() + 3);
-    return { dateFrom: toDateString(nextFriday), dateTo: toDateString(nextMonday) };
-  }
-
-  return defaultDateRange(today);
 }
 
 export function SearchDashboard() {
