@@ -107,7 +107,7 @@ function queryFixtures(
     LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
     WHERE date(f.kickoff_at) BETWEEN date(?) AND date(?)
       AND f.is_historical = 0
-      AND f.status IN ('scheduled', 'finished')
+      AND f.status = 'scheduled'
     ORDER BY f.kickoff_at ASC
   `, [
     postcodeDistrictValue,
