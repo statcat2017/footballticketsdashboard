@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { checkRateLimit } from "@/lib/rate-limit";
 import { createCorrection } from "@/lib/corrections";
 import { getDatabase } from "@/lib/db/client";
 
@@ -14,6 +15,16 @@ const correctionSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rateLimit = checkRateLimit(`corrections:${ip}`, 10, 3600_000);
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many submissions. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000)) } }
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = correctionSchema.safeParse(body);
 
