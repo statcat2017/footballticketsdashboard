@@ -211,7 +211,10 @@ async function enrichTravelRows(
   origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
   travelProviders?: TravelProviderRuntimeConfig
 ): Promise<FixtureRow[]> {
-  const byVenue = new Map<number, () => ReturnType<typeof buildTravelCacheEntry>>();
+  const byVenue = new Map<number, {
+    row: FixtureRow;
+    buildEntry: () => ReturnType<typeof buildTravelCacheEntry>;
+  }>();
 
   for (const row of rows) {
     const hasCachedTravel = row.cached_distance_miles !== null
@@ -222,17 +225,20 @@ async function enrichTravelRows(
       continue;
     }
 
-    byVenue.set(row.venue_id, () => buildTravelCacheEntry({
-      postcodeDistrictValue: origin.district,
-      origin: origin.coordinate,
-      venue: {
-        venue_id: row.venue_id,
-        venue_name: row.venue_name,
-        latitude: row.latitude,
-        longitude: row.longitude
-      },
-      providers: travelProviders ?? {}
-    }));
+    byVenue.set(row.venue_id, {
+      row,
+      buildEntry: () => buildTravelCacheEntry({
+        postcodeDistrictValue: origin.district,
+        origin: origin.coordinate,
+        venue: {
+          venue_id: row.venue_id,
+          venue_name: row.venue_name,
+          latitude: row.latitude,
+          longitude: row.longitude
+        },
+        providers: travelProviders ?? {}
+      })
+    });
   }
 
   const MAX_CONCURRENT = 4;
@@ -241,18 +247,23 @@ async function enrichTravelRows(
 
   for (let i = 0; i < venueArray.length; i += MAX_CONCURRENT) {
     const chunk = venueArray.slice(i, i + MAX_CONCURRENT);
-    const chunkResults = await Promise.all(chunk.map(async ([venueId, buildEntry]) => {
+    const chunkResults = await Promise.all(chunk.map(async ([venueId, { row, buildEntry }]) => {
       const entry = await buildEntry();
       if (entry.provider) {
+        const mergedDistanceMiles = row.cached_distance_miles ?? entry.distanceMiles;
+        const mergedDrivingMinutes = row.driving_minutes ?? entry.drivingMinutes;
+        const mergedPublicTransportMinutes = row.public_transport_minutes ?? entry.publicTransportMinutes;
+        const mergedProvider = mergeProviders(row.cached_provider, entry.provider);
+
         try {
           await upsertTravelCacheRow(
             db,
             origin.district,
             venueId,
-            entry.distanceMiles,
-            entry.drivingMinutes,
-            entry.publicTransportMinutes,
-            entry.provider,
+            mergedDistanceMiles,
+            mergedDrivingMinutes,
+            mergedPublicTransportMinutes,
+            mergedProvider ?? entry.provider,
             new Date().toISOString()
           );
         } catch (error) {
