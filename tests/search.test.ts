@@ -9,6 +9,26 @@ afterEach(() => {
   delete process.env.POSTCODES_IO_BASE_URL;
 });
 
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.toString();
+  }
+
+  return input.url;
+}
+
+function expectedArrivalTime(kickoffAt: string | null): string | null {
+  if (kickoffAt === null) {
+    return null;
+  }
+
+  return Math.floor((Date.parse(kickoffAt) - 60 * 60 * 1000) / 1000).toString();
+}
+
 describe("fixture search", () => {
   it("does not fall back to historical demo fixtures when the live date range is empty", async () => {
     const db = createAppDatabase();
@@ -97,9 +117,21 @@ describe("fixture search", () => {
     const db = createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      routes: [{ summary: { duration: 900 } }]
-    }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+
+      if (url.includes("openrouteservice")) {
+        return new Response(JSON.stringify({
+          routes: [{ summary: { duration: 900 } }]
+        }), { status: 200 });
+      }
+
+      if (url.includes("api.tfl.gov.uk")) {
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
 
     await db.run(`
       INSERT INTO fixtures (
@@ -117,6 +149,10 @@ describe("fixture search", () => {
 
     expect(results[0]?.travel.drivingMinutes).toBe(15);
     expect(results[0]?.travel.source).toBe("live");
+    expect(results[0]?.travel.publicTransportMinutes).toBeNull();
+    expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
+    expect(results[0]?.travel.publicTransportUrl).toContain(`arrival_time=${expectedArrivalTime(results[0]?.kickoffAt ?? null)}`);
+    expect(results[0]?.travel.publicTransportUrl).toContain("dir_action=navigate");
 
     const cached = await db.get<{ provider: string; driving_minutes: number }>(`
       SELECT provider, driving_minutes
@@ -136,15 +172,29 @@ describe("travel enrichment resilience", () => {
 
     let inFlight = 0;
     let maxInFlight = 0;
+    let orsCalls = 0;
+    let tflCalls = 0;
 
-    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {
-      inFlight++;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise((r) => setTimeout(r, 10));
-      inFlight--;
-      return new Response(JSON.stringify({
-        routes: [{ summary: { duration: 600 } }]
-      }), { status: 200 });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+
+      if (url.includes("openrouteservice")) {
+        orsCalls += 1;
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        inFlight -= 1;
+        return new Response(JSON.stringify({
+          routes: [{ summary: { duration: 600 } }]
+        }), { status: 200 });
+      }
+
+      if (url.includes("api.tfl.gov.uk")) {
+        tflCalls += 1;
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
     }));
 
     for (const vid of [1, 2, 3, 4, 5, 6]) {
@@ -164,15 +214,34 @@ describe("travel enrichment resilience", () => {
     }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
 
     expect(maxInFlight).toBeLessThanOrEqual(4);
+    expect(orsCalls).toBe(6);
+    expect(tflCalls).toBe(6);
   });
 
   it("pre-filters by radius before making provider calls", async () => {
     const db = createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      routes: [{ summary: { duration: 600 } }]
-    }), { status: 200 }));
+    let orsCalls = 0;
+    let tflCalls = 0;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+
+      if (url.includes("openrouteservice")) {
+        orsCalls += 1;
+        return new Response(JSON.stringify({
+          routes: [{ summary: { duration: 600 } }]
+        }), { status: 200 });
+      }
+
+      if (url.includes("api.tfl.gov.uk")) {
+        tflCalls += 1;
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -203,16 +272,29 @@ describe("travel enrichment resilience", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.title).toBe("Birmingham City vs Queens Park Rangers");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(orsCalls).toBe(1);
+    expect(tflCalls).toBe(1);
   });
 
   it("returns live results when cache write fails", async () => {
     const db = createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      routes: [{ summary: { duration: 900 } }]
-    }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+
+      if (url.includes("openrouteservice")) {
+        return new Response(JSON.stringify({
+          routes: [{ summary: { duration: 900 } }]
+        }), { status: 200 });
+      }
+
+      if (url.includes("api.tfl.gov.uk")) {
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
 
     const originalRun = db.run.bind(db);
     vi.spyOn(db, "run").mockImplementation((sql: string, ...params: unknown[]) => {
@@ -238,5 +320,8 @@ describe("travel enrichment resilience", () => {
 
     expect(results[0]?.travel.drivingMinutes).toBe(15);
     expect(results[0]?.travel.source).toBe("live");
+    expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
+    expect(results[0]?.travel.publicTransportUrl).toContain(`arrival_time=${expectedArrivalTime(results[0]?.kickoffAt ?? null)}`);
+    expect(results[0]?.travel.publicTransportUrl).toContain("dir_action=navigate");
   });
 });

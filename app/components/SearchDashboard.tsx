@@ -311,10 +311,17 @@ export function SearchDashboard() {
                       <CarIcon />
                       {travelMinutes(result.travel.drivingMinutes)}
                     </span>
-                    <span className="chip">
-                      <TrainIcon />
-                      {travelMinutes(result.travel.publicTransportMinutes)}
-                    </span>
+                    {result.travel.publicTransportUrl ? (
+                      <a className="chip chip-link" href={result.travel.publicTransportUrl} target="_blank" rel="noreferrer">
+                        <TrainIcon />
+                        Google Maps
+                      </a>
+                    ) : (
+                      <span className="chip">
+                        <TrainIcon />
+                        {travelMinutes(result.travel.publicTransportMinutes)}
+                      </span>
+                    )}
                   </div>
                 </article>
               );

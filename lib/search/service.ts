@@ -2,6 +2,7 @@ import type { AppDatabase } from "../db/adapter.ts";
 import { distanceMiles } from "../distance.ts";
 import { resolvePostcodeOrigin } from "../postcode.ts";
 import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
+import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
 import { defaultDateRange } from "../date.ts";
@@ -145,6 +146,11 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     warnings.push("Travel time unavailable for this postcode district; showing straight-line distance only.");
   }
 
+  const kickoffDate = row.kickoff_at ? new Date(row.kickoff_at) : null;
+  const arrivalTime = kickoffDate && !Number.isNaN(kickoffDate.getTime())
+    ? new Date(kickoffDate.getTime() - 60 * 60 * 1000)
+    : undefined;
+
   return {
     id: row.id,
     title: `${row.home_club} vs ${row.away_club}`,
@@ -170,6 +176,12 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
       distanceMiles: Math.round(distance * 10) / 10,
       drivingMinutes: row.driving_minutes,
       publicTransportMinutes: row.public_transport_minutes,
+      publicTransportUrl: row.public_transport_minutes === null
+        ? buildGoogleMapsTransitDirectionsUrl(userLocation, {
+            latitude: row.latitude,
+            longitude: row.longitude
+          }, arrivalTime)
+        : null,
       source: row.travel_source ?? (row.cached_distance_miles === null ? "distance_only" : "cache")
     },
     isDemoData: row.is_demo_data === 1,
@@ -193,7 +205,11 @@ async function enrichTravelRows(
   const byVenue = new Map<number, () => ReturnType<typeof buildTravelCacheEntry>>();
 
   for (const row of rows) {
-    if (row.cached_distance_miles !== null || byVenue.has(row.venue_id)) {
+    const hasCachedTravel = row.cached_distance_miles !== null
+      && row.driving_minutes !== null
+      && row.public_transport_minutes !== null;
+
+    if (hasCachedTravel || byVenue.has(row.venue_id)) {
       continue;
     }
 
@@ -206,7 +222,7 @@ async function enrichTravelRows(
         latitude: row.latitude,
         longitude: row.longitude
       },
-      providers: { openRouteServiceApiKey: apiKey }
+      providers: { ...travelProviders, openRouteServiceApiKey: apiKey }
     }));
   }
 
@@ -241,22 +257,22 @@ async function enrichTravelRows(
   const entries = new Map(entryResults);
 
   return rows.map((row) => {
-    if (row.cached_distance_miles !== null) {
-      return { ...row, travel_source: "cache" };
-    }
-
     const entry = entries.get(row.venue_id);
 
     if (!entry?.provider) {
+      if (row.cached_distance_miles !== null) {
+        return { ...row, travel_source: "cache" };
+      }
+
       return { ...row, travel_source: "distance_only" };
     }
 
     return {
       ...row,
-      cached_distance_miles: entry.distanceMiles,
-      driving_minutes: entry.drivingMinutes,
-      public_transport_minutes: entry.publicTransportMinutes,
-      travel_source: "live"
+      cached_distance_miles: row.cached_distance_miles ?? entry.distanceMiles,
+      driving_minutes: row.driving_minutes ?? entry.drivingMinutes,
+      public_transport_minutes: row.public_transport_minutes ?? entry.publicTransportMinutes,
+      travel_source: row.cached_distance_miles !== null ? "cache" : "live"
     };
   });
 }

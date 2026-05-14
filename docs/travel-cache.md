@@ -5,7 +5,7 @@ Travel estimates are cached by `postcode_district + venue_id` in `travel_cache`.
 ## Providers
 
 - Driving time: OpenRouteService via `OPENROUTESERVICE_API_KEY`
-- Public transport time: TravelTime via `TRAVELTIME_APP_ID` and `TRAVELTIME_API_KEY`
+- Public transport time: TfL Journey Planner for London-area routes, with a Google Maps transit link fallback when TfL has no route
 
 If provider credentials are missing or a provider call fails, search still falls back to straight-line distance and does not fail.
 
@@ -54,7 +54,7 @@ npm run travel:fill -- "SW6 1HS" 2026-05-11 2026-05-21
 These commands:
 
 - find upcoming venues with no cache row for the supplied postcode district
-- request driving and public-transport travel times when credentials are available
+- request driving and TfL public-transport travel times when credentials are available
 - write successful provider results back into `travel_cache`
 - skip writes when only distance-only fallback is available
 
@@ -67,5 +67,5 @@ The ground prewarm commands:
 ## Notes
 
 - Cached rows can contain one travel mode with the other left `NULL`.
-- The `provider` field records which upstream providers succeeded for that row, for example `openrouteservice`, `traveltime`, or `openrouteservice+traveltime`.
+- The `provider` field records which upstream providers succeeded for that row, for example `openrouteservice`, `tfl`, or `openrouteservice+tfl`.
 - Search still reads from the cache and never blocks on live travel API requests.

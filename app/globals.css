@@ -358,6 +358,10 @@ select {
   font-weight: 650;
 }
 
+.chip-link {
+  text-decoration: none;
+}
+
 .chip svg {
   width: 14px;
   height: 14px;

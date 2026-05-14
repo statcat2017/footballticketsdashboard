@@ -35,7 +35,7 @@ Purpose: turn distance into a useful “can I get there?” decision aid.
 
 - Keep postcode-district caching.
 - Add OpenRouteService driving-time integration.
-- Add TravelTime public transport integration.
+- Add TfL public transport integration, with Google Maps transit links for non-TfL routes.
 - Keep search usable when travel APIs are missing, rate-limited, or fail.
 - Add background recomputation for new postcode-district/venue pairs.
 
