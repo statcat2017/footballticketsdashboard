@@ -96,49 +96,147 @@ describe("fixture search", () => {
   it("uses exact postcode coordinates and live driving lookup on first search when cache is missing", async () => {
     const db = createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
-    process.env.POSTCODES_IO_BASE_URL = "https://postcodes.test";
 
-    vi.stubGlobal("fetch", vi
-      .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        result: {
-          latitude: 52.549,
-          longitude: -1.816
-        }
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        routes: [
-          {
-            summary: {
-              duration: 900
-            }
-          }
-        ]
-      }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      routes: [{ summary: { duration: 900 } }]
+    }), { status: 200 })));
 
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
         kickoff_at, status, is_demo_data, is_historical
       )
-      VALUES ('test', 'chelsea-b75', 'PL', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+      VALUES ('test', 'chelsea-b9', 'PL', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
     `);
 
     const results = await searchFixtures(db, {
-      postcode: "B75 5AQ",
+      postcode: "B9 4RL",
       dateFrom: "2026-05-10",
       dateTo: "2026-05-20"
-    });
+    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
 
-    expect(results[0]?.travel.drivingMinutes).toBeNull();
-    expect(results[0]?.travel.source).toBe("distance_only");
+    expect(results[0]?.travel.drivingMinutes).toBe(15);
+    expect(results[0]?.travel.source).toBe("live");
 
     const cached = await db.get<{ provider: string; driving_minutes: number }>(`
       SELECT provider, driving_minutes
       FROM travel_cache
-      WHERE postcode_district = 'B75' AND venue_id = 1
+      WHERE postcode_district = 'B9' AND venue_id = 1
     `);
 
-    expect(cached).toBeUndefined();
+    expect(cached?.provider).toBe("openrouteservice");
+    expect(cached?.driving_minutes).toBe(15);
+  });
+});
+
+describe("travel enrichment resilience", () => {
+  it("limits concurrent provider calls to 4", async () => {
+    const db = createAppDatabase();
+    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 10));
+      inFlight--;
+      return new Response(JSON.stringify({
+        routes: [{ summary: { duration: 600 } }]
+      }), { status: 200 });
+    }));
+
+    for (const vid of [1, 2, 3, 4, 5, 6]) {
+      await db.run(`
+        INSERT INTO fixtures (
+          source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+          kickoff_at, status, is_demo_data, is_historical
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, ["test", `conc-${vid}`, "PL", vid, 1, vid, "2026-05-15T19:00:00.000Z", "scheduled", 0, 0]);
+    }
+
+    await searchFixtures(db, {
+      postcode: "B9 4RL",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
+
+    expect(maxInFlight).toBeLessThanOrEqual(4);
+  });
+
+  it("pre-filters by radius before making provider calls", async () => {
+    const db = createAppDatabase();
+    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      routes: [{ summary: { duration: 600 } }]
+    }), { status: 200 }));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Venue 6 (St Andrew's, B9) is ~0 miles from B9 4RL — in radius
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'radius-in', 'ELC', 6, 4, 6, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    // Venue 1 (Stamford Bridge, SW6) is ~100 miles from B9 — out of radius
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'radius-out', 'PL', 1, 2, 1, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const results = await searchFixtures(db, {
+      postcode: "B9 4RL",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20",
+      radiusMiles: 10
+    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.title).toBe("Birmingham City vs Queens Park Rangers");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns live results when cache write fails", async () => {
+    const db = createAppDatabase();
+    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      routes: [{ summary: { duration: 900 } }]
+    }), { status: 200 })));
+
+    const originalRun = db.run.bind(db);
+    vi.spyOn(db, "run").mockImplementation((sql: string, ...params: unknown[]) => {
+      if (sql.includes("INSERT INTO travel_cache")) {
+        return Promise.reject(new Error("DB write failed"));
+      }
+      return originalRun(sql, ...params);
+    });
+
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'cache-fail', 'PL', 1, 2, 1, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const results = await searchFixtures(db, {
+      postcode: "B9 4RL",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
+
+    expect(results[0]?.travel.drivingMinutes).toBe(15);
+    expect(results[0]?.travel.source).toBe("live");
   });
 });

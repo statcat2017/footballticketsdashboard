@@ -48,7 +48,19 @@ export async function searchFixtures(
   const origin = await resolvePostcodeOrigin(request.postcode);
 
   const rows = await queryFixtures(db, dateRange, origin.district);
-  const enrichedRows = await enrichTravelRows(db, rows, origin, options.travelProviders);
+
+  const radiusFilter = request.radiusMiles;
+  const inRadius = radiusFilter === undefined
+    ? rows
+    : rows.filter((row) => {
+        const dist = row.cached_distance_miles ?? distanceMiles(origin.coordinate, {
+          latitude: row.latitude,
+          longitude: row.longitude
+        });
+        return dist <= radiusFilter;
+      });
+
+  const enrichedRows = await enrichTravelRows(db, inRadius, origin, options.travelProviders);
 
   return enrichedRows
     .map((row) => toResult(row, origin.coordinate))
@@ -178,14 +190,14 @@ async function enrichTravelRows(
     return rows;
   }
 
-  const byVenue = new Map<number, ReturnType<typeof buildTravelCacheEntry>>();
+  const byVenue = new Map<number, () => ReturnType<typeof buildTravelCacheEntry>>();
 
   for (const row of rows) {
     if (row.cached_distance_miles !== null || byVenue.has(row.venue_id)) {
       continue;
     }
 
-    byVenue.set(row.venue_id, buildTravelCacheEntry({
+    byVenue.set(row.venue_id, () => buildTravelCacheEntry({
       postcodeDistrictValue: origin.district,
       origin: origin.coordinate,
       venue: {
@@ -204,19 +216,23 @@ async function enrichTravelRows(
 
   for (let i = 0; i < venueArray.length; i += MAX_CONCURRENT) {
     const chunk = venueArray.slice(i, i + MAX_CONCURRENT);
-    const chunkResults = await Promise.all(chunk.map(async ([venueId, promise]) => {
-      const entry = await promise;
+    const chunkResults = await Promise.all(chunk.map(async ([venueId, buildEntry]) => {
+      const entry = await buildEntry();
       if (entry.provider) {
-        await upsertTravelCacheRow(
-          db,
-          origin.district,
-          venueId,
-          entry.distanceMiles,
-          entry.drivingMinutes,
-          entry.publicTransportMinutes,
-          entry.provider,
-          new Date().toISOString()
-        );
+        try {
+          await upsertTravelCacheRow(
+            db,
+            origin.district,
+            venueId,
+            entry.distanceMiles,
+            entry.drivingMinutes,
+            entry.publicTransportMinutes,
+            entry.provider,
+            new Date().toISOString()
+          );
+        } catch (error) {
+          console.error("failed to cache travel entry for venue", venueId, error);
+        }
       }
       return [venueId, entry] as const;
     }));
