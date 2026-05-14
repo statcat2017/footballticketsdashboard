@@ -184,6 +184,7 @@ describe("search API route", () => {
           distanceMiles: 0.4,
           drivingMinutes: 6,
           publicTransportMinutes: 8,
+          publicTransportUrl: null,
           source: "cache"
         },
         isDemoData: false,

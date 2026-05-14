@@ -33,7 +33,26 @@ interface FixtureRow {
   cached_distance_miles: number | null;
   driving_minutes: number | null;
   public_transport_minutes: number | null;
+  cached_provider: string | null;
   travel_source?: "cache" | "live" | "distance_only";
+}
+
+function mergeProviders(...providers: Array<string | null | undefined>): string | null {
+  const merged: string[] = [];
+
+  for (const provider of providers) {
+    if (!provider) {
+      continue;
+    }
+
+    for (const part of provider.split("+")) {
+      if (part && !merged.includes(part)) {
+        merged.push(part);
+      }
+    }
+  }
+
+  return merged.length > 0 ? merged.join("+") : null;
 }
 
 export async function searchFixtures(
@@ -108,7 +127,8 @@ function queryFixtures(
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       tc.distance_miles as cached_distance_miles,
       tc.driving_minutes,
-      tc.public_transport_minutes
+      tc.public_transport_minutes,
+      tc.provider as cached_provider
     FROM fixtures f
     JOIN competitions c ON c.code = f.competition_code
     JOIN clubs home ON home.id = f.home_club_id
@@ -146,11 +166,6 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     warnings.push("Travel time unavailable for this postcode district; showing straight-line distance only.");
   }
 
-  const kickoffDate = row.kickoff_at ? new Date(row.kickoff_at) : null;
-  const arrivalTime = kickoffDate && !Number.isNaN(kickoffDate.getTime())
-    ? new Date(kickoffDate.getTime() - 60 * 60 * 1000)
-    : undefined;
-
   return {
     id: row.id,
     title: `${row.home_club} vs ${row.away_club}`,
@@ -180,7 +195,7 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
         ? buildGoogleMapsTransitDirectionsUrl(userLocation, {
             latitude: row.latitude,
             longitude: row.longitude
-          }, arrivalTime)
+          })
         : null,
       source: row.travel_source ?? (row.cached_distance_miles === null ? "distance_only" : "cache")
     },
@@ -196,12 +211,6 @@ async function enrichTravelRows(
   origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
   travelProviders?: TravelProviderRuntimeConfig
 ): Promise<FixtureRow[]> {
-  const apiKey = travelProviders?.openRouteServiceApiKey;
-
-  if (!apiKey) {
-    return rows;
-  }
-
   const byVenue = new Map<number, () => ReturnType<typeof buildTravelCacheEntry>>();
 
   for (const row of rows) {
@@ -222,7 +231,7 @@ async function enrichTravelRows(
         latitude: row.latitude,
         longitude: row.longitude
       },
-      providers: { ...travelProviders, openRouteServiceApiKey: apiKey }
+      providers: travelProviders ?? {}
     }));
   }
 
@@ -267,11 +276,17 @@ async function enrichTravelRows(
       return { ...row, travel_source: "distance_only" };
     }
 
+    const mergedDistanceMiles = row.cached_distance_miles ?? entry.distanceMiles;
+    const mergedDrivingMinutes = row.driving_minutes ?? entry.drivingMinutes;
+    const mergedPublicTransportMinutes = row.public_transport_minutes ?? entry.publicTransportMinutes;
+    const mergedProvider = mergeProviders(row.cached_provider, entry.provider);
+
     return {
       ...row,
-      cached_distance_miles: row.cached_distance_miles ?? entry.distanceMiles,
-      driving_minutes: row.driving_minutes ?? entry.drivingMinutes,
-      public_transport_minutes: row.public_transport_minutes ?? entry.publicTransportMinutes,
+      cached_distance_miles: mergedDistanceMiles,
+      driving_minutes: mergedDrivingMinutes,
+      public_transport_minutes: mergedPublicTransportMinutes,
+      cached_provider: mergedProvider,
       travel_source: row.cached_distance_miles !== null ? "cache" : "live"
     };
   });

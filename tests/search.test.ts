@@ -21,14 +21,6 @@ function requestUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
-function expectedArrivalTime(kickoffAt: string | null): string | null {
-  if (kickoffAt === null) {
-    return null;
-  }
-
-  return Math.floor((Date.parse(kickoffAt) - 60 * 60 * 1000) / 1000).toString();
-}
-
 describe("fixture search", () => {
   it("does not fall back to historical demo fixtures when the live date range is empty", async () => {
     const db = createAppDatabase();
@@ -151,7 +143,6 @@ describe("fixture search", () => {
     expect(results[0]?.travel.source).toBe("live");
     expect(results[0]?.travel.publicTransportMinutes).toBeNull();
     expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
-    expect(results[0]?.travel.publicTransportUrl).toContain(`arrival_time=${expectedArrivalTime(results[0]?.kickoffAt ?? null)}`);
     expect(results[0]?.travel.publicTransportUrl).toContain("dir_action=navigate");
 
     const cached = await db.get<{ provider: string; driving_minutes: number }>(`
@@ -321,7 +312,6 @@ describe("travel enrichment resilience", () => {
     expect(results[0]?.travel.drivingMinutes).toBe(15);
     expect(results[0]?.travel.source).toBe("live");
     expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
-    expect(results[0]?.travel.publicTransportUrl).toContain(`arrival_time=${expectedArrivalTime(results[0]?.kickoffAt ?? null)}`);
     expect(results[0]?.travel.publicTransportUrl).toContain("dir_action=navigate");
   });
 });
