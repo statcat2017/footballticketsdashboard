@@ -1,6 +1,7 @@
 import type { AppDatabase } from "../db/adapter.ts";
 import { distanceMiles } from "../distance.ts";
 import { resolvePostcodeOrigin } from "../postcode.ts";
+import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
 import { defaultDateRange } from "../date.ts";
@@ -47,7 +48,19 @@ export async function searchFixtures(
   const origin = await resolvePostcodeOrigin(request.postcode);
 
   const rows = await queryFixtures(db, dateRange, origin.district);
-  const enrichedRows = await enrichTravelRows(db, rows, origin, options.travelProviders);
+
+  const radiusFilter = request.radiusMiles;
+  const inRadius = radiusFilter === undefined
+    ? rows
+    : rows.filter((row) => {
+        const dist = row.cached_distance_miles ?? distanceMiles(origin.coordinate, {
+          latitude: row.latitude,
+          longitude: row.longitude
+        });
+        return dist <= radiusFilter;
+      });
+
+  const enrichedRows = await enrichTravelRows(db, inRadius, origin, options.travelProviders);
 
   return enrichedRows
     .map((row) => toResult(row, origin.coordinate))
@@ -166,13 +179,84 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
 }
 
 async function enrichTravelRows(
-  _db: AppDatabase,
+  db: AppDatabase,
   rows: FixtureRow[],
-  _origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
-  _travelProviders?: TravelProviderRuntimeConfig
+  origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
+  travelProviders?: TravelProviderRuntimeConfig
 ): Promise<FixtureRow[]> {
-  return rows.map((row) => ({
-    ...row,
-    travel_source: row.cached_distance_miles === null ? "distance_only" : "cache"
-  }));
+  const apiKey = travelProviders?.openRouteServiceApiKey;
+
+  if (!apiKey) {
+    return rows;
+  }
+
+  const byVenue = new Map<number, () => ReturnType<typeof buildTravelCacheEntry>>();
+
+  for (const row of rows) {
+    if (row.cached_distance_miles !== null || byVenue.has(row.venue_id)) {
+      continue;
+    }
+
+    byVenue.set(row.venue_id, () => buildTravelCacheEntry({
+      postcodeDistrictValue: origin.district,
+      origin: origin.coordinate,
+      venue: {
+        venue_id: row.venue_id,
+        venue_name: row.venue_name,
+        latitude: row.latitude,
+        longitude: row.longitude
+      },
+      providers: { openRouteServiceApiKey: apiKey }
+    }));
+  }
+
+  const MAX_CONCURRENT = 4;
+  const venueArray = Array.from(byVenue.entries());
+  const entryResults: Array<readonly [number, Awaited<ReturnType<typeof buildTravelCacheEntry>>]> = [];
+
+  for (let i = 0; i < venueArray.length; i += MAX_CONCURRENT) {
+    const chunk = venueArray.slice(i, i + MAX_CONCURRENT);
+    const chunkResults = await Promise.all(chunk.map(async ([venueId, buildEntry]) => {
+      const entry = await buildEntry();
+      if (entry.provider) {
+        try {
+          await upsertTravelCacheRow(
+            db,
+            origin.district,
+            venueId,
+            entry.distanceMiles,
+            entry.drivingMinutes,
+            entry.publicTransportMinutes,
+            entry.provider,
+            new Date().toISOString()
+          );
+        } catch (error) {
+          console.error("failed to cache travel entry for venue", venueId, error);
+        }
+      }
+      return [venueId, entry] as const;
+    }));
+    entryResults.push(...chunkResults);
+  }
+  const entries = new Map(entryResults);
+
+  return rows.map((row) => {
+    if (row.cached_distance_miles !== null) {
+      return { ...row, travel_source: "cache" };
+    }
+
+    const entry = entries.get(row.venue_id);
+
+    if (!entry?.provider) {
+      return { ...row, travel_source: "distance_only" };
+    }
+
+    return {
+      ...row,
+      cached_distance_miles: entry.distanceMiles,
+      driving_minutes: entry.drivingMinutes,
+      public_transport_minutes: entry.publicTransportMinutes,
+      travel_source: "live"
+    };
+  });
 }
