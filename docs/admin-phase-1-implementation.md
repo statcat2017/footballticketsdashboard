@@ -10,8 +10,8 @@ Phase 1 establishes the private admin foundation. It should not introduce club e
 - CSRF protection for admin mutation routes.
 - Reusable admin route/page guard helpers.
 - Admin audit log table and write helper.
-- Database transaction primitive for local SQLite and D1-backed app code.
-- Foundational schema fields required by later admin phases, if low-risk enough to include in the first PR.
+- Database write-batch primitive for local SQLite and D1-backed app code.
+- Minimum phase 1 schema: admin audit logging only.
 - Tests and docs for the above.
 
 ## Non-Goals
@@ -27,7 +27,6 @@ Phase 1 establishes the private admin foundation. It should not introduce club e
 
 - `app/admin/login/page.tsx`: login form.
 - `app/admin/page.tsx`: minimal protected dashboard.
-- `app/admin/layout.tsx`: admin shell/navigation after auth.
 - `app/api/admin/login/route.ts`: validate shared secret and set session cookie.
 - `app/api/admin/logout/route.ts`: clear session cookie.
 - `app/api/admin/csrf/route.ts`: issue or expose CSRF token for authenticated admin pages if needed by client mutations.
@@ -35,12 +34,12 @@ Phase 1 establishes the private admin foundation. It should not introduce club e
 - `lib/admin/csrf.ts`: CSRF token creation and validation.
 - `lib/admin/audit.ts`: audit write helper and types.
 - `lib/admin/config.ts`: admin env accessors.
-- `lib/db/adapter.ts`: transaction API extension.
-- `lib/db/schema.ts`: foundational admin schema additions.
+- `lib/db/adapter.ts`: write-batch API extension.
+- `lib/db/schema.ts`: admin audit schema addition.
 - `lib/db/migrations/*`: D1/SQLite migration files matching schema changes.
 - `tests/adminAuth.test.ts`: auth/session/CSRF behavior.
 - `tests/adminAudit.test.ts`: audit helper behavior.
-- `tests/dbTransaction.test.ts`: adapter transaction behavior.
+- `tests/dbAdapter.test.ts`: adapter write-batch behavior.
 
 ## Auth Design
 
@@ -53,7 +52,8 @@ Session cookie shape:
 
 - Name: `nearmefc_admin`.
 - Contents: signed payload with static actor and issued/expiry timestamps.
-- Cookie flags: `HttpOnly`, `SameSite=Strict`, `Path=/admin`, `Secure` in production.
+- Cookie flags: `HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` in production.
+- Cookie path is `/` so both `/admin` pages and `/api/admin/*` routes receive it.
 - Actor: static value, e.g. `admin`.
 
 Recommended expiry:
@@ -75,7 +75,8 @@ Use a double-submit style token or signed token tied to the admin session.
 Recommended first implementation:
 
 - Generate a signed CSRF token after login or on an authenticated `/api/admin/csrf` request.
-- Admin client sends the token in `x-admin-csrf-token` for `POST`, `PATCH`, `PUT`, and `DELETE` admin APIs.
+- Admin client requests send the token in `x-admin-csrf-token` for `POST`, `PATCH`, `PUT`, and `DELETE` admin APIs.
+- Server-rendered HTML forms may submit the token as a `csrf` form field when handled by routes that explicitly support form posts, such as logout.
 - Mutation routes reject missing/invalid tokens with `403`.
 - `GET` admin APIs do not require CSRF.
 
@@ -111,7 +112,7 @@ interface AdminAuditInput {
 
 The helper should JSON-stringify `before` and `after`, default actor to `admin`, and reject non-serializable payloads clearly.
 
-## Transaction Design
+## Write-Batch Design
 
 Extend `AppDatabase` with a write-only atomic batch primitive:
 
@@ -126,9 +127,9 @@ writeBatch(statements: SqlWrite[]): Promise<Array<{ lastInsertRowid?: number; ch
 
 SQLite behavior:
 
-- Wrap callback in `BEGIN`, `COMMIT`, and `ROLLBACK`.
+- Wrap precomputed statements in `BEGIN`, `COMMIT`, and `ROLLBACK`.
 - Use the same underlying connection.
-- Roll back if the callback throws.
+- Roll back if a statement throws.
 
 D1 behavior:
 
@@ -154,8 +155,8 @@ The larger pyramid, movement, season, and import-protection schema changes are d
 4. Add protected admin dashboard and route/page guard behavior.
 5. Add CSRF helpers and route tests for mutation rejection.
 6. Add `admin_audit_log` schema and audit helper tests.
-7. Extend database adapter with transaction or batch support and rollback tests.
-8. Add any safe foundational admin schema fields.
+7. Extend database adapter with write-batch support and rollback tests.
+8. Add only the minimum admin audit schema.
 9. Update schema documentation and deployment notes.
 10. Run `npm run lint`, `npm run test`, and `npm run build`.
 
@@ -168,8 +169,8 @@ The larger pyramid, movement, season, and import-protection schema changes are d
 - Protected admin APIs return `401` without a valid session.
 - Mutation APIs return `403` without a valid CSRF token.
 - Audit helper inserts expected row values.
-- SQLite transaction commits on success and rolls back on thrown error.
-- D1 adapter test verifies the intended transaction or batch mechanism.
+- SQLite write batch commits on success and rolls back on thrown error.
+- D1 adapter test verifies the intended batch mechanism.
 - Existing database setup remains idempotent.
 
 ## Handoff Criteria
@@ -177,5 +178,5 @@ The larger pyramid, movement, season, and import-protection schema changes are d
 - Phase 1 admin dashboard exists but contains only foundation/status content.
 - No data-editing admin actions are exposed yet.
 - Security-sensitive values stay server-side.
-- Tests cover auth, CSRF, audit, and transaction primitives.
+- Tests cover auth, CSRF, audit, and write-batch primitives.
 - Documentation names required environment variables and the next phase dependency points.

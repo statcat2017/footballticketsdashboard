@@ -1,6 +1,8 @@
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboardPage() {
   const session = await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();

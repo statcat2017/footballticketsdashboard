@@ -32,6 +32,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid admin secret." }, { status: 401 });
   }
 
+  const cookieValue = await createAdminSessionCookieValue();
+
   await writeAdminAuditLog(await getDatabase(), {
     action: "login",
     entityType: "admin_session",
@@ -39,6 +41,6 @@ export async function POST(request: Request) {
   });
 
   const response = NextResponse.redirect(new URL("/admin", request.url), { status: 303 });
-  response.cookies.set(ADMIN_COOKIE_NAME, await createAdminSessionCookieValue(), adminCookieOptions());
+  response.cookies.set(ADMIN_COOKIE_NAME, cookieValue, adminCookieOptions());
   return response;
 }
