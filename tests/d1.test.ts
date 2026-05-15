@@ -1,0 +1,105 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/db/pyramid", () => ({
+  MEN_PYRAMID_TEMPLATE: { id: 1, code: "mens", name: "Men's English Pyramid", sport: "mens", status: "active" },
+  MEN_PYRAMID_DIVISIONS: [
+    { id: 1, template_id: 1, code: "premier-league", name: "Premier League", level: 1, max_size: 20 }
+  ],
+  MEN_PYRAMID_EDGES: [],
+  MEN_PYRAMID_SEASONS: [{ id: 1, template_id: 1, season_label: "2025-26" }],
+  MEN_PYRAMID_SEASON_DIVISIONS: [
+    { id: 1, season_id: 1, template_id: 1, division_id: 1, status: "open", locked_at: null }
+  ],
+  MEN_PYRAMID_CLUBS: [
+    {
+      id: 1,
+      name: "Stub Club",
+      aliases: null,
+      league_name: null,
+      ground_name: null,
+      ground_address: null,
+      postcode: null,
+      latitude: null,
+      longitude: null,
+      source_url: null,
+      verified_at: null,
+      status: "partial"
+    }
+  ],
+  MEN_PYRAMID_MEMBERSHIPS: [
+    { id: 1, season_id: 1, template_id: 1, season_division_id: 1, club_id: 1 }
+  ],
+  MEN_PYRAMID_MOVEMENTS: [
+    {
+      id: 1,
+      season_id: 1,
+      template_id: 1,
+      club_id: 1,
+      from_season_division_id: 1,
+      to_season_division_id: 1,
+      movement_type: "promotion",
+      note: null,
+      created_at: "2026-05-10T00:00:00.000Z"
+    }
+  ],
+  validatePyramidSeason: vi.fn(() => [])
+}));
+
+import { initializeD1Database } from "@/lib/db/d1";
+import type { D1DatabaseLike, D1PreparedStatement } from "@/lib/db/adapter";
+
+describe("D1 initialization", () => {
+  it("writes the pyramid sections before dependent rows", async () => {
+    const operations: string[] = [];
+    const batchSizes: number[] = [];
+    const binding = createFakeBinding(operations, batchSizes);
+
+    await initializeD1Database(binding);
+
+    const clubsIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_clubs "));
+    const membershipIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_season_memberships "));
+    const movementIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_movements "));
+    const batchIndex = operations.findIndex((operation) => operation.startsWith("batch:"));
+
+    expect(clubsIndex).toBeGreaterThan(-1);
+    expect(membershipIndex).toBeGreaterThan(-1);
+    expect(movementIndex).toBeGreaterThan(-1);
+    expect(clubsIndex).toBeLessThan(membershipIndex);
+    expect(clubsIndex).toBeLessThan(movementIndex);
+    expect(batchIndex).toBe(operations.length - 1);
+    expect(batchSizes).toEqual([operations.filter((operation) => operation.startsWith("prepare:")).length]);
+  });
+});
+
+function createFakeBinding(operations: string[], batchSizes: number[]): D1DatabaseLike {
+  return {
+    prepare(query: string) {
+      operations.push(`prepare:${query}`);
+      const statement = {
+        bind: (...values: Array<string | number | null>) => {
+          void values;
+          return statement;
+        },
+        async all<T>() {
+          return { results: [] as T[] };
+        },
+        async first<T>() {
+          return null as T | null;
+        },
+        async run() {
+          return { success: true };
+        }
+      };
+      return statement;
+    },
+    async exec(query: string) {
+      operations.push(`exec:${query}`);
+      return undefined;
+    },
+    async batch(statements: D1PreparedStatement[]) {
+      batchSizes.push(statements.length);
+      operations.push(`batch:${statements.length}`);
+      return statements.map(() => ({ success: true }));
+    }
+  };
+}

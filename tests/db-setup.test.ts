@@ -20,13 +20,30 @@ describe("database setup", () => {
         (SELECT COUNT(*) FROM competitions) as competitions,
         (SELECT COUNT(*) FROM clubs) as clubs,
         (SELECT COUNT(*) FROM fixtures WHERE source = 'historical_seed') as seedFixtures,
-        (SELECT COUNT(*) FROM travel_cache) as travelRows
+        (SELECT COUNT(*) FROM travel_cache) as travelRows,
+        (SELECT COUNT(*) FROM pyramid_templates) as pyramidTemplates,
+        (SELECT COUNT(*) FROM pyramid_divisions) as pyramidDivisions,
+        (SELECT COUNT(*) FROM pyramid_edges) as pyramidEdges,
+        (SELECT COUNT(*) FROM pyramid_seasons) as pyramidSeasons,
+        (SELECT COUNT(*) FROM pyramid_season_divisions) as pyramidSeasonDivisions
     `).get() as {
       competitions: number;
       clubs: number;
       seedFixtures: number;
       travelRows: number;
+      pyramidTemplates: number;
+      pyramidDivisions: number;
+      pyramidEdges: number;
+      pyramidSeasons: number;
+      pyramidSeasonDivisions: number;
     };
+
+    const pyramidDivision = second.prepare(`
+      SELECT status, locked_at
+      FROM pyramid_season_divisions
+      ORDER BY id
+      LIMIT 1
+    `).get() as { status: string; locked_at: string | null };
 
     second.close();
 
@@ -35,7 +52,13 @@ describe("database setup", () => {
       competitions: 2,
       clubs: 6,
       seedFixtures: 4,
-      travelRows: 6
+      travelRows: 6,
+      pyramidTemplates: 1,
+      pyramidDivisions: 11,
+      pyramidEdges: 20,
+      pyramidSeasons: 1,
+      pyramidSeasonDivisions: 11
     });
+    expect(pyramidDivision).toEqual({ status: "open", locked_at: null });
   });
 });
