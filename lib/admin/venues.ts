@@ -43,6 +43,12 @@ export function nextJuly1st(): string {
   return `${year}-07-01`;
 }
 
+export function isValidDate(str: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const d = new Date(str + "T00:00:00Z");
+  return !isNaN(d.getTime()) && d.toISOString().split("T")[0] === str;
+}
+
 export async function getAdminVenueList(): Promise<AdminVenueListRow[]> {
   const db = await getDatabase();
 
@@ -122,6 +128,14 @@ export async function updateAdminVenue(
     throw new Error("Venue not found.");
   }
 
+  if (input.latitude !== undefined && (!Number.isFinite(input.latitude) || Math.abs(input.latitude) > 90)) {
+    throw new Error("Invalid latitude.");
+  }
+
+  if (input.longitude !== undefined && (!Number.isFinite(input.longitude) || Math.abs(input.longitude) > 180)) {
+    throw new Error("Invalid longitude.");
+  }
+
   if (!confirmed) {
     const sharingCount = await db.get<{ count: number }>(
       `SELECT COUNT(*) AS count FROM club_venue_assignments
@@ -165,14 +179,32 @@ export async function assignAdminVenue(
   const now = new Date().toISOString();
   const statements: SqlWrite[] = [];
 
-  const oldAssignment = await db.get<{ id: number; effective_from: string }>(
-    `SELECT id, effective_from
+  const club = await db.get<{ id: number }>("SELECT id FROM pyramid_clubs WHERE id = ?", [clubId]);
+  if (!club) throw new Error("Club not found.");
+
+  const venue = await db.get<{ id: number }>("SELECT id FROM venues WHERE id = ?", [venueId]);
+  if (!venue) throw new Error("Venue not found.");
+
+  if (!isValidDate(effectiveFrom)) {
+    throw new Error("Invalid effective_from date.");
+  }
+
+  const oldAssignment = await db.get<{ id: number; effective_from: string; venue_id: number }>(
+    `SELECT id, effective_from, venue_id
      FROM club_venue_assignments
      WHERE club_id = ? AND is_primary = 1 AND effective_to IS NULL`,
     [clubId]
   );
 
   if (oldAssignment) {
+    if (effectiveFrom <= oldAssignment.effective_from) {
+      throw new Error("Effective date must be after the current assignment start date.");
+    }
+
+    if (oldAssignment.venue_id === venueId) {
+      throw new Error("Club is already assigned to this venue.");
+    }
+
     const endDate = calcDayBefore(effectiveFrom);
     statements.push({
       sql: `UPDATE club_venue_assignments

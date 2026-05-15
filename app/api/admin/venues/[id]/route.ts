@@ -44,15 +44,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const postcode = form.get("postcode");
   const latitude = form.get("latitude");
   const longitude = form.get("longitude");
-  const isApproximate = form.get("is_approximate");
+
+  const latNum = typeof latitude === "string" ? Number(latitude) : NaN;
+  const lngNum = typeof longitude === "string" ? Number(longitude) : NaN;
+
+  if (
+    !Number.isFinite(latNum) || latNum < -90 || latNum > 90 ||
+    !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180
+  ) {
+    return NextResponse.redirect(
+      new URL(`/admin/venues/${venueId}?error=Invalid coordinates.`, request.url),
+      { status: 303 }
+    );
+  }
 
   try {
     await updateAdminVenue(venueId, {
       name: typeof name === "string" && name.length > 0 ? name : undefined,
       postcode: typeof postcode === "string" && postcode.length > 0 ? postcode : undefined,
-      latitude: typeof latitude === "string" ? parseFloat(latitude) : undefined,
-      longitude: typeof longitude === "string" ? parseFloat(longitude) : undefined,
-      is_approximate: isApproximate === "1" ? 1 : isApproximate === "0" ? 0 : undefined
+      latitude: latNum,
+      longitude: lngNum,
+      is_approximate: form.get("is_approximate") === "1" ? 1 : 0
     }, confirmed);
 
     return NextResponse.redirect(new URL(`/admin/venues/${venueId}`, request.url), { status: 303 });

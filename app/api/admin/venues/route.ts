@@ -42,12 +42,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const latNum = typeof latitude === "string" ? parseFloat(latitude) : NaN;
-  const lngNum = typeof longitude === "string" ? parseFloat(longitude) : NaN;
+  const latNum = typeof latitude === "string" ? Number(latitude) : NaN;
+  const lngNum = typeof longitude === "string" ? Number(longitude) : NaN;
 
-  if (isNaN(latNum) || isNaN(lngNum)) {
+  if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90) {
     return NextResponse.redirect(
-      new URL("/admin/venues/new?error=Valid coordinates are required.", request.url),
+      new URL("/admin/venues/new?error=Invalid latitude. Must be between -90 and 90.", request.url),
+      { status: 303 }
+    );
+  }
+
+  if (!Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
+    return NextResponse.redirect(
+      new URL("/admin/venues/new?error=Invalid longitude. Must be between -180 and 180.", request.url),
       { status: 303 }
     );
   }

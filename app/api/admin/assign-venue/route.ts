@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
-import { assignAdminVenue } from "@/lib/admin/venues";
+import { assignAdminVenue, isValidDate } from "@/lib/admin/venues";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (typeof effectiveFrom !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) {
+  if (typeof effectiveFrom !== "string" || !isValidDate(effectiveFrom)) {
     return NextResponse.redirect(
       new URL(`/admin/clubs/${clubId}?error=Valid effective date (YYYY-MM-DD) is required.`, request.url),
       { status: 303 }

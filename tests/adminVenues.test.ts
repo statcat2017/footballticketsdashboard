@@ -254,6 +254,47 @@ describe("admin venue service", () => {
         updateAdminVenue(50, { name: "Shared Park" }, true)
       ).resolves.not.toThrow();
     });
+
+    it("can clear is_approximate from 1 to 0", async () => {
+      const db = createMinimalDb();
+
+      db.exec(`
+        UPDATE venues SET is_approximate = 1 WHERE id = 50;
+      `);
+
+      getDatabase.mockResolvedValue(db);
+
+      await updateAdminVenue(50, { is_approximate: 0 }, true);
+
+      const venue = await db.get<{ is_approximate: number }>(
+        "SELECT is_approximate FROM venues WHERE id = ?", [50]
+      );
+      expect(venue!.is_approximate).toBe(0);
+    });
+
+    it("rejects invalid NaN latitude at service layer", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        updateAdminVenue(50, { latitude: NaN }, true)
+      ).rejects.toThrow("Invalid latitude.");
+    });
+
+    it("rejects latitude outside -90..90 range at service layer", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        updateAdminVenue(50, { latitude: 100 }, true)
+      ).rejects.toThrow("Invalid latitude.");
+    });
+
+    it("rejects longitude outside -180..180 range at service layer", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        updateAdminVenue(50, { longitude: 200 }, true)
+      ).rejects.toThrow("Invalid longitude.");
+    });
   });
 
   describe("assignAdminVenue", () => {
@@ -310,6 +351,54 @@ describe("admin venue service", () => {
 
       expect(audit).not.toBeNull();
       expect(audit!.entity_id).toBe("100");
+    });
+
+    it("rejects invalid real-world date like 2026-02-31", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        assignAdminVenue(100, 51, "2026-02-31")
+      ).rejects.toThrow("Invalid effective_from date.");
+    });
+
+    it("rejects effective date before current assignment start", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        assignAdminVenue(100, 51, "2025-06-01")
+      ).rejects.toThrow("Effective date must be after the current assignment start date.");
+    });
+
+    it("rejects effective date equal to current assignment start", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        assignAdminVenue(100, 51, "2025-08-01")
+      ).rejects.toThrow("Effective date must be after the current assignment start date.");
+    });
+
+    it("rejects unknown club with controlled error", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        assignAdminVenue(99999, 51, "2026-07-01")
+      ).rejects.toThrow("Club not found.");
+    });
+
+    it("rejects unknown venue with controlled error", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        assignAdminVenue(100, 99999, "2026-07-01")
+      ).rejects.toThrow("Venue not found.");
+    });
+
+    it("rejects assigning the same venue club already uses", async () => {
+      getDatabase.mockResolvedValue(createMinimalDb());
+
+      await expect(
+        assignAdminVenue(100, 50, "2026-07-01")
+      ).rejects.toThrow("Club is already assigned to this venue.");
     });
   });
 });
