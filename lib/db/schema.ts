@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS venues (
   name TEXT NOT NULL,
   postcode TEXT NOT NULL,
   latitude REAL NOT NULL,
-  longitude REAL NOT NULL
+  longitude REAL NOT NULL,
+  is_approximate INTEGER NOT NULL DEFAULT 0 CHECK (is_approximate IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS clubs (

@@ -25,13 +25,14 @@ INSERT INTO competitions (code, name, tier)
 VALUES ('${escapeSql(row.competition)}', '${escapeSql(competitionName(row.competition))}', ${competitionTier(row.competition)})
 ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier;
 
-INSERT INTO venues (id, name, postcode, latitude, longitude)
-VALUES (${venueId}, '${escapeSql(row.ground_name)}', '${escapeSql(row.postcode)}', ${Number(row.latitude)}, ${Number(row.longitude)})
+INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate)
+VALUES (${venueId}, '${escapeSql(row.ground_name)}', '${escapeSql(row.postcode)}', ${Number(row.latitude)}, ${Number(row.longitude)}, 0)
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   postcode = excluded.postcode,
   latitude = excluded.latitude,
-  longitude = excluded.longitude;
+  longitude = excluded.longitude,
+  is_approximate = excluded.is_approximate;
 
 INSERT INTO clubs (
   id, name, football_data_team_id, aliases, short_name, competition_code, venue_id,

@@ -54,10 +54,10 @@ describe("database setup", () => {
       seedFixtures: 4,
       travelRows: 6,
       pyramidTemplates: 1,
-      pyramidDivisions: 11,
+      pyramidDivisions: 14,
       pyramidEdges: 20,
       pyramidSeasons: 1,
-      pyramidSeasonDivisions: 11
+      pyramidSeasonDivisions: 14
     });
     expect(pyramidDivision).toEqual({ status: "open", locked_at: null });
   });
