@@ -22,6 +22,7 @@ Core tables:
 - `fixture_ticket_price_overrides`
 - `travel_cache`
 - `corrections`
+- `admin_audit_log`
 
 Important rules:
 
@@ -34,6 +35,7 @@ Important rules:
 - Imported fixtures use `source = 'football-data'`, are upserted by `source_id`, and record `source_updated_at` plus `imported_at`.
 - Travel cache is keyed by postcode district and venue.
 - Corrections are saved as `pending`; they never update live data automatically.
+- Admin audit rows record manual admin mutations and security-relevant admin actions.
 - The men's pyramid is seeded as a reusable static template from Premier League through Step 3.
 - Pyramid seasons and divisions start `open`; they can be marked `locked` when a snapshot is complete.
 - `pyramid_clubs` is sparse by design, so clubs can be added later without requiring a full division.

@@ -2,11 +2,22 @@ import type { Database as SqliteDatabase } from "better-sqlite3";
 
 export type QueryParam = string | number | null;
 
+export interface SqlWrite {
+  sql: string;
+  params?: QueryParam[];
+}
+
+export interface WriteResult {
+  lastInsertRowid?: number;
+  changes: number;
+}
+
 export interface AppDatabase {
   all<T>(sql: string, params?: QueryParam[]): Promise<T[]>;
   get<T>(sql: string, params?: QueryParam[]): Promise<T | undefined>;
-  run(sql: string, params?: QueryParam[]): Promise<{ lastInsertRowid?: number; changes: number }>;
+  run(sql: string, params?: QueryParam[]): Promise<WriteResult>;
   exec(sql: string): Promise<void>;
+  writeBatch(statements: SqlWrite[]): Promise<WriteResult[]>;
 }
 
 export interface D1ResultRow {
@@ -47,6 +58,30 @@ export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
     },
     async exec(sql: string) {
       db.exec(sql);
+    },
+    async writeBatch(statements: SqlWrite[]) {
+      if (statements.length === 0) {
+        return [];
+      }
+
+      db.exec("BEGIN");
+      const results: WriteResult[] = [];
+
+      try {
+        for (const statement of statements) {
+          const result = db.prepare(statement.sql).run(...(statement.params ?? []));
+          results.push({
+            lastInsertRowid: Number(result.lastInsertRowid),
+            changes: result.changes
+          });
+        }
+
+        db.exec("COMMIT");
+        return results;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     }
   };
 }
@@ -70,6 +105,25 @@ export function createD1AppDatabase(db: D1DatabaseLike): AppDatabase {
     },
     async exec(sql: string) {
       await db.exec(sql);
+    },
+    async writeBatch(statements: SqlWrite[]) {
+      if (statements.length === 0) {
+        return [];
+      }
+
+      const prepared = statements.map((statement) => db.prepare(statement.sql).bind(...(statement.params ?? [])));
+      const results = await db.batch(prepared);
+
+      const failedIndex = results.findIndex((result) => !result.success);
+
+      if (failedIndex !== -1) {
+        throw new Error(`D1 batch statement ${failedIndex + 1} failed.`);
+      }
+
+      return results.map((result) => ({
+        lastInsertRowid: result.meta?.last_row_id,
+        changes: result.meta?.changes ?? 0
+      }));
     }
   };
 }

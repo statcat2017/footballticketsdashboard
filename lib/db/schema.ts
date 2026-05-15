@@ -194,6 +194,17 @@ CREATE TABLE IF NOT EXISTS corrections (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id INTEGER PRIMARY KEY,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  before_json TEXT,
+  after_json TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_fixtures_kickoff ON fixtures(kickoff_at);
 CREATE INDEX IF NOT EXISTS idx_fixtures_competition ON fixtures(competition_code);
 CREATE INDEX IF NOT EXISTS idx_travel_cache_lookup ON travel_cache(postcode_district, venue_id);
@@ -213,4 +224,6 @@ CREATE INDEX IF NOT EXISTS idx_pyramid_season_memberships_division ON pyramid_se
 CREATE INDEX IF NOT EXISTS idx_pyramid_movements_season ON pyramid_movements(season_id);
 CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_club ON club_venue_assignments(club_id);
 CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_venue ON club_venue_assignments(venue_id);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_entity ON admin_audit_log(entity_type, entity_id);
 `;

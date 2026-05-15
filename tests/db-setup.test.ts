@@ -25,7 +25,8 @@ describe("database setup", () => {
         (SELECT COUNT(*) FROM pyramid_divisions) as pyramidDivisions,
         (SELECT COUNT(*) FROM pyramid_edges) as pyramidEdges,
         (SELECT COUNT(*) FROM pyramid_seasons) as pyramidSeasons,
-        (SELECT COUNT(*) FROM pyramid_season_divisions) as pyramidSeasonDivisions
+        (SELECT COUNT(*) FROM pyramid_season_divisions) as pyramidSeasonDivisions,
+        (SELECT COUNT(*) FROM admin_audit_log) as adminAuditRows
     `).get() as {
       competitions: number;
       clubs: number;
@@ -36,6 +37,7 @@ describe("database setup", () => {
       pyramidEdges: number;
       pyramidSeasons: number;
       pyramidSeasonDivisions: number;
+      adminAuditRows: number;
     };
 
     const pyramidDivision = second.prepare(`
@@ -57,7 +59,8 @@ describe("database setup", () => {
       pyramidDivisions: 14,
       pyramidEdges: 20,
       pyramidSeasons: 1,
-      pyramidSeasonDivisions: 14
+      pyramidSeasonDivisions: 14,
+      adminAuditRows: 0
     });
     expect(pyramidDivision).toEqual({ status: "open", locked_at: null });
   });

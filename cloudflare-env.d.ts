@@ -13,6 +13,7 @@ interface D1PreparedStatement {
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
   exec(query: string): Promise<unknown>;
+  batch(statements: D1PreparedStatement[]): Promise<Array<{ success: boolean; meta?: D1ResultMeta }>>;
 }
 
 interface CloudflareEnv {
@@ -20,4 +21,6 @@ interface CloudflareEnv {
   OPENROUTESERVICE_API_KEY?: string;
   TRAVELTIME_APP_ID?: string;
   TRAVELTIME_API_KEY?: string;
+  ADMIN_SECRET?: string;
+  ADMIN_SESSION_SECRET?: string;
 }
