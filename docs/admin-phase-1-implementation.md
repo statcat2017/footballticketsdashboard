@@ -67,6 +67,9 @@ Auth behavior:
 - `/admin` pages require a valid session cookie.
 - `/api/admin/*` routes require a valid session cookie, except login/logout routes as appropriate.
 - Missing or invalid auth returns redirect for pages and `401` JSON for APIs.
+- Failed admin login attempts are rate limited in memory by client identifier.
+- Admin login uses `cf-connecting-ip`, then the first `x-forwarded-for` value, then `unknown` for the rate-limit key.
+- Successful login clears failed-attempt state for that client key.
 
 ## CSRF Design
 
@@ -79,6 +82,7 @@ Recommended first implementation:
 - Server-rendered HTML forms may submit the token as a `csrf` form field when handled by routes that explicitly support form posts, such as logout.
 - Mutation routes reject missing/invalid tokens with `403`.
 - `GET` admin APIs do not require CSRF.
+- Login CSRF is explicitly deferred for this MVP phase. The login form does not expose the admin secret, session cookies are `SameSite=Strict`, and rate limiting is the higher-value protection before data-editing tools are exposed.
 
 This is enough for phase 1. Later client forms can share one small fetch helper that attaches the token.
 
@@ -112,6 +116,8 @@ interface AdminAuditInput {
 
 The helper should JSON-stringify `before` and `after`, default actor to `admin`, and reject non-serializable payloads clearly.
 
+Login and logout audit writes fail closed. If a successful login or logout cannot be audited, the route fails instead of silently creating or clearing an unaudited admin session.
+
 ## Write-Batch Design
 
 Extend `AppDatabase` with a write-only atomic batch primitive:
@@ -138,6 +144,8 @@ D1 behavior:
 - Do not expose a callback-style transaction API because D1 does not naturally support arbitrary read/write branching inside one transaction.
 
 Phase 1 should resolve this before later admin writes depend on it.
+
+Detailed write-batch guidance lives in `docs/admin-write-batch.md`.
 
 ## Foundational Schema
 

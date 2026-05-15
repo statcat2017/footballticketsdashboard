@@ -1,6 +1,6 @@
 # TICKET-030: Admin Audit Hardening
 
-Status: open
+Status: review
 Owner: Backend
 Priority: medium
 Depends on: TICKET-025

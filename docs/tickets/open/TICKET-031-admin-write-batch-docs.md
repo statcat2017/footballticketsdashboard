@@ -1,6 +1,6 @@
 # TICKET-031: Admin Write Batch Semantics Documentation
 
-Status: open
+Status: review
 Owner: Backend
 Priority: low
 Depends on: TICKET-026

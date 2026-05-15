@@ -31,3 +31,26 @@ export function checkRateLimit(
   entry.count++;
   return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.resetAt };
 }
+
+export function getRateLimitStatus(
+  key: string,
+  maxRequests: number,
+  windowMs: number
+): RateLimitResult {
+  const now = Date.now();
+  const entry = store.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    return { allowed: true, remaining: maxRequests, resetAt: now + windowMs };
+  }
+
+  if (entry.count >= maxRequests) {
+    return { allowed: false, remaining: 0, resetAt: entry.resetAt };
+  }
+
+  return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.resetAt };
+}
+
+export function resetRateLimit(key: string): void {
+  store.delete(key);
+}
