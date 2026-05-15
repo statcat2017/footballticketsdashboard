@@ -41,16 +41,15 @@ export function seedDatabase(db: SqliteDatabase): void {
     }
 
     const insertPyramidEdge = db.prepare(`
-      INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type, slots)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type)
+      VALUES (?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         from_division_id = excluded.from_division_id,
         to_division_id = excluded.to_division_id,
-        movement_type = excluded.movement_type,
-        slots = excluded.slots
+        movement_type = excluded.movement_type
     `);
     for (const edge of MEN_PYRAMID_EDGES) {
-      insertPyramidEdge.run(edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type, edge.slots);
+      insertPyramidEdge.run(edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type);
     }
 
     const insertPyramidSeason = db.prepare(`

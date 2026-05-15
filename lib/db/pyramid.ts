@@ -25,7 +25,6 @@ export interface PyramidEdgeRow {
   from_division_id: number;
   to_division_id: number;
   movement_type: MovementType;
-  slots: number;
 }
 
 export interface PyramidSeasonRow {
@@ -122,26 +121,26 @@ export const MEN_PYRAMID_DIVISIONS: PyramidDivisionRow[] = [
 ];
 
 export const MEN_PYRAMID_EDGES: PyramidEdgeRow[] = [
-  { id: 1, from_division_id: 1, to_division_id: 2, movement_type: "relegation", slots: 3 },
-  { id: 2, from_division_id: 2, to_division_id: 1, movement_type: "promotion", slots: 2 },
-  { id: 3, from_division_id: 2, to_division_id: 3, movement_type: "relegation", slots: 3 },
-  { id: 4, from_division_id: 3, to_division_id: 2, movement_type: "promotion", slots: 3 },
-  { id: 5, from_division_id: 3, to_division_id: 4, movement_type: "relegation", slots: 4 },
-  { id: 6, from_division_id: 4, to_division_id: 3, movement_type: "promotion", slots: 4 },
-  { id: 7, from_division_id: 4, to_division_id: 5, movement_type: "relegation", slots: 2 },
-  { id: 8, from_division_id: 5, to_division_id: 4, movement_type: "promotion", slots: 4 },
-  { id: 9, from_division_id: 5, to_division_id: 6, movement_type: "relegation", slots: 4 },
-  { id: 10, from_division_id: 5, to_division_id: 7, movement_type: "relegation", slots: 4 },
-  { id: 11, from_division_id: 6, to_division_id: 5, movement_type: "promotion", slots: 1 },
-  { id: 12, from_division_id: 7, to_division_id: 5, movement_type: "promotion", slots: 1 },
-  { id: 13, from_division_id: 6, to_division_id: 8, movement_type: "relegation", slots: 4 },
-  { id: 14, from_division_id: 6, to_division_id: 10, movement_type: "relegation", slots: 4 },
-  { id: 15, from_division_id: 7, to_division_id: 9, movement_type: "relegation", slots: 4 },
-  { id: 16, from_division_id: 7, to_division_id: 11, movement_type: "relegation", slots: 4 },
-  { id: 17, from_division_id: 8, to_division_id: 6, movement_type: "promotion", slots: 1 },
-  { id: 18, from_division_id: 9, to_division_id: 7, movement_type: "promotion", slots: 1 },
-  { id: 19, from_division_id: 10, to_division_id: 6, movement_type: "promotion", slots: 1 },
-  { id: 20, from_division_id: 11, to_division_id: 7, movement_type: "promotion", slots: 1 }
+  { id: 1, from_division_id: 1, to_division_id: 2, movement_type: "relegation" },
+  { id: 2, from_division_id: 2, to_division_id: 1, movement_type: "promotion" },
+  { id: 3, from_division_id: 2, to_division_id: 3, movement_type: "relegation" },
+  { id: 4, from_division_id: 3, to_division_id: 2, movement_type: "promotion" },
+  { id: 5, from_division_id: 3, to_division_id: 4, movement_type: "relegation" },
+  { id: 6, from_division_id: 4, to_division_id: 3, movement_type: "promotion" },
+  { id: 7, from_division_id: 4, to_division_id: 5, movement_type: "relegation" },
+  { id: 8, from_division_id: 5, to_division_id: 4, movement_type: "promotion" },
+  { id: 9, from_division_id: 5, to_division_id: 6, movement_type: "relegation" },
+  { id: 10, from_division_id: 5, to_division_id: 7, movement_type: "relegation" },
+  { id: 11, from_division_id: 6, to_division_id: 5, movement_type: "promotion" },
+  { id: 12, from_division_id: 7, to_division_id: 5, movement_type: "promotion" },
+  { id: 13, from_division_id: 6, to_division_id: 8, movement_type: "relegation" },
+  { id: 14, from_division_id: 6, to_division_id: 10, movement_type: "relegation" },
+  { id: 15, from_division_id: 7, to_division_id: 9, movement_type: "relegation" },
+  { id: 16, from_division_id: 7, to_division_id: 11, movement_type: "relegation" },
+  { id: 17, from_division_id: 8, to_division_id: 6, movement_type: "promotion" },
+  { id: 18, from_division_id: 9, to_division_id: 7, movement_type: "promotion" },
+  { id: 19, from_division_id: 10, to_division_id: 6, movement_type: "promotion" },
+  { id: 20, from_division_id: 11, to_division_id: 7, movement_type: "promotion" }
 ];
 
 export const MEN_PYRAMID_SEASONS: PyramidSeasonRow[] = [
