@@ -1,5 +1,5 @@
 import { fillTravelCacheForGroundDistricts } from "../lib/travel/cache.ts";
-import { createD1AppDatabase, type AppDatabase, type QueryParam } from "../lib/db/adapter.ts";
+import { createD1AppDatabase, type AppDatabase, type D1PreparedStatement, type QueryParam } from "../lib/db/adapter.ts";
 import { executeD1, executeD1Json } from "../lib/db/d1-exec.ts";
 
 const databaseName = process.argv[2];
@@ -40,6 +40,15 @@ const db = createD1AppDatabase({
   },
   async exec(query: string) {
     executeD1(databaseName, query);
+  },
+  async batch(statements: D1PreparedStatement[]) {
+    const results = [];
+
+    for (const statement of statements) {
+      results.push(await statement.run());
+    }
+
+    return results;
   }
 });
 

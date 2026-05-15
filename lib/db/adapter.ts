@@ -9,7 +9,7 @@ export interface AppDatabase {
   exec(sql: string): Promise<void>;
 }
 
-interface D1ResultRow {
+export interface D1ResultRow {
   success: boolean;
   meta?: {
     last_row_id?: number;
@@ -17,7 +17,7 @@ interface D1ResultRow {
   };
 }
 
-interface D1PreparedStatement {
+export interface D1PreparedStatement {
   bind(...values: QueryParam[]): D1PreparedStatement;
   all<T>(): Promise<{ results: T[] }>;
   first<T>(): Promise<T | null>;
@@ -27,6 +27,7 @@ interface D1PreparedStatement {
 export interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatement;
   exec(query: string): Promise<unknown>;
+  batch(statements: D1PreparedStatement[]): Promise<D1ResultRow[]>;
 }
 
 export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {

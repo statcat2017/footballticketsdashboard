@@ -46,33 +46,35 @@ vi.mock("@/lib/db/pyramid", () => ({
 }));
 
 import { initializeD1Database } from "@/lib/db/d1";
-import type { D1DatabaseLike } from "@/lib/db/adapter";
+import type { D1DatabaseLike, D1PreparedStatement } from "@/lib/db/adapter";
 
 describe("D1 initialization", () => {
   it("writes the pyramid sections before dependent rows", async () => {
-    const queries: string[] = [];
-    const binding = createFakeBinding(queries);
+    const operations: string[] = [];
+    const batchSizes: number[] = [];
+    const binding = createFakeBinding(operations, batchSizes);
 
     await initializeD1Database(binding);
 
-    const clubsIndex = queries.findIndex((query) => query.includes("INSERT INTO clubs "));
-    const membershipIndex = queries.findIndex((query) => query.includes("INSERT INTO pyramid_season_memberships "));
-    const movementIndex = queries.findIndex((query) => query.includes("INSERT INTO pyramid_movements "));
+    const clubsIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_clubs "));
+    const membershipIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_season_memberships "));
+    const movementIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_movements "));
+    const batchIndex = operations.findIndex((operation) => operation.startsWith("batch:"));
 
     expect(clubsIndex).toBeGreaterThan(-1);
     expect(membershipIndex).toBeGreaterThan(-1);
     expect(movementIndex).toBeGreaterThan(-1);
     expect(clubsIndex).toBeLessThan(membershipIndex);
     expect(clubsIndex).toBeLessThan(movementIndex);
-    expect(queries).toContain("BEGIN TRANSACTION");
-    expect(queries).toContain("COMMIT");
+    expect(batchIndex).toBe(operations.length - 1);
+    expect(batchSizes).toEqual([operations.filter((operation) => operation.startsWith("prepare:")).length]);
   });
 });
 
-function createFakeBinding(queries: string[]): D1DatabaseLike {
+function createFakeBinding(operations: string[], batchSizes: number[]): D1DatabaseLike {
   return {
     prepare(query: string) {
-      queries.push(query);
+      operations.push(`prepare:${query}`);
       const statement = {
         bind: (...values: Array<string | number | null>) => {
           void values;
@@ -91,8 +93,13 @@ function createFakeBinding(queries: string[]): D1DatabaseLike {
       return statement;
     },
     async exec(query: string) {
-      queries.push(query);
+      operations.push(`exec:${query}`);
       return undefined;
+    },
+    async batch(statements: D1PreparedStatement[]) {
+      batchSizes.push(statements.length);
+      operations.push(`batch:${statements.length}`);
+      return statements.map(() => ({ success: true }));
     }
   };
 }
