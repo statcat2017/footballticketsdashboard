@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
-import { VenueMapEditor } from "../_components/VenueMapEditor";
+import { MapEditorWrapper } from "../_components/MapEditorWrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export default async function AdminNewVenuePage(props: { searchParams: Promise<{
         </div>
       )}
 
-      <VenueMapEditor
+      <MapEditorWrapper
         isApproximate={false}
         latInputId="latitude"
         lngInputId="longitude"

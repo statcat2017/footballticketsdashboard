@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getAdminVenue } from "@/lib/admin/venues";
-import { VenueMapEditor } from "../_components/VenueMapEditor";
+import { MapEditorWrapper } from "../_components/MapEditorWrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -104,7 +104,7 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
         </div>
       )}
 
-      <VenueMapEditor
+      <MapEditorWrapper
         initialLat={data.venue.latitude}
         initialLng={data.venue.longitude}
         isApproximate={data.venue.is_approximate === 1}
