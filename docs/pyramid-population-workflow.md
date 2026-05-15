@@ -53,7 +53,10 @@ Current ranges (as of initial population):
 | 93–116 | National League |
 | 117–140 | National League North |
 | 141–164 | National League South |
-| 165+ | Available for Step 3 (NPL Premier, IL Premier, SL Premier Central/South) |
+| 165–188 | NWCFL Premier Division |
+| 189–206 | NWCFL Division One North |
+| 207–225 | NWCFL Division One South |
+| 226+ | Available for Step 3 (NPL Premier, IL Premier, SL Premier Central/South) |
 
 The same `nextClubId` applies to assignment IDs and venue IDs (one venue per club for new clubs).
 
