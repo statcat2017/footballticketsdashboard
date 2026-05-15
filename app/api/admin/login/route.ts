@@ -68,7 +68,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid admin secret." }, { status: 401 });
   }
 
-  resetRateLimit(rateLimitKey);
   const cookieValue = await createAdminSessionCookieValue();
 
   await writeAdminAuditLog(await getDatabase(), {
