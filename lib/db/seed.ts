@@ -80,16 +80,17 @@ export function seedDatabase(db: SqliteDatabase): void {
 
 
     const insertVenue = db.prepare(`
-      INSERT INTO venues (id, name, postcode, latitude, longitude)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         postcode = excluded.postcode,
         latitude = excluded.latitude,
-        longitude = excluded.longitude
+        longitude = excluded.longitude,
+        is_approximate = excluded.is_approximate
     `);
     for (const v of SEED_DATA.venues) {
-      insertVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude);
+      insertVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate);
     }
 
     const insertPyramidClub = db.prepare(`
@@ -189,16 +190,17 @@ export function seedDatabase(db: SqliteDatabase): void {
     }
 
     const insertAppVenue = db.prepare(`
-      INSERT INTO venues (id, name, postcode, latitude, longitude)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         postcode = excluded.postcode,
         latitude = excluded.latitude,
-        longitude = excluded.longitude
+        longitude = excluded.longitude,
+        is_approximate = excluded.is_approximate
     `);
     for (const v of SEED_DATA.venues) {
-      insertAppVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude);
+      insertAppVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate);
     }
 
     const insertClub = db.prepare(`

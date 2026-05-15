@@ -82,13 +82,14 @@ async function upsertClubRowAsync(db: AppDatabase, row: ClubCsvRow): Promise<voi
   `, [row.competition, competitionName(row.competition), competitionTier(row.competition)]);
 
   await db.run(`
-    INSERT INTO venues (id, name, postcode, latitude, longitude)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate)
+    VALUES (?, ?, ?, ?, ?, 0)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       postcode = excluded.postcode,
       latitude = excluded.latitude,
-      longitude = excluded.longitude
+      longitude = excluded.longitude,
+      is_approximate = excluded.is_approximate
   `, [
     venueId,
     row.ground_name,
