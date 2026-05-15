@@ -51,7 +51,9 @@ Current ranges (as of initial population):
 | 45–68 | League One |
 | 69–92 | League Two |
 | 93–116 | National League |
-| 117+ | Available for levels 6+ |
+| 117–140 | National League North |
+| 141–164 | National League South |
+| 165+ | Available for Step 3 (NPL Premier, IL Premier, SL Premier Central/South) |
 
 The same `nextClubId` applies to assignment IDs and venue IDs (one venue per club for new clubs).
 
@@ -76,7 +78,9 @@ https://en.wikipedia.org/wiki/2025%E2%80%9326_Southern_League
 ### Known quirks by division
 | Division | Quirk |
 |----------|-------|
-| National League levels | Wikipedia covers NL, NLN, NLS on a single page with separate sections. The `2025–26_National_League` page has three sections: "National League", "National League North", "National League South". Each has its own "Stadiums and locations" table. |
+| National League levels | Wikipedia covers NL, NLN, NLS on a single page with separate sections. The `2025–26_National_League` page has three sections: "National League", "National League North", "National League South". Each has its own "Stadiums and locations" table. Use `action=parse&prop=sections` to find the correct section index, then fetch section-specific wikitext or HTML tables. |
+| Step 2 grounds | Many NL North/South grounds lack dedicated Wikipedia pages. Use the club's Wikipedia page (`prop=revisions&rvsection=0`) to extract the `ground` field from the infobox, then search separately for ground coordinates/postcodes. |
+| Data editing caution | When inserting new array elements into `pyramid.ts`, the `];` pattern appears multiple times (array close, ternary defaults, etc). Always anchor edits to the surrounding `export const` line to avoid inserting into the wrong scope. |
 | Step 7 leagues | Wikipedia covers NPL, IL, SL in separate articles. Each has a single "Stadiums and locations" table. |
 | Ground names | Some grounds have naming-rights sponsor names that change yearly. Always use the current-season name from the Wikipedia infobox. |
 | Welsh clubs | Cardiff, Swansea, Wrexham, Newport play in the English pyramid. Include them. |
