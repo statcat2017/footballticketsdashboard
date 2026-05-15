@@ -33,7 +33,6 @@ CREATE TABLE IF NOT EXISTS pyramid_edges (
   from_division_id INTEGER NOT NULL REFERENCES pyramid_divisions(id) ON DELETE CASCADE,
   to_division_id INTEGER NOT NULL REFERENCES pyramid_divisions(id) ON DELETE CASCADE,
   movement_type TEXT NOT NULL CHECK (movement_type IN ('promotion', 'relegation')),
-  slots INTEGER NOT NULL DEFAULT 1 CHECK (slots > 0),
   UNIQUE (from_division_id, to_division_id, movement_type)
 );
 

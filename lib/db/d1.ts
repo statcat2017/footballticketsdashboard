@@ -329,8 +329,8 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
 
   for (const edge of MEN_PYRAMID_EDGES) {
     add(
-      "INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type, slots) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_division_id = excluded.from_division_id, to_division_id = excluded.to_division_id, movement_type = excluded.movement_type, slots = excluded.slots",
-      [edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type, edge.slots]
+      "INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_division_id = excluded.from_division_id, to_division_id = excluded.to_division_id, movement_type = excluded.movement_type",
+      [edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type]
     );
   }
 

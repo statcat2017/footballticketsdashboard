@@ -153,7 +153,7 @@ describe("pyramid validation", () => {
         }
       ],
       [
-        { id: 1, from_division_id: 1, to_division_id: 2, movement_type: "promotion", slots: 1 }
+        { id: 1, from_division_id: 1, to_division_id: 2, movement_type: "promotion" }
       ]
     );
 
