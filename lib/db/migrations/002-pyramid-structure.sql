@@ -54,11 +54,6 @@ CREATE TABLE IF NOT EXISTS pyramid_clubs (
   name TEXT NOT NULL UNIQUE,
   aliases TEXT,
   league_name TEXT,
-  ground_name TEXT,
-  ground_address TEXT,
-  postcode TEXT,
-  latitude REAL,
-  longitude REAL,
   source_url TEXT,
   verified_at TEXT,
   status TEXT NOT NULL DEFAULT 'partial' CHECK (status IN ('known', 'partial', 'missing'))
@@ -100,4 +95,19 @@ CREATE INDEX IF NOT EXISTS idx_pyramid_season_divisions_season ON pyramid_season
 CREATE INDEX IF NOT EXISTS idx_pyramid_season_divisions_division ON pyramid_season_divisions(division_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_season_memberships_season ON pyramid_season_memberships(season_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_season_memberships_division ON pyramid_season_memberships(season_division_id);
+CREATE TABLE IF NOT EXISTS club_venue_assignments (
+  id INTEGER PRIMARY KEY,
+  club_id INTEGER NOT NULL REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
+  venue_id INTEGER NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  is_primary INTEGER NOT NULL DEFAULT 1 CHECK (is_primary IN (0, 1)),
+  UNIQUE (club_id, effective_from),
+  UNIQUE (club_id, venue_id, effective_from)
+);
+
+
+
 CREATE INDEX IF NOT EXISTS idx_pyramid_movements_season ON pyramid_movements(season_id);
+CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_club ON club_venue_assignments(club_id);
+CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_venue ON club_venue_assignments(venue_id);
