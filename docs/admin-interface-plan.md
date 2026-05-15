@@ -12,6 +12,8 @@ The admin source of truth is the pyramid model. Public-search tables are updated
 - Use `/admin/login` to set an HTTP-only admin cookie.
 - Require CSRF protection for admin mutation routes.
 - Record admin changes in an audit log with a static actor value.
+- Rate limit failed admin login attempts before exposing data-editing tools.
+- Defer login CSRF for the MVP while retaining CSRF protection on authenticated admin mutations.
 - Keep seasons as first-class records.
 - Create target seasons by copying memberships from a source season.
 - Use a division-board league swapper with explicit move controls.

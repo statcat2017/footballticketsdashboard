@@ -181,9 +181,12 @@ describe("travel cache fill command path", () => {
       VALUES ('test', 'travel-birmingham', 'ELC', 6, 4, 6, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
     `);
 
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ journeys: [] }), { status: 200 }));
+
     const result = await fillTravelCacheForPostcode(db, "B9 4RL", {
       dateFrom: "2026-05-10",
-      dateTo: "2026-05-15"
+      dateTo: "2026-05-15",
+      fetchImpl: fetchImpl as typeof fetch
     });
 
     expect(result).toMatchObject({
@@ -201,6 +204,7 @@ describe("travel cache fill command path", () => {
     `);
 
     expect(row?.count).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("prewarms every known ground district against all venues", async () => {

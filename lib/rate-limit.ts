@@ -16,6 +16,7 @@ export function checkRateLimit(
   maxRequests: number,
   windowMs: number
 ): RateLimitResult {
+  // Mutating helper: increments the window counter when the caller records a failure.
   const now = Date.now();
   const entry = store.get(key);
 
@@ -30,4 +31,28 @@ export function checkRateLimit(
 
   entry.count++;
   return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.resetAt };
+}
+
+export function getRateLimitStatus(
+  key: string,
+  maxRequests: number,
+  windowMs: number
+): RateLimitResult {
+  // Read-only helper: lets callers gate work before they parse bodies or do other work.
+  const now = Date.now();
+  const entry = store.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    return { allowed: true, remaining: maxRequests, resetAt: now + windowMs };
+  }
+
+  if (entry.count >= maxRequests) {
+    return { allowed: false, remaining: 0, resetAt: entry.resetAt };
+  }
+
+  return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.resetAt };
+}
+
+export function resetRateLimit(key: string): void {
+  store.delete(key);
 }

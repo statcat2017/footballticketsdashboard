@@ -1,3 +1,5 @@
+import React from "react";
+
 import { getAdminConfig } from "@/lib/admin/config";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +11,7 @@ export default async function AdminLoginPage() {
     <main style={{ maxWidth: "28rem", margin: "4rem auto", padding: "0 1rem", fontFamily: "system-ui, sans-serif" }}>
       <h1>Admin login</h1>
       {!configured ? (
-        <p>Admin access is not configured. Set ADMIN_SECRET and ADMIN_SESSION_SECRET.</p>
+        <p>Admin access is unavailable.</p>
       ) : (
         <form method="post" action="/api/admin/login" style={{ display: "grid", gap: "1rem" }}>
           <label style={{ display: "grid", gap: "0.35rem" }}>

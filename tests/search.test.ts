@@ -36,6 +36,16 @@ describe("fixture search", () => {
 
   it("returns live fixtures sorted by distance when no radius is supplied", async () => {
     const db = createAppDatabase();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+
+      if (url.includes("api.tfl.gov.uk")) {
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,

@@ -1,6 +1,6 @@
 # TICKET-029: Admin Login CSRF And Public Config Message
 
-Status: open
+Status: review
 Owner: Backend
 Priority: medium
 Depends on: TICKET-024
