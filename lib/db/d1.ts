@@ -296,6 +296,14 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
 
   await db.exec(schemaSql);
 
+  // Idempotent migration for existing D1 databases: add is_approximate if missing
+  const colCheck = await db.get<{ count: number }>(
+    "SELECT COUNT(*) as count FROM pragma_table_info('venues') WHERE name = 'is_approximate'"
+  );
+  if (!colCheck || colCheck.count === 0) {
+    await db.exec("ALTER TABLE venues ADD COLUMN is_approximate INTEGER NOT NULL DEFAULT 0 CHECK (is_approximate IN (0, 1))");
+  }
+
   const pyramidIssues = validatePyramidSeason(MEN_PYRAMID_DIVISIONS, MEN_PYRAMID_SEASON_DIVISIONS, MEN_PYRAMID_MEMBERSHIPS, MEN_PYRAMID_MOVEMENTS);
 
   if (pyramidIssues.length > 0) {

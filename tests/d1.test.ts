@@ -63,7 +63,9 @@ describe("D1 initialization", () => {
     expect(clubsIndex).toBeLessThan(membershipIndex);
     expect(clubsIndex).toBeLessThan(movementIndex);
     expect(batchIndex).toBe(operations.length - 1);
-    expect(batchSizes).toEqual([operations.filter((operation) => operation.startsWith("prepare:")).length]);
+    const totalPrepares = operations.filter((operation) => operation.startsWith("prepare:"));
+    const batchPrepares = totalPrepares.filter((op) => !op.includes("pragma_table_info"));
+    expect(batchSizes).toEqual([batchPrepares.length]);
   });
 });
 
