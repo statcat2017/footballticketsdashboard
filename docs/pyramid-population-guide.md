@@ -73,3 +73,32 @@ All divisions are at capacity—matches the pyramid schema's `max_size`.
 - **IDs 93–116**: National League
 
 This convention allows future agents to know a club's approximate level from its ID. New clubs added at levels 6+ should continue from ID 117.
+
+## Ground Data Enrichment (Round 2)
+
+### What Was Populated
+- **Postcodes** — All 116 clubs now have ground postcodes.
+- **Coordinates** — All 116 clubs have latitude/longitude for their ground.
+- **Ticket source URLs** — Each club has a `source_url` pointing to its official ticket or general admission page.
+- **`verified_at`** — Set to `"2026-05-15"` for all enriched records.
+
+### Data Sources
+- **Postcodes/coordinates**: Compiled from established football ground data (Wikipedia, official club sites). PL and Championship postcodes are precise; lower-league postcodes may be approximate for grounds with less public documentation.
+- **Ticket URLs**: Premier League URLs were fetched and verified via live HTTP checks. Championship and lower-league URLs follow the convention `https://<clubdomain>/tickets` and may need individual verification.
+
+### Fields Still Null
+| Field             | Reason                                                                |
+|-------------------|-----------------------------------------------------------------------|
+| `aliases`         | Requires per-club research (common nicknames, variants)               |
+| `league_name`     | Duplicative of club name; needs a policy decision                     |
+| `ground_address`  | Street address available for some grounds but not systematically gathered |
+
+### Ticket Prices
+Actual price data (`club_ticket_prices` table) is not populated for pyramid clubs. The existing seed data has prices for 6 app-level clubs (Chelsea, Arsenal, etc.). Gathering real-time prices for 116 clubs would require scraping each club's ticket portal, which is fragile and season-dependent. The `source_url` field now points to each club's ticket landing page so users can find current pricing.
+
+### Wikipedia API Lessons
+- The MediaWiki API rate-limits aggressively (~1 req/s with delays needed).
+- Using `action=query&prop=coordinates|revisions` with `rvsection=0` extracts wikitext containing location/postcode data.
+- The REST API (`/page/summary/`) has friendlier rate limits but doesn't expose infobox data.
+- For bulk research, a 500ms+ delay between batches is required to avoid 429 errors.
+- Some stadium pages use disambiguation suffixes (e.g. "Stamford Bridge (stadium)", "St Andrew's (stadium)") which must be accounted for in page titles.
