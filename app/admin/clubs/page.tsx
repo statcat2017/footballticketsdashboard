@@ -138,12 +138,8 @@ export default async function AdminClubsPage() {
                   <tbody>
                     {division.clubs.map((club) => (
                       <tr key={club.club_id} style={{
-                        borderBottom: "1px solid #eef1f1",
-                        transition: "background 0.1s"
-                      }}
-                        onMouseOver={(e) => (e.currentTarget.style.background = "#f5f7f7")}
-                        onMouseOut={(e) => (e.currentTarget.style.background = "")}
-                      >
+                        borderBottom: "1px solid #eef1f1"
+                      }}>
                         <td style={{ padding: "0.6rem 1rem" }}>
                           <Link href={`/admin/clubs/${club.club_id}`} style={{
                             color: "#17221f",
