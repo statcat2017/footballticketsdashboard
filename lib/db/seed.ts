@@ -1,6 +1,7 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import { SEED_DATA } from "./d1.ts";
 import {
+  CLUB_VENUE_ASSIGNMENTS,
   MEN_PYRAMID_CLUBS,
   MEN_PYRAMID_DIVISIONS,
   MEN_PYRAMID_EDGES,
@@ -77,24 +78,41 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertPyramidSeasonDivision.run(seasonDivision.id, seasonDivision.season_id, seasonDivision.template_id, seasonDivision.division_id, seasonDivision.status, seasonDivision.locked_at);
     }
 
+
+    const insertVenue = db.prepare(`
+      INSERT INTO venues (id, name, postcode, latitude, longitude)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        postcode = excluded.postcode,
+        latitude = excluded.latitude,
+        longitude = excluded.longitude
+    `);
+    for (const v of SEED_DATA.venues) {
+      insertVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude);
+    }
+
     const insertPyramidClub = db.prepare(`
-      INSERT INTO pyramid_clubs (
-        id, name, aliases, league_name, ground_name, ground_address, postcode,
-        latitude, longitude, source_url, verified_at, status
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO pyramid_clubs (id, name, aliases, league_name, source_url, verified_at, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         aliases = excluded.aliases,
         league_name = excluded.league_name,
-        ground_name = excluded.ground_name,
-        ground_address = excluded.ground_address,
-        postcode = excluded.postcode,
-        latitude = excluded.latitude,
-        longitude = excluded.longitude,
         source_url = excluded.source_url,
         verified_at = excluded.verified_at,
         status = excluded.status
+    `);
+
+    const insertClubVenueAssignment = db.prepare(`
+      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        club_id = excluded.club_id,
+        venue_id = excluded.venue_id,
+        effective_from = excluded.effective_from,
+        effective_to = excluded.effective_to,
+        is_primary = excluded.is_primary
     `);
     for (const club of MEN_PYRAMID_CLUBS) {
       insertPyramidClub.run(
@@ -102,15 +120,14 @@ export function seedDatabase(db: SqliteDatabase): void {
         club.name,
         club.aliases,
         club.league_name,
-        club.ground_name,
-        club.ground_address,
-        club.postcode,
-        club.latitude,
-        club.longitude,
         club.source_url,
         club.verified_at,
         club.status
       );
+    }
+
+    for (const a of CLUB_VENUE_ASSIGNMENTS) {
+      insertClubVenueAssignment.run(a.id, a.club_id, a.venue_id, a.effective_from, a.effective_to, a.is_primary);
     }
 
     const insertPyramidMembership = db.prepare(`
@@ -171,7 +188,7 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertCompetition.run(c.code, c.name, c.tier);
     }
 
-    const insertVenue = db.prepare(`
+    const insertAppVenue = db.prepare(`
       INSERT INTO venues (id, name, postcode, latitude, longitude)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
@@ -181,7 +198,7 @@ export function seedDatabase(db: SqliteDatabase): void {
         longitude = excluded.longitude
     `);
     for (const v of SEED_DATA.venues) {
-      insertVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude);
+      insertAppVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude);
     }
 
     const insertClub = db.prepare(`

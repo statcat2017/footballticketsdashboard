@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db/pyramid", () => ({
+  CLUB_VENUE_ASSIGNMENTS: [],
   MEN_PYRAMID_TEMPLATE: { id: 1, code: "mens", name: "Men's English Pyramid", sport: "mens", status: "active" },
   MEN_PYRAMID_DIVISIONS: [
     { id: 1, template_id: 1, code: "premier-league", name: "Premier League", level: 1, max_size: 20 }
@@ -16,11 +17,6 @@ vi.mock("@/lib/db/pyramid", () => ({
       name: "Stub Club",
       aliases: null,
       league_name: null,
-      ground_name: null,
-      ground_address: null,
-      postcode: null,
-      latitude: null,
-      longitude: null,
       source_url: null,
       verified_at: null,
       status: "partial"

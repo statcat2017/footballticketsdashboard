@@ -108,6 +108,30 @@ CREATE TABLE IF NOT EXISTS venues (
   longitude REAL NOT NULL
 );
 
+
+CREATE TABLE IF NOT EXISTS club_venue_assignments (
+  id INTEGER PRIMARY KEY,
+  club_id INTEGER NOT NULL REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
+  venue_id INTEGER NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  is_primary INTEGER NOT NULL DEFAULT 1 CHECK (is_primary IN (0, 1)),
+  UNIQUE (club_id, effective_from),
+  UNIQUE (club_id, venue_id, effective_from)
+);
+
+
+CREATE TABLE IF NOT EXISTS club_venue_assignments (
+  id INTEGER PRIMARY KEY,
+  club_id INTEGER NOT NULL REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
+  venue_id INTEGER NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  is_primary INTEGER NOT NULL DEFAULT 1 CHECK (is_primary IN (0, 1)),
+  UNIQUE (club_id, effective_from),
+  UNIQUE (club_id, venue_id, effective_from)
+);
+
 CREATE TABLE IF NOT EXISTS clubs (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
@@ -194,6 +218,10 @@ CREATE INDEX IF NOT EXISTS idx_fixtures_home_club ON fixtures(home_club_id);
 CREATE INDEX IF NOT EXISTS idx_fixtures_away_club ON fixtures(away_club_id);
 CREATE INDEX IF NOT EXISTS idx_fixtures_venue ON fixtures(venue_id);
 CREATE INDEX IF NOT EXISTS idx_fixtures_kickoff_status ON fixtures(kickoff_at, status, is_historical);
+CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_club ON club_venue_assignments(club_id);
+CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_venue ON club_venue_assignments(venue_id);
+CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_club ON club_venue_assignments(club_id);
+CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_venue ON club_venue_assignments(venue_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_divisions_template ON pyramid_divisions(template_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_edges_from ON pyramid_edges(from_division_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_edges_to ON pyramid_edges(to_division_id);
