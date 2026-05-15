@@ -38,3 +38,5 @@ Important rules:
 - Pyramid seasons and divisions start `open`; they can be marked `locked` when a snapshot is complete.
 - `pyramid_clubs` is sparse by design, so clubs can be added later without requiring a full division.
 - Validation treats duplicate club placement, over-capacity, unknown divisions, template mismatches, and invalid movements as errors.
+- `pyramid_movements` stores at most one movement per club per season.
+- The D1 seed path wraps the full bootstrap in a transaction so a failure rolls back cleanly.
