@@ -237,6 +237,20 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
     );
   }
 
+  for (const c of SEED_DATA.competitions) {
+    add(
+      "INSERT INTO competitions (code, name, tier) VALUES (?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier",
+      [c.code, c.name, c.tier]
+    );
+  }
+
+  for (const v of SEED_DATA.venues) {
+    add(
+      "INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, postcode = excluded.postcode, latitude = excluded.latitude, longitude = excluded.longitude",
+      [v.id, v.name, v.postcode, v.latitude, v.longitude]
+    );
+  }
+
   for (const cl of SEED_DATA.clubs) {
     add(
       "INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, competition_code, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, football_data_team_id = excluded.football_data_team_id, aliases = excluded.aliases, short_name = excluded.short_name, competition_code = excluded.competition_code, venue_id = excluded.venue_id, official_site_url = excluded.official_site_url, generic_ticket_url = excluded.generic_ticket_url, price_source_url = excluded.price_source_url, verified_at = excluded.verified_at",
@@ -255,20 +269,6 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
     add(
       "INSERT INTO pyramid_movements (id, season_id, template_id, club_id, from_season_division_id, to_season_division_id, movement_type, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET season_id = excluded.season_id, template_id = excluded.template_id, club_id = excluded.club_id, from_season_division_id = excluded.from_season_division_id, to_season_division_id = excluded.to_season_division_id, movement_type = excluded.movement_type, note = excluded.note, created_at = excluded.created_at",
       [movement.id, movement.season_id, movement.template_id, movement.club_id, movement.from_season_division_id, movement.to_season_division_id, movement.movement_type, movement.note, movement.created_at]
-    );
-  }
-
-  for (const c of SEED_DATA.competitions) {
-    add(
-      "INSERT INTO competitions (code, name, tier) VALUES (?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier",
-      [c.code, c.name, c.tier]
-    );
-  }
-
-  for (const v of SEED_DATA.venues) {
-    add(
-      "INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, postcode = excluded.postcode, latitude = excluded.latitude, longitude = excluded.longitude",
-      [v.id, v.name, v.postcode, v.latitude, v.longitude]
     );
   }
 
