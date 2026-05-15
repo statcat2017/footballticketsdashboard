@@ -7,6 +7,14 @@ To reset local data, delete `data/nearmefc.sqlite` and run `npm run db:setup` ag
 Core tables:
 
 - `competitions`
+- `pyramid_templates`
+- `pyramid_divisions`
+- `pyramid_edges`
+- `pyramid_seasons`
+- `pyramid_season_divisions`
+- `pyramid_clubs`
+- `pyramid_season_memberships`
+- `pyramid_movements`
 - `venues`
 - `clubs`
 - `fixtures`
@@ -26,3 +34,7 @@ Important rules:
 - Imported fixtures use `source = 'football-data'`, are upserted by `source_id`, and record `source_updated_at` plus `imported_at`.
 - Travel cache is keyed by postcode district and venue.
 - Corrections are saved as `pending`; they never update live data automatically.
+- The men's pyramid is seeded as a reusable static template from Premier League through Step 3.
+- Pyramid seasons and divisions start `open`; they can be marked `locked` when a snapshot is complete.
+- `pyramid_clubs` is sparse by design, so clubs can be added later without requiring a full division.
+- Validation treats duplicate club placement, over-capacity, unknown divisions, template mismatches, and invalid movements as errors.
