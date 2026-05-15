@@ -48,7 +48,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Admin is not configured." }, { status: 503 });
   }
 
-  const secret = await readSecret(request);
   const rateLimitKey = adminLoginRateLimitKey(request);
   const rateLimitStatus = getRateLimitStatus(rateLimitKey, MAX_FAILED_LOGIN_ATTEMPTS, LOGIN_RATE_LIMIT_WINDOW_MS);
 
@@ -56,7 +55,10 @@ export async function POST(request: Request) {
     return rateLimitedResponse(rateLimitStatus.resetAt);
   }
 
+  const secret = await readSecret(request);
+
   if (!secret || !secureCompare(secret, config.adminSecret)) {
+    // Increment happens here; the next request will be blocked if the limit is now reached.
     const rateLimit = checkRateLimit(rateLimitKey, MAX_FAILED_LOGIN_ATTEMPTS, LOGIN_RATE_LIMIT_WINDOW_MS);
 
     if (!rateLimit.allowed) {
@@ -76,6 +78,7 @@ export async function POST(request: Request) {
     after: { result: "success" }
   });
 
+  resetRateLimit(rateLimitKey);
   const response = NextResponse.redirect(new URL("/admin", request.url), { status: 303 });
   response.cookies.set(ADMIN_COOKIE_NAME, cookieValue, adminCookieOptions());
   return response;
