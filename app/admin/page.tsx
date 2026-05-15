@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 
@@ -19,7 +20,29 @@ export default async function AdminDashboardPage() {
           <button type="submit">Log out</button>
         </form>
       </header>
-      <section>
+      <section style={{ marginTop: "1.5rem" }}>
+        <h2>Phase 2A &mdash; Club Browser</h2>
+        <p style={{ margin: "0.25rem 0 0.75rem", color: "#6f7e7a", fontSize: "14px" }}>
+          Read-only club and ground lookup by season and division.
+        </p>
+        <Link href="/admin/clubs" style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "0.4rem",
+          border: "1px solid #147a4d",
+          borderRadius: "7px",
+          background: "#147a4d",
+          color: "#fff",
+          padding: "0.5rem 1rem",
+          fontSize: "14px",
+          fontWeight: 700,
+          textDecoration: "none"
+        }}>
+          Browse clubs &rarr;
+        </Link>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
         <h2>Phase 1 foundation</h2>
         <ul>
           <li>Admin session is active.</li>
