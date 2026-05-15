@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getAdminVenue } from "@/lib/admin/venues";
+import { VenueMapEditor } from "../_components/VenueMapEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,16 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
           Used by: <Link href={`/admin/clubs/${data.sharingClubs[0].id}`} style={{ color: "#0e5737", fontWeight: 600 }}>{data.sharingClubs[0].name}</Link>
         </div>
       )}
+
+      <VenueMapEditor
+        initialLat={data.venue.latitude}
+        initialLng={data.venue.longitude}
+        isApproximate={data.venue.is_approximate === 1}
+        latInputId="latitude"
+        lngInputId="longitude"
+        approxInputId="is_approximate"
+        mode="edit"
+      />
 
       <section style={{
         border: "1px solid #dce3e2",
