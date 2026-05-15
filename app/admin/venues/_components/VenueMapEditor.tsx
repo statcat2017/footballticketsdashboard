@@ -228,3 +228,6 @@ export function VenueMapEditor({
     </details>
   );
 }
+
+export default VenueMapEditor;
+
