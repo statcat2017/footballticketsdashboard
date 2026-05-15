@@ -27,10 +27,10 @@ The admin source of truth is the pyramid model. Public-search tables are updated
 - Keep one current movement per club per target season; record revisions in the audit log.
 - Lock division rosters independently when moves are confirmed and valid.
 - Allow capacity overrides when a finalized division starts above or below its configured max size, with an override note stored on the season division.
-- Edit club identity, club status, and primary ground assignment in the first admin version. Implemented in Phase 2B with inline editing on the club detail page.
+- Edit club identity, club status, and primary ground assignment in the first admin version.
 - Keep league/division structure editing out of scope for the first version; only manage memberships.
-- Preserve venue assignment history with explicit admin-chosen effective dates. Default is next July 1st (overridable).
-- Allow shared venues, and warn (require confirmation) before editing a venue currently used by multiple clubs.
+- Preserve venue assignment history with explicit admin-chosen effective dates.
+- Allow shared venues, and warn before editing a venue currently used by multiple clubs.
 - Use Google Maps JavaScript API in admin for place/postcode search and manual pin placement.
 - Keep venue coordinates approximate until an admin manually places or drags the pin.
 - Delete travel cache for a venue only when the straight-line movement from old coordinates to new coordinates is greater than one mile.
@@ -41,7 +41,7 @@ The admin source of truth is the pyramid model. Public-search tables are updated
 - Do not add venue source metadata in the first version.
 - Add export/download support for memberships, movements, clubs, and venues.
 - Keep correction review out of this feature slice.
-- Make manual admin edits win over import/seed scripts by tracking admin-updated rows. Column (`admin_updated_at`) exists in schema; seed/import protection logic deferred.
+- Make manual admin edits win over import/seed scripts by tracking admin-updated rows.
 
 ## Phase 1: Admin Foundation
 
@@ -85,31 +85,19 @@ Phase 1 acceptance criteria:
 - Write-batch helper commits all writes on success and rolls back all writes on failure.
 - The foundation works locally with SQLite and in Cloudflare D1 runtime paths.
 
-## Phase 2: Club And Ground Editor (Split Into Sub-phases)
+## Phase 2: Club And Ground Editor
 
 Purpose: allow manual maintenance of club identity and primary ground data.
 
-### Phase 2A: Read-Only Club Browser (Complete)
+Scope:
 
-- Club list grouped by division for the latest season, with status badges and current primary ground column.
-- Club detail page with club identity, current primary ground, venue assignment history, and warnings for missing/shared grounds.
-- Latest-season scoping: both list and detail queries are filtered to the latest `pyramid_seasons` row.
-
-### Phase 2B: Club Identity & Venue CRUD (Complete)
-
-- **Club identity editor** — inline edit form on `/admin/clubs/[id]` (name, aliases, status, source URL, verified date). Toggled via `?edit=1`. All mutations audited and stamp `admin_updated_at`.
-- **Venue CRUD** — standalone pages at `/admin/venues/` (list with club count), `/admin/venues/new` (create form), `/admin/venues/[id]` (detail + edit form with shared-venue warning).
-- **Shared-venue confirmation** — if a venue has >1 current primary assignment, edits require checking a confirmation checkbox before proceeding. Enforced at the service layer.
-- **Venue assignment** — assign-primary-ground form on club detail page. Default `effective_from` is the next July 1st; overridable. Old assignment closed with `effective_to = effective_from - 1 day`. Uses `writeBatch()`.
-- **Create-then-assign flow** — venues created independently, then assigned to clubs. Supports neutral shared grounds (e.g. Twickenham, Wembley).
-- **Write-path validation** — coordinate range checks, real-date parsing (`isValidDate()`), same-venue rejection, club/venue existence checks, `is_approximate` clearable from 1 to 0.
-- **Database** — migration 007 adds `admin_updated_at TEXT` to `pyramid_clubs`, `venues`, and `club_venue_assignments`. Updated in `schema.ts`. Import protection deferred.
-
-### Phase 2C: Google Maps Picker & Travel-Cache Invalidation (Not Started)
-
+- Club list and editor for name, aliases, status, source URL, verified date, and current primary venue.
+- Venue editor for name, postcode, latitude, longitude, and approximate flag.
 - Google Maps picker with place/postcode search and manual pin placement.
-- Travel-cache invalidation when venue coordinates move more than one straight-line mile.
-- Allow approximate coordinates until an admin manually places or drags the pin.
+- Shared-venue warning showing affected clubs before venue edits.
+- Assignment history updates through `club_venue_assignments` with admin-chosen effective dates.
+- Travel-cache invalidation when coordinates move more than one straight-line mile.
+- Admin audit entries and `admin_updated_at` protection for edited records.
 
 ## Phase 3: Season League Swapper
 
@@ -140,10 +128,10 @@ Scope:
 - Do not alter fixtures during publish.
 - Ensure import/seed scripts skip admin-edited fields unless forced.
 
-## Resolved Implementation Details
+## Open Implementation Details
 
-- Cookie signing format: HMAC-SHA256 via `createHmac`, base64url-encoded. 8-hour expiry.
-- CSRF token format: same HMAC-SHA256 signed token, separate purpose field. 8-hour expiry.
-- Route protection: per-route helpers (`requireAdminPageSession` for pages, `getAdminSessionFromRequest` for API routes). No middleware.
-- D1 transactions: `D1Database.batch()` via `writeBatch()`.
-- Schema migrations: one numbered SQL file per migration, sorted and applied via `applyPendingMigrations`.
+- Cookie signing format and expiry duration.
+- Exact CSRF token format.
+- Whether admin route protection should use middleware, route-level helpers, or both.
+- Exact D1 transaction implementation. D1 supports transactional batches in some contexts, but the adapter should expose a small app-level interface and hide the runtime differences.
+- Whether foundational schema changes should be split into separate migration files per phase or grouped by phase.
