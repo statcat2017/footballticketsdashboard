@@ -5,7 +5,7 @@ import { fillTravelCacheForGroundDistricts, fillTravelCacheForPostcode } from "@
 import {
   lookupOpenRouteServiceDrivingMinutes,
   lookupTravelEstimate,
-  lookupTravelTimePublicTransportMinutes
+  lookupTflPublicTransportMinutes
 } from "@/lib/travel/providers";
 
 describe("travel provider integrations", () => {
@@ -28,34 +28,26 @@ describe("travel provider integrations", () => {
     )).resolves.toBe(31);
   });
 
-  it("parses TravelTime public transport durations", async () => {
+  it("parses TfL public transport durations", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
-      results: [
-        {
-          locations: [
-            {
-              properties: [
-                {
-                  travel_time: 2580
-                }
-              ]
-            }
-          ]
-        }
+      journeys: [
+        { duration: 36 }
       ]
     }), { status: 200 }));
 
-    await expect(lookupTravelTimePublicTransportMinutes(
+    await expect(lookupTflPublicTransportMinutes(
       { latitude: 51.48, longitude: -0.19 },
       { latitude: 51.55, longitude: -0.11 },
-      "app-id",
-      "travel-key",
       fetchImpl as typeof fetch
-    )).resolves.toBe(43);
+    )).resolves.toBe(36);
   });
 
-  it("falls back cleanly when provider keys are missing", async () => {
-    const fetchImpl = vi.fn();
+  it("returns TfL results when no driving provider is configured", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      journeys: [
+        { duration: 36 }
+      ]
+    }), { status: 200 }));
 
     await expect(lookupTravelEstimate(
       { latitude: 51.48, longitude: -0.19 },
@@ -64,29 +56,27 @@ describe("travel provider integrations", () => {
       fetchImpl as typeof fetch
     )).resolves.toEqual({
       drivingMinutes: null,
-      publicTransportMinutes: null,
-      provider: null
+      publicTransportMinutes: 36,
+      provider: "tfl"
     });
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back cleanly when one provider fails", async () => {
+  it("combines ORS and TfL estimates when both providers are available", async () => {
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(new Response("rate limit", { status: 429 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        results: [
+        routes: [
           {
-            locations: [
-              {
-                properties: [
-                  {
-                    travel_time: 2400
-                  }
-                ]
-              }
-            ]
+            summary: {
+              duration: 1860
+            }
           }
+        ]
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        journeys: [
+          { duration: 36 }
         ]
       }), { status: 200 }));
 
@@ -95,14 +85,12 @@ describe("travel provider integrations", () => {
       { latitude: 51.55, longitude: -0.11 },
       {
         openRouteServiceApiKey: "ors-key",
-        travelTimeAppId: "app-id",
-        travelTimeApiKey: "travel-key"
       },
       fetchImpl as typeof fetch
     )).resolves.toEqual({
-      drivingMinutes: null,
-      publicTransportMinutes: 40,
-      provider: "traveltime"
+      drivingMinutes: 31,
+      publicTransportMinutes: 36,
+      provider: "openrouteservice+tfl"
     });
   });
 });
@@ -126,13 +114,13 @@ describe("travel cache fill command path", () => {
         routes: [{ summary: { duration: 600 } }]
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        results: [{ locations: [{ properties: [{ travel_time: 900 }] }] }]
+        journeys: [{ duration: 15 }]
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         routes: [{ summary: { duration: 7200 } }]
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        results: [{ locations: [{ properties: [{ travel_time: 8100 }] }] }]
+        journeys: [{ duration: 135 }]
       }), { status: 200 }));
 
     const result = await fillTravelCacheForPostcode(db, "NR1 1JE", {
@@ -169,14 +157,14 @@ describe("travel cache fill command path", () => {
       {
         postcode_district: "NR1",
         venue_id: 1,
-        provider: "openrouteservice+traveltime",
+        provider: "openrouteservice+tfl",
         driving_minutes: 10,
         public_transport_minutes: 15
       },
       {
         postcode_district: "NR1",
         venue_id: 5,
-        provider: "openrouteservice+traveltime",
+        provider: "openrouteservice+tfl",
         driving_minutes: 120,
         public_transport_minutes: 135
       }

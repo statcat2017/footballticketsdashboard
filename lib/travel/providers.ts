@@ -38,6 +38,12 @@ const travelTimeResponseSchema = z.object({
   })).optional()
 });
 
+const tflJourneyResponseSchema = z.object({
+  journeys: z.array(z.object({
+    duration: z.number()
+  })).optional()
+});
+
 function nextWeekdayMorningIso(now = new Date()): string {
   const value = new Date(now);
   value.setUTCDate(value.getUTCDate() + 1);
@@ -160,6 +166,33 @@ export async function lookupTravelTimePublicTransportMinutes(
   return Math.round(travelTimeSeconds / 60);
 }
 
+export async function lookupTflPublicTransportMinutes(
+  from: Coordinate,
+  to: Coordinate,
+  fetchImpl?: typeof fetch
+): Promise<number | null> {
+  try {
+    const payload = await fetchJson(
+      `https://api.tfl.gov.uk/Journey/JourneyResults/${from.latitude},${from.longitude}/to/${to.latitude},${to.longitude}`,
+      tflJourneyResponseSchema,
+      {
+        method: "GET",
+        fetchImpl
+      }
+    );
+
+    const durations = payload.journeys?.map((journey) => journey.duration).filter((duration): duration is number => typeof duration === "number");
+
+    if (!durations || durations.length === 0) {
+      return null;
+    }
+
+    return Math.min(...durations);
+  } catch {
+    return null;
+  }
+}
+
 export async function lookupTravelEstimate(
   from: Coordinate,
   to: Coordinate,
@@ -170,9 +203,7 @@ export async function lookupTravelEstimate(
     config.openRouteServiceApiKey
       ? lookupOpenRouteServiceDrivingMinutes(from, to, config.openRouteServiceApiKey, fetchImpl)
       : Promise.resolve(null),
-    config.travelTimeAppId && config.travelTimeApiKey
-      ? lookupTravelTimePublicTransportMinutes(from, to, config.travelTimeAppId, config.travelTimeApiKey, fetchImpl)
-      : Promise.resolve(null)
+    lookupTflPublicTransportMinutes(from, to, fetchImpl)
   ]);
 
   const drivingMinutes = results[0]?.status === "fulfilled" ? results[0].value : null;
@@ -185,7 +216,7 @@ export async function lookupTravelEstimate(
   }
 
   if (publicTransportMinutes !== null) {
-    providers.push("traveltime");
+    providers.push("tfl");
   }
 
   return {
