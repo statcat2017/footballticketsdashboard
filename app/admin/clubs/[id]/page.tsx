@@ -10,17 +10,16 @@ export default async function AdminClubDetailPage(props: { params: Promise<{ id:
   const { id } = await props.params;
   const clubId = Number(id);
 
-  if (!Number.isFinite(clubId)) {
+  if (!Number.isInteger(clubId) || clubId <= 0) {
     notFound();
   }
 
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
 
-  let data;
-  try {
-    data = await getAdminClubDetail(clubId);
-  } catch {
+  const data = await getAdminClubDetail(clubId);
+
+  if (!data) {
     notFound();
   }
 

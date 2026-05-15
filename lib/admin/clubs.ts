@@ -182,8 +182,9 @@ export async function getAdminClubList(): Promise<AdminClubListData> {
   };
 }
 
-export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetailData> {
+export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetailData | null> {
   const db = await getDatabase();
+  const seasonId = await getLatestSeasonId(db);
 
   const clubRow = await db.get<ClubDetailRow>(
     `SELECT
@@ -200,12 +201,12 @@ export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetai
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = pc.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE pc.id = ?`,
-    [clubId]
+    WHERE pc.id = ? AND psm.season_id = ?`,
+    [clubId, seasonId]
   );
 
   if (!clubRow) {
-    throw new Error(`Club ${clubId} not found.`);
+    return null;
   }
 
   const venueAssignments = await db.all<VenueAssignmentRow>(
