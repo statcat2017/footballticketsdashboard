@@ -21,7 +21,46 @@ export default async function AdminDashboardPage() {
         </form>
       </header>
       <section style={{ marginTop: "1.5rem" }}>
-        <h2>Phase 2A &mdash; Club Browser</h2>
+        <h2>Phase 2B &mdash; Club &amp; Venue Editor</h2>
+        <p style={{ margin: "0.25rem 0 0.75rem", color: "#6f7e7a", fontSize: "14px" }}>
+          Edit club identity, manage venues, and assign primary grounds.
+        </p>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <Link href="/admin/clubs" style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #147a4d",
+            borderRadius: "7px",
+            background: "#147a4d",
+            color: "#fff",
+            padding: "0.5rem 1rem",
+            fontSize: "14px",
+            fontWeight: 700,
+            textDecoration: "none"
+          }}>
+            Browse clubs &rarr;
+          </Link>
+          <Link href="/admin/venues" style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #147a4d",
+            borderRadius: "7px",
+            background: "#fff",
+            color: "#147a4d",
+            padding: "0.5rem 1rem",
+            fontSize: "14px",
+            fontWeight: 700,
+            textDecoration: "none"
+          }}>
+            Manage venues &rarr;
+          </Link>
+        </div>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Phase 2A &mdash; Read-Only Club Browser</h2>
         <p style={{ margin: "0.25rem 0 0.75rem", color: "#6f7e7a", fontSize: "14px" }}>
           Read-only club and ground lookup by season and division.
         </p>
@@ -29,13 +68,13 @@ export default async function AdminDashboardPage() {
           display: "inline-flex",
           alignItems: "center",
           gap: "0.4rem",
-          border: "1px solid #147a4d",
+          border: "1px solid #6f7e7a",
           borderRadius: "7px",
-          background: "#147a4d",
-          color: "#fff",
+          background: "#fff",
+          color: "#6f7e7a",
           padding: "0.5rem 1rem",
           fontSize: "14px",
-          fontWeight: 700,
+          fontWeight: 600,
           textDecoration: "none"
         }}>
           Browse clubs &rarr;

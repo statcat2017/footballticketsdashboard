@@ -1,5 +1,14 @@
 import { getDatabase } from "@/lib/db/client";
 import type { AppDatabase } from "@/lib/db/adapter";
+import { writeAdminAuditLog } from "@/lib/admin/audit";
+
+export interface AdminClubUpdateInput {
+  name?: string;
+  aliases?: string | null;
+  status?: string;
+  source_url?: string | null;
+  verified_at?: string | null;
+}
 
 export interface AdminClubRow {
   club_id: number;
@@ -272,4 +281,54 @@ export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetai
     sharingClubs,
     warnings
   };
+}
+
+export async function updateAdminClub(clubId: number, input: AdminClubUpdateInput): Promise<void> {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+
+  const current = await db.get<{
+    id: number; name: string; aliases: string | null;
+    status: string; source_url: string | null; verified_at: string | null;
+  }>(
+    `SELECT id, name, aliases, status, source_url, verified_at FROM pyramid_clubs WHERE id = ?`,
+    [clubId]
+  );
+
+  if (!current) {
+    throw new Error("Club not found.");
+  }
+
+  const updatedName = input.name ?? current.name;
+  const updatedAliases = input.aliases !== undefined ? input.aliases : current.aliases;
+  const updatedStatus = input.status ?? current.status;
+  const updatedSourceUrl = input.source_url !== undefined ? input.source_url : current.source_url;
+  const updatedVerifiedAt = input.verified_at !== undefined ? input.verified_at : current.verified_at;
+
+  await db.run(
+    `UPDATE pyramid_clubs
+     SET name = ?, aliases = ?, status = ?, source_url = ?, verified_at = ?, admin_updated_at = ?
+     WHERE id = ?`,
+    [updatedName, updatedAliases, updatedStatus, updatedSourceUrl, updatedVerifiedAt, now, clubId]
+  );
+
+  await writeAdminAuditLog(db, {
+    action: "update",
+    entityType: "pyramid_club",
+    entityId: clubId,
+    before: {
+      name: current.name,
+      aliases: current.aliases,
+      status: current.status,
+      source_url: current.source_url,
+      verified_at: current.verified_at
+    },
+    after: {
+      name: updatedName,
+      aliases: updatedAliases,
+      status: updatedStatus,
+      source_url: updatedSourceUrl,
+      verified_at: updatedVerifiedAt
+    }
+  });
 }

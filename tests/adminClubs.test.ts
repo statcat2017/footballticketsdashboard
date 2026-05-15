@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { applySchema } from "@/lib/db/setup";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
-import { getAdminClubList, getAdminClubDetail } from "@/lib/admin/clubs";
+import { getAdminClubList, getAdminClubDetail, updateAdminClub } from "@/lib/admin/clubs";
 import type { AppDatabase } from "@/lib/db/adapter";
 
 const { getDatabase } = vi.hoisted(() => ({
@@ -200,5 +200,64 @@ describe("admin club browser", () => {
     const detail = await getAdminClubDetail(99999);
 
     expect(detail).toBeNull();
+  });
+});
+
+describe("updateAdminClub", () => {
+  it("updates club fields and stamps admin_updated_at", async () => {
+    const db = createMinimalDb();
+    getDatabase.mockResolvedValue(db);
+
+    await updateAdminClub(100, {
+      name: "Test Town Renamed",
+      status: "partial",
+      aliases: "TTU, Town"
+    });
+
+    const club = await db.get<{ name: string; status: string; aliases: string; admin_updated_at: string | null }>(
+      "SELECT name, status, aliases, admin_updated_at FROM pyramid_clubs WHERE id = ?", [100]
+    );
+
+    expect(club!.name).toBe("Test Town Renamed");
+    expect(club!.status).toBe("partial");
+    expect(club!.aliases).toBe("TTU, Town");
+    expect(club!.admin_updated_at).not.toBeNull();
+  });
+
+  it("writes an audit log entry", async () => {
+    const db = createMinimalDb();
+    getDatabase.mockResolvedValue(db);
+
+    await updateAdminClub(100, { name: "Renamed Town" });
+
+    const audit = await db.get<{ action: string; entity_type: string; entity_id: string; before_json: string; after_json: string }>(
+      "SELECT action, entity_type, entity_id, before_json, after_json FROM admin_audit_log WHERE entity_type = 'pyramid_club' AND action = 'update'"
+    );
+
+    expect(audit).not.toBeNull();
+    expect(audit!.entity_id).toBe("100");
+    expect(JSON.parse(audit!.before_json).name).toBe("Test Town United");
+    expect(JSON.parse(audit!.after_json).name).toBe("Renamed Town");
+  });
+
+  it("throws for non-existent club", async () => {
+    getDatabase.mockResolvedValue(createMinimalDb());
+
+    await expect(updateAdminClub(999, { name: "Ghost" })).rejects.toThrow("Club not found.");
+  });
+
+  it("only updates provided fields", async () => {
+    const db = createMinimalDb();
+    getDatabase.mockResolvedValue(db);
+
+    await updateAdminClub(100, { source_url: "https://example.com" });
+
+    const club = await db.get<{ name: string; status: string; source_url: string | null }>(
+      "SELECT name, status, source_url FROM pyramid_clubs WHERE id = ?", [100]
+    );
+
+    expect(club!.name).toBe("Test Town United");
+    expect(club!.status).toBe("known");
+    expect(club!.source_url).toBe("https://example.com");
   });
 });

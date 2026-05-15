@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS pyramid_clubs (
   league_name TEXT,
   source_url TEXT,
   verified_at TEXT,
-  status TEXT NOT NULL DEFAULT 'partial' CHECK (status IN ('known', 'partial', 'missing'))
+  status TEXT NOT NULL DEFAULT 'partial' CHECK (status IN ('known', 'partial', 'missing')),
+  admin_updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pyramid_season_memberships (
@@ -101,7 +102,8 @@ CREATE TABLE IF NOT EXISTS venues (
   postcode TEXT NOT NULL,
   latitude REAL NOT NULL,
   longitude REAL NOT NULL,
-  is_approximate INTEGER NOT NULL DEFAULT 0 CHECK (is_approximate IN (0, 1))
+  is_approximate INTEGER NOT NULL DEFAULT 0 CHECK (is_approximate IN (0, 1)),
+  admin_updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS clubs (
@@ -178,6 +180,7 @@ CREATE TABLE IF NOT EXISTS club_venue_assignments (
   effective_from TEXT NOT NULL,
   effective_to TEXT,
   is_primary INTEGER NOT NULL DEFAULT 1 CHECK (is_primary IN (0, 1)),
+  admin_updated_at TEXT,
   UNIQUE (club_id, effective_from),
   UNIQUE (club_id, venue_id, effective_from)
 );
