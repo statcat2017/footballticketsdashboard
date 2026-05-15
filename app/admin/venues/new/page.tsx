@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
+import { VenueMapEditor } from "../_components/VenueMapEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,14 @@ export default async function AdminNewVenuePage(props: { searchParams: Promise<{
           {error}
         </div>
       )}
+
+      <VenueMapEditor
+        isApproximate={false}
+        latInputId="latitude"
+        lngInputId="longitude"
+        approxInputId="is_approximate"
+        mode="create"
+      />
 
       <form method="post" action="/api/admin/venues" style={{ display: "grid", gap: "1rem" }}>
         <input type="hidden" name="csrf" value={csrfToken} />
