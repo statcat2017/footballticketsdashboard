@@ -28,6 +28,7 @@ export function PyramidGraph({
   const divisions = layout.divisions;
   const connections = layout.visualConnections;
   const cfg = layout.config;
+  const divisionById = useMemo(() => new Map(divisions.map((d) => [d.id, d])), [divisions]);
 
   if (divisions.length === 0) {
     return (
@@ -69,8 +70,8 @@ export function PyramidGraph({
       </defs>
 
       {connections.map((conn) => {
-        const fromDiv = divisions.find((d) => d.id === conn.fromDivisionId);
-        const toDiv = divisions.find((d) => d.id === conn.toDivisionId);
+        const fromDiv = divisionById.get(conn.fromDivisionId);
+        const toDiv = divisionById.get(conn.toDivisionId);
         if (!fromDiv || !toDiv) return null;
 
         const isConnectedToSelected =

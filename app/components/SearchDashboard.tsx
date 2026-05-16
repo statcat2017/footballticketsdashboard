@@ -7,16 +7,34 @@ import { computeDateRange } from "@/lib/date";
 type SearchState = "idle" | "loading" | "ready" | "error";
 type Availability = "available" | "limited" | "check-club";
 
+const moneyFormatter = new Intl.NumberFormat("en-GB", {
+  style: "currency",
+  currency: "GBP",
+  maximumFractionDigits: 0
+});
+
+const kickoffFormatter = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/London"
+});
+
+const dateRangeFormatter = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  timeZone: "Europe/London"
+});
+
 function formatMoney(pence: number | null): string {
   if (pence === null) {
     return "TBC";
   }
 
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0
-  }).format(pence / 100);
+  return moneyFormatter.format(pence / 100);
 }
 
 function formatPriceLine(result: FixtureResult): string {
@@ -32,14 +50,7 @@ function formatKickoffDate(value: string | null): string {
     return "Kick-off TBC";
   }
 
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/London"
-  }).format(new Date(value));
+  return kickoffFormatter.format(new Date(value));
 }
 
 function formatDateRange(results: FixtureResult[]): string {
@@ -52,14 +63,7 @@ function formatDateRange(results: FixtureResult[]): string {
     return "Next 10 days";
   }
 
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "Europe/London"
-  });
-
-  return `${formatter.format(new Date(dates[0]))} - ${formatter.format(new Date(dates[dates.length - 1]))}`;
+  return `${dateRangeFormatter.format(new Date(dates[0]))} - ${dateRangeFormatter.format(new Date(dates[dates.length - 1]))}`;
 }
 
 function availability(result: FixtureResult): { label: string; tone: Availability } {
@@ -139,6 +143,7 @@ export function SearchDashboard() {
       }
 
       setResults(payload.results);
+      setVisibleCount(12);
       setState("ready");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -156,10 +161,6 @@ export function SearchDashboard() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSearch]);
-
-  useEffect(() => {
-    setVisibleCount(12);
-  }, [results]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
