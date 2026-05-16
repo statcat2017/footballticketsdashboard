@@ -6,6 +6,32 @@ Build an interactive pyramid explorer for the men's English pyramid that also se
 
 The explorer should make the pyramid understandable to users while giving admins a safe, audited way to maintain division ordering and recognised movement/allocation paths.
 
+## Current Status
+
+Sprint handoff: 2026-05-16.
+
+- Phase 1 is complete and merged in PR #79: schema metadata, migration backfill, seed/D1 paths, and migration-only tests.
+- Phase 2 is complete and merged in PR #81: `getPyramidExplorerData()`, explorer read-model types, and service tests.
+- The explorer read model now reads divisions from `pyramid_season_divisions` for the latest season, keys nested clubs by `division_id`, and verifies nested club counts against memberships.
+- Next boot-up should start with Phase 3: shared graph rendering components.
+
+## Next Boot-Up
+
+Start from `main` and create a new branch, for example `feat/pyramid-graph-rendering`.
+
+Recommended first implementation slice:
+
+- Add shared pyramid component types derived from `PyramidExplorerData`.
+- Add deterministic layout helper for horizontal and vertical orientations.
+- Add visual edge derivation that collapses reciprocal promotion/relegation pairs into one connection.
+- Add the initial SVG graph component for all 52 divisions and 129 edges, with static selection/highlight behavior before pan/zoom polish.
+- Keep `/pyramid` route wiring for Phase 4 unless the graph needs a small development harness.
+
+Validation target for the next slice:
+
+- Unit-test layout ordering and visual edge derivation.
+- Confirm `npm run lint`, `npm run test`, and `npm run build` pass before handoff.
+
 ## Non-Goals
 
 - Do not implement the season league swapper in this ticket.
@@ -340,7 +366,7 @@ Client/server split:
 
 ## Sub-Phases
 
-### Phase 1: Schema And Seed Metadata
+### Phase 1: Schema And Seed Metadata (Complete)
 
 Deliverables:
 
@@ -350,12 +376,14 @@ Deliverables:
 - Backfill logic in seed path.
 - Tests for setup counts and metadata defaults.
 
+Implemented in PR #79.
+
 Exit criteria:
 
 - DB setup idempotent.
 - Existing pyramid tests pass.
 
-### Phase 2: Read Model
+### Phase 2: Read Model (Complete)
 
 Deliverables:
 
@@ -364,12 +392,21 @@ Deliverables:
 - Latest-season club search rows.
 - Unit tests.
 
+Implemented in PR #81.
+
+Implementation notes:
+
+- `lib/db/pyramid-explorer.ts` exports `getPyramidExplorerData()` and the explorer data types.
+- Division rows are scoped to the latest season via `pyramid_season_divisions`.
+- Nested division clubs are keyed by `division_id`, not `season_division_id`.
+- Tests assert nested club counts match `club_count` and total memberships.
+
 Exit criteria:
 
 - Data returned from DB only.
 - No public explorer imports `MEN_PYRAMID_*` constants directly.
 
-### Phase 3: Graph Rendering
+### Phase 3: Graph Rendering (Next)
 
 Deliverables:
 

@@ -112,10 +112,13 @@ Purpose: allow manual maintenance of club identity and primary ground data.
 - Travel-cache invalidation when venue coordinates move more than one straight-line mile.
 - Allow approximate coordinates until an admin manually places or drags the pin.
 
-### Phase 2D: Pyramid Explorer & Edge/Layout Editor (Planned)
+### Phase 2D: Pyramid Explorer & Edge/Layout Editor (In Progress)
 
 Detailed implementation planning lives in `docs/pyramid-explorer-spec.md` and `docs/tickets/open/TICKET-035-pyramid-explorer-admin-editor.md`.
 
+- Phase 1 complete: DB schema metadata and seed/D1 backfill merged in PR #79.
+- Phase 2 complete: DB-backed explorer read model and tests merged in PR #81.
+- Next: shared React/SVG graph rendering component, deterministic layout helper, and visual edge derivation.
 - Add public `/pyramid` explorer backed by DB tables.
 - Add protected `/admin/pyramid` editor using the same graph component.
 - Store division layout order and movement-path metadata in the database.
