@@ -17,10 +17,11 @@ export function PyramidExplorer({ data }: Props) {
     const visibleIds = new Set(data.divisions.filter((d) => d.level >= 5).map((d) => d.id));
     return {
       ...data,
-      divisions: data.divisions.filter((d) => d.level >= 5),
+      divisions: data.divisions.filter((d) => visibleIds.has(d.id)),
       edges: data.edges.filter(
         (e) => visibleIds.has(e.from_division_id) && visibleIds.has(e.to_division_id)
-      )
+      ),
+      clubs: data.clubs.filter((c) => visibleIds.has(c.division_id))
     };
   }, [data, showTopTiers]);
 
@@ -41,7 +42,7 @@ export function PyramidExplorer({ data }: Props) {
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Pyramid Explorer</h1>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setShowTopTiers((v) => !v)} style={btnStyle(!showTopTiers)}>
-            {showTopTiers ? "Hide League 2+" : "Show all"}
+            {showTopTiers ? "Non-league only" : "Show all"}
           </button>
           <button onClick={() => setOrientation("horizontal")} style={btnStyle(orientation === "horizontal")}>
             Horizontal
