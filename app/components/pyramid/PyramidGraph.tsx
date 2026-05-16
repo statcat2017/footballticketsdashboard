@@ -13,19 +13,16 @@ import type {
 interface PyramidGraphProps {
   data: PyramidExplorerData;
   layoutConfig?: Partial<LayoutConfig>;
-  selectedDivisionId?: number | null;
-  onSelectDivision?: (id: number | null) => void;
 }
 
 type HoverTarget = { type: "division"; id: number } | { type: "connection"; from: number; to: number } | null;
 
 export function PyramidGraph({
   data,
-  layoutConfig,
-  selectedDivisionId,
-  onSelectDivision
+  layoutConfig
 }: PyramidGraphProps) {
   const [hovered, setHovered] = useState<HoverTarget>(null);
+  const [selectedDivisionId, setSelectedDivisionId] = useState<number | null>(null);
 
   const layout = useMemo(() => computeLayout(data, layoutConfig), [data, layoutConfig]);
   const divisions = layout.divisions;
@@ -127,7 +124,7 @@ export function PyramidGraph({
             dimmed={selectedDivisionId != null && !isSelected && !connectionHighlight}
             onMouseEnter={() => setHovered({ type: "division", id: div.id })}
             onMouseLeave={() => setHovered(null)}
-            onClick={() => onSelectDivision?.(div.id === selectedDivisionId ? null : div.id)}
+            onClick={() => setSelectedDivisionId(div.id === selectedDivisionId ? null : div.id)}
           />
         );
       })}

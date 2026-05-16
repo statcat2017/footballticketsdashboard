@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { PyramidGraph } from "@/app/components/pyramid/PyramidGraph";
 import type { PyramidExplorerData, LayoutOrientation } from "@/app/components/pyramid/pyramidGraphTypes";
 
@@ -9,12 +9,7 @@ interface Props {
 }
 
 export function PyramidExplorer({ data }: Props) {
-  const [selectedDivisionId, setSelectedDivisionId] = useState<number | null>(null);
   const [orientation, setOrientation] = useState<LayoutOrientation>("horizontal");
-
-  const handleSelectDivision = useCallback((id: number | null) => {
-    setSelectedDivisionId(id);
-  }, []);
 
   return (
     <div style={{ padding: "16px 28px" }}>
@@ -64,33 +59,9 @@ export function PyramidExplorer({ data }: Props) {
       >
         <PyramidGraph
           data={data}
-          selectedDivisionId={selectedDivisionId}
-          onSelectDivision={handleSelectDivision}
           layoutConfig={{ orientation }}
         />
       </div>
-
-      {selectedDivisionId != null && (
-        <div style={{ marginTop: 16, padding: "12px 16px", border: "1px solid var(--grey-200)", borderRadius: 8, fontSize: 14, color: "var(--grey-500)" }}>
-          Selected division ID: <strong style={{ color: "var(--text)" }}>{selectedDivisionId}</strong>
-          <button
-            onClick={() => setSelectedDivisionId(null)}
-            style={{
-              marginLeft: 16,
-              padding: "4px 12px",
-              border: "1px solid var(--grey-300)",
-              borderRadius: 7,
-              background: "#fff",
-              fontSize: 13,
-              fontWeight: 650,
-              cursor: "pointer",
-              color: "var(--grey-700)"
-            }}
-          >
-            Clear
-          </button>
-        </div>
-      )}
 
       <div style={{ marginTop: 12, fontSize: 13, color: "var(--grey-500)" }}>
         <strong style={{ color: "var(--text)" }}>{data.divisions.length}</strong> divisions,{" "}
