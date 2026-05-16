@@ -199,6 +199,7 @@ export function SearchDashboard() {
         <div className="nav-links">
           <a href="#" className="active">Fixtures</a>
           <a href="#">Grounds</a>
+          <a href="/pyramid">Pyramid</a>
           <a href="#">About</a>
           <a href="#">Contact</a>
         </div>
