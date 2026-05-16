@@ -37,14 +37,19 @@ export function PyramidGraph({
     );
   }
 
+  const minX = Math.min(...divisions.map((d) => d.x));
+  const minY = Math.min(...divisions.map((d) => d.y));
   const maxX = Math.max(...divisions.map((d) => d.x));
   const maxY = Math.max(...divisions.map((d) => d.y));
-  const svgWidth = maxX + cfg.nodeWidth + 40;
-  const svgHeight = maxY + cfg.nodeHeight + 40;
+  const pad = 20;
+  const viewBoxX = minX - pad;
+  const viewBoxY = minY - pad;
+  const svgWidth = (maxX - minX) + cfg.nodeWidth + pad * 2;
+  const svgHeight = (maxY - minY) + cfg.nodeHeight + pad * 2;
 
   return (
     <svg
-      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+      viewBox={`${viewBoxX} ${viewBoxY} ${svgWidth} ${svgHeight}`}
       role="img"
       aria-label="English football pyramid"
       style={{ width: "100%", height: "auto", maxHeight: "90vh", overflow: "visible" }}
@@ -239,6 +244,30 @@ interface DivisionNodeProps {
   onClick: () => void;
 }
 
+function wrapDivisionName(name: string, maxChars: number = 22, maxLines: number = 3): string[] {
+  if (name.length <= maxChars) return [name];
+  const words = name.split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxChars) {
+      current = next;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  if (lines.length > maxLines) {
+    let last = lines[maxLines - 1];
+    last = last.slice(0, -1) + "…";
+    lines[maxLines - 1] = last;
+    lines.splice(maxLines);
+  }
+  return lines;
+}
+
 function DivisionNode({
   division,
   nodeWidth,
@@ -251,6 +280,11 @@ function DivisionNode({
 }: DivisionNodeProps) {
   const rx = 6;
   const opacity = dimmed ? 0.35 : 1;
+  const lines = wrapDivisionName(division.name);
+  const n = lines.length;
+  const lineHeight = 12;
+  const centerY = division.y + nodeHeight / 2;
+  const isMultiLine = n > 1;
 
   return (
     <g
@@ -274,21 +308,37 @@ function DivisionNode({
         strokeWidth={isSelected ? 2 : 1}
         opacity={opacity}
       />
-      <text
-        x={division.x + 10}
-        y={division.y + nodeHeight / 2}
-        dy="0.35em"
-        fill={isSelected ? "#0e5737" : "#17221f"}
-        fontSize={11}
-        fontWeight={isSelected ? 700 : 500}
-        fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
-        opacity={opacity}
-      >
-        {division.name}
-      </text>
+      {isMultiLine ? (
+        <text
+          fill={isSelected ? "#0e5737" : "#17221f"}
+          fontSize={11}
+          fontWeight={isSelected ? 700 : 500}
+          fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
+          opacity={opacity}
+        >
+          {lines.map((line, i) => (
+            <tspan key={i} x={division.x + 10} y={centerY - (n - 1) * lineHeight / 2 + i * lineHeight}>
+              {line}
+            </tspan>
+          ))}
+        </text>
+      ) : (
+        <text
+          x={division.x + 10}
+          y={centerY}
+          dy="0.35em"
+          fill={isSelected ? "#0e5737" : "#17221f"}
+          fontSize={11}
+          fontWeight={isSelected ? 700 : 500}
+          fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
+          opacity={opacity}
+        >
+          {division.name}
+        </text>
+      )}
       <text
         x={division.x + nodeWidth - 10}
-        y={division.y + nodeHeight / 2}
+        y={centerY}
         dy="0.35em"
         textAnchor="end"
         fill="#6f7e7a"
