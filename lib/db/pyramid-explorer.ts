@@ -54,7 +54,7 @@ interface DivisionRow {
 }
 
 interface ClubInDivisionRow {
-  season_division_id: number;
+  division_id: number;
   id: number;
   name: string;
 }
@@ -111,17 +111,19 @@ async function getExplorerDivisions(db: AppDatabase, seasonId: number): Promise<
     `SELECT
       d.id, d.code, d.name, d.level, d.max_size, d.display_order,
       COUNT(pm.id) AS club_count
-    FROM pyramid_divisions d
-    LEFT JOIN pyramid_season_divisions psd ON psd.division_id = d.id AND psd.season_id = ?
+    FROM pyramid_season_divisions psd
+    JOIN pyramid_divisions d ON d.id = psd.division_id
     LEFT JOIN pyramid_season_memberships pm ON pm.season_division_id = psd.id
+    WHERE psd.season_id = ?
     GROUP BY d.id
     ORDER BY d.level, d.display_order`,
     [seasonId]
   );
 
   const clubRows = await db.all<ClubInDivisionRow>(
-    `SELECT pm.season_division_id, pc.id, pc.name
+    `SELECT psd.division_id, pc.id, pc.name
     FROM pyramid_season_memberships pm
+    JOIN pyramid_season_divisions psd ON psd.id = pm.season_division_id
     JOIN pyramid_clubs pc ON pc.id = pm.club_id
     WHERE pm.season_id = ?
     ORDER BY pc.name`,
@@ -130,9 +132,9 @@ async function getExplorerDivisions(db: AppDatabase, seasonId: number): Promise<
 
   const clubsByDivision = new Map<number, ExplorerClubRow[]>();
   for (const cr of clubRows) {
-    const list = clubsByDivision.get(cr.season_division_id) ?? [];
+    const list = clubsByDivision.get(cr.division_id) ?? [];
     list.push({ id: cr.id, name: cr.name });
-    clubsByDivision.set(cr.season_division_id, list);
+    clubsByDivision.set(cr.division_id, list);
   }
 
   return rows.map((r) => ({

@@ -93,6 +93,17 @@ describe("pyramid explorer data service", () => {
     expect(totalFromCounts).toBe(MEN_PYRAMID_MEMBERSHIPS.length);
   });
 
+  it("each division's nested clubs array matches its club_count", () => {
+    for (const d of data.divisions) {
+      expect(d.clubs.length).toBe(d.club_count);
+    }
+  });
+
+  it("total nested clubs equals total memberships", () => {
+    const totalNested = data.divisions.reduce((sum, d) => sum + d.clubs.length, 0);
+    expect(totalNested).toBe(MEN_PYRAMID_MEMBERSHIPS.length);
+  });
+
   it("divisions are ordered by level then display_order", () => {
     for (let i = 1; i < data.divisions.length; i++) {
       const prev = data.divisions[i - 1];
