@@ -6,7 +6,9 @@ Four subagents researched the full English football pyramid structure (Men's) fo
 
 ## Boundary Decision
 
-**Cap the pyramid model at Level 10 (Step 6).** Rationale:
+**Cap the pyramid model at Level 10 (Step 6).** Edges represent **possible or recognised movement paths** between adjacent levels, not guaranteed annual movements. In the National League System (especially Steps 3–6), promotion and relegation are often allocation-dependent and can vary by geography, league balancing, and lateral movement. Reciprocal paths exist where movement is genuinely possible both ways.
+
+Rationale:
 
 - The National League System (FA's own regulatory framework) formally encompasses Steps 1-6 (Levels 5-10).
 - Step 7 was formally abolished in 2020-21 and replaced by "NLS Feeder Leagues" (Level 11) organised by county FAs on an ad-hoc basis.
@@ -67,16 +69,18 @@ Four subagents researched the full English football pyramid structure (Men's) fo
 
 ## Key Findings
 
-### Naming Corrections
-- "Southern League" is officially "Southern Football League" — update names to match.
+### Naming
 - All Step 3 divisions carry the "Pitching In" sponsorship prefix (not included in our codes).
+- "Southern League" is officially "Southern Football League". Division names reflect the official name.
+
+### Edge Model Semantics
+
+Edges in `MEN_PYRAMID_EDGES` represent **recognised possible movement/allocation paths** between adjacent levels, not guaranteed annual movements. Some edges are fixed (EFL Championship ↔ League One). Others, mainly in the National League System, are allocation-dependent and may vary by geography, vacancies, lateral movement, and NLS Committee decisions.
+
+A future migration should classify edges as `fixed` or `allocation_dependent`.
 
 ### Cross-League Promotions
-Promotion from Step 4 to Step 3 is not strictly 1:1 by league family. The NLS Committee can reallocate:
-- Isthmian Division One North → Southern League Premier Central
-- Northern Premier League Division One Midlands → Southern League Premier Central  
-- Isthmian Division One South Central → Southern League Premier South
-For the pyramid model, primary edges follow the expected/typical paths. Cross-league edges are noted but not all modelled.
+Promotion from Step 4 to Step 3 and Step 5 to Step 4 is not strictly 1:1 by league family. The NLS Committee can reallocate based on geography and vacancies. All plausible allocation paths are included in the edge model, with full reciprocity where movement is possible both ways.
 
 ### Max Sizes
 - Steps 1-4: Uniform 22-24 team divisions

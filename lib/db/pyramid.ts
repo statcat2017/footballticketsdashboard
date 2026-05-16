@@ -274,12 +274,12 @@ export const MEN_PYRAMID_EDGES: PyramidEdgeRow[] = [
   { id: 104, from_division_id: 50, to_division_id: 35, movement_type: "promotion" },
   { id: 105, from_division_id: 51, to_division_id: 36, movement_type: "promotion" },
   { id: 106, from_division_id: 52, to_division_id: 37, movement_type: "promotion" },
-  // ── Missing cross-league: Essex Senior ↔ Eastern Counties D1 N/S ─
+  // ── Essex Senior / NWCFL internal promotion paths (Level 10 → Level 9) ──
   { id: 107, from_division_id: 26, to_division_id: 39, movement_type: "relegation" },
   { id: 108, from_division_id: 26, to_division_id: 40, movement_type: "relegation" },
   { id: 109, from_division_id: 39, to_division_id: 26, movement_type: "promotion" },
   { id: 110, from_division_id: 40, to_division_id: 26, movement_type: "promotion" },
-  // ── Missing cross-league promotion (Level 9 → Level 8) ─────────
+  // ── Additional allocation-dependent promotion paths (Level 9 → Level 8) ─
   { id: 111, from_division_id: 23, to_division_id: 20, movement_type: "promotion" },
   { id: 112, from_division_id: 24, to_division_id: 20, movement_type: "promotion" },
   { id: 113, from_division_id: 24, to_division_id: 22, movement_type: "promotion" },
@@ -290,7 +290,7 @@ export const MEN_PYRAMID_EDGES: PyramidEdgeRow[] = [
   { id: 118, from_division_id: 28, to_division_id: 15, movement_type: "promotion" },
   { id: 119, from_division_id: 32, to_division_id: 22, movement_type: "promotion" },
   { id: 120, from_division_id: 27, to_division_id: 21, movement_type: "promotion" },
-  // ── Missing reciprocal relegation (Level 8 → Level 9) ──────────
+  // ── Additional allocation-dependent relegation paths (Level 8 → Level 9) ──
   { id: 121, from_division_id: 20, to_division_id: 23, movement_type: "relegation" },
   { id: 122, from_division_id: 20, to_division_id: 24, movement_type: "relegation" },
   { id: 123, from_division_id: 22, to_division_id: 32, movement_type: "relegation" },
@@ -298,7 +298,7 @@ export const MEN_PYRAMID_EDGES: PyramidEdgeRow[] = [
   { id: 125, from_division_id: 16, to_division_id: 28, movement_type: "relegation" },
   { id: 126, from_division_id: 15, to_division_id: 28, movement_type: "relegation" },
   { id: 127, from_division_id: 19, to_division_id: 31, movement_type: "relegation" },
-  // ── Missing NWCFL internal promotion (Level 10 → Level 9) ─────
+  // ── NWCFL internal promotion (Level 10 → Level 9) ──────────
   { id: 128, from_division_id: 13, to_division_id: 12, movement_type: "promotion" },
   { id: 129, from_division_id: 14, to_division_id: 12, movement_type: "promotion" },
 ];

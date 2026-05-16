@@ -145,7 +145,6 @@ describe("pyramid validation", () => {
 
     for (const div of MEN_PYRAMID_DIVISIONS) {
       if (div.level >= 10) continue; // bottom level has no relegation out of it
-      if (div.level <= 1) continue; // top of defined model — no relegation from above
       expect(relegatedFrom.has(div.id)).toBe(true);
     }
   });
