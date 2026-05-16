@@ -284,7 +284,7 @@ function DivisionNode({
         fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
         opacity={opacity}
       >
-        {division.code}
+        {division.name}
       </text>
       <text
         x={division.x + nodeWidth - 10}

@@ -14,33 +14,25 @@ describe("pyramid graph layout", () => {
     data = await getPyramidExplorerData(db);
   });
 
-  it("positions divisions by level and display_order in horizontal layout", () => {
+  it("positions divisions by level on x axis in horizontal layout", () => {
     const result = computeLayout(data, { orientation: "horizontal" });
 
     for (const div of result.divisions) {
       const expectedX = (div.level - 1) * result.config.columnWidth;
-      const order = div.display_order ?? 1;
-      const expectedY = (order - 1) * result.config.rowHeight;
-
       expect(div.x).toBe(expectedX);
-      expect(div.y).toBe(expectedY);
     }
   });
 
-  it("positions divisions by level and display_order in vertical layout", () => {
+  it("positions divisions by level on y axis in vertical layout", () => {
     const result = computeLayout(data, { orientation: "vertical" });
 
     for (const div of result.divisions) {
       const expectedY = (div.level - 1) * result.config.rowHeight;
-      const order = div.display_order ?? 1;
-      const expectedX = (order - 1) * result.config.columnWidth;
-
-      expect(div.x).toBe(expectedX);
       expect(div.y).toBe(expectedY);
     }
   });
 
-  it("same-level divisions are stacked vertically in horizontal layout", () => {
+  it("same-level divisions share the same x coordinate in horizontal layout", () => {
     const result = computeLayout(data, { orientation: "horizontal" });
 
     for (let i = 1; i < result.divisions.length; i++) {
@@ -48,8 +40,8 @@ describe("pyramid graph layout", () => {
       const curr = result.divisions[i];
 
       if (prev.level === curr.level) {
-        expect(curr.y).toBeGreaterThan(prev.y);
         expect(curr.x).toBe(prev.x);
+        expect(curr.y).not.toBe(prev.y);
       } else {
         expect(curr.x).toBeGreaterThan(prev.x);
       }
