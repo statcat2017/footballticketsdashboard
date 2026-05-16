@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MEN_PYRAMID_DIVISIONS,
+  MEN_PYRAMID_EDGES,
   MEN_PYRAMID_SEASON_DIVISIONS,
   validatePyramidSeason
 } from "@/lib/db/pyramid";
@@ -123,6 +124,94 @@ describe("pyramid validation", () => {
     expect(issues).toEqual([
       expect.objectContaining({ code: "season_template_mismatch" })
     ]);
+  });
+
+  it("every division below Level 1 has at least one promotion edge into it (route up)", () => {
+    const relevantEdges = MEN_PYRAMID_EDGES.filter((e) => e.movement_type === "promotion");
+
+    const promotedInto = new Set(relevantEdges.map((e) => e.to_division_id));
+
+    for (const div of MEN_PYRAMID_DIVISIONS) {
+      if (div.level <= 1) continue; // top level has no promotion into it
+      if (div.level >= 10) continue; // bottom of defined model — no promotions from below
+      expect(promotedInto.has(div.id)).toBe(true);
+    }
+  });
+
+  it("every division above Level 10 has at least one relegation edge out of it (route down)", () => {
+    const relevantEdges = MEN_PYRAMID_EDGES.filter((e) => e.movement_type === "relegation");
+
+    const relegatedFrom = new Set(relevantEdges.map((e) => e.from_division_id));
+
+    for (const div of MEN_PYRAMID_DIVISIONS) {
+      if (div.level >= 10) continue; // bottom level has no relegation out of it
+      if (div.level <= 1) continue; // top of defined model — no relegation from above
+      expect(relegatedFrom.has(div.id)).toBe(true);
+    }
+  });
+
+  it("every Level 9 (Step 5) division has at least one promotion edge to Level 8", () => {
+    const level9Ids = new Set(
+      MEN_PYRAMID_DIVISIONS.filter((d) => d.level === 9).map((d) => d.id)
+    );
+    const promosFrom9 = MEN_PYRAMID_EDGES.filter(
+      (e) => e.movement_type === "promotion" && level9Ids.has(e.from_division_id)
+    );
+
+    const promotedFrom = new Set(promosFrom9.map((e) => e.from_division_id));
+    for (const id of level9Ids) {
+      expect(promotedFrom.has(id)).toBe(true);
+    }
+  });
+
+  it("every Level 9 (Step 5) division has at least one relegation edge to Level 10", () => {
+    const level9Ids = new Set(
+      MEN_PYRAMID_DIVISIONS.filter((d) => d.level === 9).map((d) => d.id)
+    );
+    const relegsFrom9 = MEN_PYRAMID_EDGES.filter(
+      (e) => e.movement_type === "relegation" && level9Ids.has(e.from_division_id)
+    );
+
+    const relegatedFrom = new Set(relegsFrom9.map((e) => e.from_division_id));
+    for (const id of level9Ids) {
+      expect(relegatedFrom.has(id)).toBe(true);
+    }
+  });
+
+  it("every Level 10 (Step 6) division has at least one promotion edge to Level 9", () => {
+    const level10Ids = new Set(
+      MEN_PYRAMID_DIVISIONS.filter((d) => d.level === 10).map((d) => d.id)
+    );
+    const promosFrom10 = MEN_PYRAMID_EDGES.filter(
+      (e) => e.movement_type === "promotion" && level10Ids.has(e.from_division_id)
+    );
+
+    const promotedFrom = new Set(promosFrom10.map((e) => e.from_division_id));
+    for (const id of level10Ids) {
+      expect(promotedFrom.has(id)).toBe(true);
+    }
+  });
+
+  it("all edges connect divisions at adjacent levels only", () => {
+    const divisionById = new Map(MEN_PYRAMID_DIVISIONS.map((d) => [d.id, d]));
+
+    for (const edge of MEN_PYRAMID_EDGES) {
+      const from = divisionById.get(edge.from_division_id);
+      const to = divisionById.get(edge.to_division_id);
+      expect(from).toBeDefined();
+      expect(to).toBeDefined();
+      const levelDiff = Math.abs(from!.level - to!.level);
+      expect(levelDiff).toBe(1);
+    }
+  });
+
+  it("no duplicate edge (same from, to, movement_type)", () => {
+    const seen = new Set<string>();
+    for (const edge of MEN_PYRAMID_EDGES) {
+      const key = `${edge.from_division_id}:${edge.to_division_id}:${edge.movement_type}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
   });
 
   it("validates against supplied edges", () => {

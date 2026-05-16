@@ -57,7 +57,7 @@ describe("database setup", () => {
       travelRows: 6,
       pyramidTemplates: 1,
       pyramidDivisions: 52,
-      pyramidEdges: 106,
+      pyramidEdges: 129,
       pyramidSeasons: 1,
       pyramidSeasonDivisions: 52,
       adminAuditRows: 0
