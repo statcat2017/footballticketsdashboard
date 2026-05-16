@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS pyramid_divisions (
   name TEXT NOT NULL,
   level INTEGER NOT NULL,
   max_size INTEGER NOT NULL CHECK (max_size > 0),
+  display_order INTEGER,
   UNIQUE (template_id, code),
   UNIQUE (id, template_id)
 );
@@ -33,6 +34,9 @@ CREATE TABLE IF NOT EXISTS pyramid_edges (
   from_division_id INTEGER NOT NULL REFERENCES pyramid_divisions(id) ON DELETE CASCADE,
   to_division_id INTEGER NOT NULL REFERENCES pyramid_divisions(id) ON DELETE CASCADE,
   movement_type TEXT NOT NULL CHECK (movement_type IN ('promotion', 'relegation')),
+  allocation_type TEXT NOT NULL DEFAULT 'allocation_dependent' CHECK (allocation_type IN ('fixed', 'allocation_dependent')),
+  notes TEXT,
+  source_url TEXT,
   UNIQUE (from_division_id, to_division_id, movement_type)
 );
 

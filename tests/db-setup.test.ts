@@ -47,6 +47,19 @@ describe("database setup", () => {
       LIMIT 1
     `).get() as { status: string; locked_at: string | null };
 
+    const divisionDisplayOrders = second.prepare(`
+      SELECT COUNT(*) as count, COUNT(display_order) as withOrder
+      FROM pyramid_divisions
+    `).get() as { count: number; withOrder: number };
+
+    const edgeAllocationTypes = second.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN allocation_type = 'fixed' THEN 1 ELSE 0 END) as fixedCount,
+        SUM(CASE WHEN allocation_type = 'allocation_dependent' THEN 1 ELSE 0 END) as allocationDepCount
+      FROM pyramid_edges
+    `).get() as { total: number; fixedCount: number; allocationDepCount: number };
+
     second.close();
 
     expect(fs.existsSync(filename)).toBe(true);
@@ -63,5 +76,11 @@ describe("database setup", () => {
       adminAuditRows: 0
     });
     expect(pyramidDivision).toEqual({ status: "open", locked_at: null });
+    expect(divisionDisplayOrders.count).toBe(52);
+    expect(divisionDisplayOrders.withOrder).toBe(52);
+    expect(edgeAllocationTypes.total).toBe(129);
+    expect(edgeAllocationTypes.fixedCount).toBeGreaterThan(0);
+    expect(edgeAllocationTypes.allocationDepCount).toBeGreaterThan(0);
+    expect(edgeAllocationTypes.fixedCount + edgeAllocationTypes.allocationDepCount).toBe(129);
   });
 });
