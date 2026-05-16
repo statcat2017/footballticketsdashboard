@@ -25,14 +25,22 @@ function hashFile(filePath: string): string {
 }
 
 function ensureMigrationsTable(db: SqliteDatabase): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
-      id INTEGER PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      sha256 TEXT,
-      applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  const existing = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
+  ).get(MIGRATIONS_TABLE);
+
+  if (!existing) {
+    db.exec(`
+      CREATE TABLE ${MIGRATIONS_TABLE} (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        sha256 TEXT,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return;
+  }
+
   try {
     db.exec(`ALTER TABLE ${MIGRATIONS_TABLE} ADD COLUMN sha256 TEXT`);
   } catch {
@@ -49,17 +57,14 @@ function getAppliedMigrations(db: SqliteDatabase): Map<string, string | null> {
 function pendingMigrationFiles(migrationsDir: string): string[] {
   return fs.readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql") && !f.endsWith(".down.sql"))
+    .filter((f) => !f.includes(".down."))
     .sort();
 }
 
 function downMigrationFile(migrationsDir: string, name: string): string | null {
-  const stem = name.replace(/\.(up\.)?sql$/, "");
-  const candidates = [`.up.sql`, `.sql`].map((ext) => `${stem}.down${ext}`);
-  for (const f of candidates) {
-    const full = path.join(migrationsDir, f);
-    if (fs.existsSync(full)) return full;
-  }
-  return null;
+  const stem = name.replace(/\.sql$/, "");
+  const full = path.join(migrationsDir, `${stem}.down.sql`);
+  return fs.existsSync(full) ? full : null;
 }
 
 export function applyPendingMigrations(
@@ -67,9 +72,20 @@ export function applyPendingMigrations(
   migrationsDir: string,
   options?: ApplyOptions
 ): void {
+  const files = pendingMigrationFiles(migrationsDir);
+
+  if (options?.dryRun) {
+    for (const file of files) {
+      const fullPath = path.join(migrationsDir, file);
+      const sha256 = hashFile(fullPath);
+      console.log(`[migrate] DRY RUN would apply: ${file}`);
+      console.log(`         SHA256: ${sha256}`);
+    }
+    return;
+  }
+
   ensureMigrationsTable(db);
   const applied = getAppliedMigrations(db);
-  const files = pendingMigrationFiles(migrationsDir);
 
   for (const file of files) {
     const name = upMigrationName(file);
@@ -91,12 +107,6 @@ export function applyPendingMigrations(
 
     const sql = fs.readFileSync(fullPath, "utf-8");
     const sha256 = hashFile(fullPath);
-
-    if (options?.dryRun) {
-      console.log(`[migrate] DRY RUN would apply: ${name}`);
-      console.log(`         SHA256: ${sha256}`);
-      continue;
-    }
 
     try {
       db.transaction(() => {
@@ -138,11 +148,20 @@ export function rollbackTo(
   options?: ApplyOptions
 ): string | null {
   ensureMigrationsTable(db);
-  const applied = getAppliedMigrations(db);
+  const latest = db.prepare(
+    `SELECT name FROM ${MIGRATIONS_TABLE} ORDER BY id DESC LIMIT 1`
+  ).get() as Pick<Migration, "name"> | undefined;
 
-  if (!applied.has(targetName)) {
-    console.log(`[migrate] "${targetName}" is not applied, nothing to roll back`);
+  if (!latest) {
+    console.log("[migrate] nothing to roll back");
     return null;
+  }
+
+  if (latest.name !== targetName) {
+    throw new Error(
+      `Cannot roll back "${targetName}" because "${latest.name}" was applied after it. ` +
+      `Only the most recent migration can be rolled back.`
+    );
   }
 
   const downPath = downMigrationFile(migrationsDir, targetName);
@@ -182,8 +201,10 @@ export function migrationStatus(
   db: SqliteDatabase,
   migrationsDir: string
 ): MigrationStatusRow[] {
-  ensureMigrationsTable(db);
-  const applied = getAppliedMigrations(db);
+  const tableExists = !!db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
+  ).get(MIGRATIONS_TABLE);
+  const applied = tableExists ? getAppliedMigrations(db) : new Map<string, string | null>();
   const files = pendingMigrationFiles(migrationsDir);
   const appliedNames = new Set(applied.keys());
 
