@@ -60,7 +60,7 @@ function deriveVisualConnections(
   return connections;
 }
 
-function computeCrossingMinimizingOrder(
+function computeOrdering(
   divisions: PyramidExplorerData["divisions"],
   edges: ExplorerEdge[]
 ): Map<number, number> {
@@ -72,83 +72,77 @@ function computeCrossingMinimizingOrder(
   }
 
   const maxLevel = Math.max(...divisions.map((d) => d.level));
-
-  // Build adjacency: division -> connected division ids
-  const adjacency = new Map<number, Set<number>>();
-  for (const e of edges) {
-    const from = e.from_division_id;
-    const to = e.to_division_id;
-    if (!adjacency.has(from)) adjacency.set(from, new Set());
-    if (!adjacency.has(to)) adjacency.set(to, new Set());
-    adjacency.get(from)!.add(to);
-    adjacency.get(to)!.add(from);
-  }
-
-  // Initial order: by display_order within each level
   const order = new Map<number, number>();
-  for (const [, divs] of byLevel) {
-    const sorted = [...divs].sort((a, b) => {
-      const ao = a.display_order ?? 1;
-      const bo = b.display_order ?? 1;
-      return ao - bo;
+
+  // Anchor: National League North above National League South at level 6
+  const nationalNorth = divisions.find((d) => d.code === "national-league-north");
+  const nationalSouth = divisions.find((d) => d.code === "national-league-south");
+  if (nationalNorth && nationalSouth) {
+    order.set(nationalNorth.id, 0);
+    order.set(nationalSouth.id, 1);
+  }
+
+  // Propagate DOWNWARD (level 7+): sort by average position of divisions you promote INTO
+  for (let level = 7; level <= maxLevel; level++) {
+    const divs = byLevel.get(level) ?? [];
+    if (divs.length <= 1) continue;
+
+    const barycenters = divs.map((d) => {
+      const promotionEdges = edges.filter(
+        (e) => e.from_division_id === d.id && e.movement_type === "promotion"
+      );
+
+      if (promotionEdges.length === 0) {
+        return { id: d.id, bary: order.get(d.id) ?? 0 };
+      }
+
+      const targetOrders = promotionEdges
+        .map((e) => order.get(e.to_division_id))
+        .filter((o): o is number => o !== undefined);
+
+      if (targetOrders.length === 0) {
+        return { id: d.id, bary: order.get(d.id) ?? 0 };
+      }
+
+      const avg = targetOrders.reduce((sum, o) => sum + o, 0) / targetOrders.length;
+      return { id: d.id, bary: avg };
     });
-    for (let i = 0; i < sorted.length; i++) {
-      order.set(sorted[i].id, i);
+
+    barycenters.sort((a, b) => a.bary - b.bary || a.id - b.id);
+    for (let i = 0; i < barycenters.length; i++) {
+      order.set(barycenters[i].id, i);
     }
   }
 
-  // Barycenter iterations
-  for (let iter = 0; iter < 8; iter++) {
-    // Sweep top-down (level 1 to max)
-    for (let level = 2; level <= maxLevel; level++) {
-      const divs = byLevel.get(level) ?? [];
-      if (divs.length <= 1) continue;
+  // Propagate UPWARD (level 5-1): sort by average position of divisions that relegate INTO you
+  for (let level = 5; level >= 1; level--) {
+    const divs = byLevel.get(level) ?? [];
+    if (divs.length <= 1) continue;
 
-      const prevLevel = level - 1;
-      const prevOrder = new Map<number, number>();
-      const prevDivs = byLevel.get(prevLevel) ?? [];
-      for (let i = 0; i < prevDivs.length; i++) {
-        prevOrder.set(prevDivs[i].id, i);
+    const barycenters = divs.map((d) => {
+      const relegationEdges = edges.filter(
+        (e) => e.to_division_id === d.id && e.movement_type === "relegation"
+      );
+
+      if (relegationEdges.length === 0) {
+        return { id: d.id, bary: order.get(d.id) ?? 0 };
       }
 
-      const barycenters = divs.map((d) => {
-        const neighbors = adjacency.get(d.id) ?? new Set<number>();
-        const connected = [...neighbors].filter((n) => prevOrder.has(n));
-        if (connected.length === 0) return { id: d.id, bary: order.get(d.id) ?? 0 };
-        const avg = connected.reduce((sum, n) => sum + (prevOrder.get(n) ?? 0), 0) / connected.length;
-        return { id: d.id, bary: avg };
-      });
+      const sourceOrders = relegationEdges
+        .map((e) => order.get(e.from_division_id))
+        .filter((o): o is number => o !== undefined);
 
-      barycenters.sort((a, b) => a.bary - b.bary);
-      for (let i = 0; i < barycenters.length; i++) {
-        order.set(barycenters[i].id, i);
-      }
-    }
-
-    // Sweep bottom-up (max to 1)
-    for (let level = maxLevel - 1; level >= 1; level--) {
-      const divs = byLevel.get(level) ?? [];
-      if (divs.length <= 1) continue;
-
-      const nextLevel = level + 1;
-      const nextOrder = new Map<number, number>();
-      const nextDivs = byLevel.get(nextLevel) ?? [];
-      for (let i = 0; i < nextDivs.length; i++) {
-        nextOrder.set(nextDivs[i].id, i);
+      if (sourceOrders.length === 0) {
+        return { id: d.id, bary: order.get(d.id) ?? 0 };
       }
 
-      const barycenters = divs.map((d) => {
-        const neighbors = adjacency.get(d.id) ?? new Set<number>();
-        const connected = [...neighbors].filter((n) => nextOrder.has(n));
-        if (connected.length === 0) return { id: d.id, bary: order.get(d.id) ?? 0 };
-        const avg = connected.reduce((sum, n) => sum + (nextOrder.get(n) ?? 0), 0) / connected.length;
-        return { id: d.id, bary: avg };
-      });
+      const avg = sourceOrders.reduce((sum, o) => sum + o, 0) / sourceOrders.length;
+      return { id: d.id, bary: avg };
+    });
 
-      barycenters.sort((a, b) => a.bary - b.bary);
-      for (let i = 0; i < barycenters.length; i++) {
-        order.set(barycenters[i].id, i);
-      }
+    barycenters.sort((a, b) => a.bary - b.bary || a.id - b.id);
+    for (let i = 0; i < barycenters.length; i++) {
+      order.set(barycenters[i].id, i);
     }
   }
 
@@ -162,18 +156,17 @@ export function computeLayout(
   const config: LayoutConfig = { ...DEFAULT_CONFIG, ...partialConfig };
 
   const divisionLevels = new Map(data.divisions.map((d) => [d.id, d.level]));
-
-  const optimizedOrder = computeCrossingMinimizingOrder(data.divisions, data.edges);
+  const optimizedOrder = computeOrdering(data.divisions, data.edges);
 
   const positionedDivisions: PositionedDivision[] = data.divisions.map((d) => {
-    const order = optimizedOrder.get(d.id) ?? 0;
+    const row = optimizedOrder.get(d.id) ?? 0;
     let x: number;
     let y: number;
     if (config.orientation === "horizontal") {
       x = (d.level - 1) * config.columnWidth;
-      y = order * config.rowHeight;
+      y = row * config.rowHeight;
     } else {
-      x = order * config.columnWidth;
+      x = row * config.columnWidth;
       y = (d.level - 1) * config.rowHeight;
     }
     return { ...d, x, y };
