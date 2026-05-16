@@ -120,8 +120,13 @@ export function computeEdgeAllocationType(): Map<number, "fixed" | "allocation_d
   const divLevel = new Map(MEN_PYRAMID_DIVISIONS.map((d) => [d.id, d.level]));
   const result = new Map<number, "fixed" | "allocation_dependent">();
   for (const edge of MEN_PYRAMID_EDGES) {
-    const fromLevel = divLevel.get(edge.from_division_id) ?? 99;
-    const toLevel = divLevel.get(edge.to_division_id) ?? 99;
+    const fromLevel = divLevel.get(edge.from_division_id);
+    const toLevel = divLevel.get(edge.to_division_id);
+    if (fromLevel == null || toLevel == null) {
+      throw new Error(
+        `computeEdgeAllocationType: edge ${edge.id} references unknown division (from=${edge.from_division_id}, to=${edge.to_division_id})`
+      );
+    }
     result.set(edge.id, fromLevel <= 6 && toLevel <= 6 ? "fixed" : "allocation_dependent");
   }
   return result;
