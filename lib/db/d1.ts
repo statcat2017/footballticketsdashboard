@@ -2,6 +2,8 @@ import { createD1AppDatabase, type AppDatabase, type D1DatabaseLike, type D1Prep
 import { schemaSql } from "./schema.ts";
 import {
   CLUB_VENUE_ASSIGNMENTS,
+  computeDivisionDisplayOrder,
+  computeEdgeAllocationType,
   MEN_PYRAMID_CLUBS,
   MEN_PYRAMID_DIVISIONS,
   MEN_PYRAMID_EDGES,
@@ -310,6 +312,8 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
     throw new Error(`Invalid pyramid seed data: ${pyramidIssues.map((issue) => issue.message).join("; ")}`);
   }
 
+  const divisionDisplayOrder = computeDivisionDisplayOrder();
+  const edgeAllocationType = computeEdgeAllocationType();
   const statements: D1PreparedStatement[] = [];
   const add = (sql: string, params: Array<string | number | null>) => {
     statements.push(binding.prepare(sql).bind(...params));
@@ -322,15 +326,15 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
 
   for (const division of MEN_PYRAMID_DIVISIONS) {
     add(
-      "INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET template_id = excluded.template_id, code = excluded.code, name = excluded.name, level = excluded.level, max_size = excluded.max_size",
-      [division.id, division.template_id, division.code, division.name, division.level, division.max_size]
+      "INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size, display_order) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET template_id = excluded.template_id, code = excluded.code, name = excluded.name, level = excluded.level, max_size = excluded.max_size, display_order = excluded.display_order",
+      [division.id, division.template_id, division.code, division.name, division.level, division.max_size, divisionDisplayOrder.get(division.id) ?? null]
     );
   }
 
   for (const edge of MEN_PYRAMID_EDGES) {
     add(
-      "INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_division_id = excluded.from_division_id, to_division_id = excluded.to_division_id, movement_type = excluded.movement_type",
-      [edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type]
+      "INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type, allocation_type) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_division_id = excluded.from_division_id, to_division_id = excluded.to_division_id, movement_type = excluded.movement_type, allocation_type = excluded.allocation_type",
+      [edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type, edgeAllocationType.get(edge.id) ?? "allocation_dependent"]
     );
   }
 

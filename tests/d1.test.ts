@@ -38,6 +38,8 @@ vi.mock("@/lib/db/pyramid", () => ({
       created_at: "2026-05-10T00:00:00.000Z"
     }
   ],
+  computeDivisionDisplayOrder: () => new Map([[1, 1]]),
+  computeEdgeAllocationType: () => new Map(),
   validatePyramidSeason: vi.fn(() => [])
 }));
 

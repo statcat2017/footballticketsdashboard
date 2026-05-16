@@ -2,6 +2,8 @@ import type { Database as SqliteDatabase } from "better-sqlite3";
 import { SEED_DATA } from "./d1.ts";
 import {
   CLUB_VENUE_ASSIGNMENTS,
+  computeDivisionDisplayOrder,
+  computeEdgeAllocationType,
   MEN_PYRAMID_CLUBS,
   MEN_PYRAMID_DIVISIONS,
   MEN_PYRAMID_EDGES,
@@ -14,6 +16,9 @@ import {
 } from "./pyramid.ts";
 
 export function seedDatabase(db: SqliteDatabase): void {
+  const divisionDisplayOrder = computeDivisionDisplayOrder();
+  const edgeAllocationType = computeEdgeAllocationType();
+
   const seed = db.transaction(() => {
     const insertPyramidTemplate = db.prepare(`
       INSERT INTO pyramid_templates (id, code, name, sport, status)
@@ -27,29 +32,31 @@ export function seedDatabase(db: SqliteDatabase): void {
     insertPyramidTemplate.run(MEN_PYRAMID_TEMPLATE.id, MEN_PYRAMID_TEMPLATE.code, MEN_PYRAMID_TEMPLATE.name, MEN_PYRAMID_TEMPLATE.sport, MEN_PYRAMID_TEMPLATE.status);
 
     const insertPyramidDivision = db.prepare(`
-      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size, display_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         template_id = excluded.template_id,
         code = excluded.code,
         name = excluded.name,
         level = excluded.level,
-        max_size = excluded.max_size
+        max_size = excluded.max_size,
+        display_order = excluded.display_order
     `);
     for (const division of MEN_PYRAMID_DIVISIONS) {
-      insertPyramidDivision.run(division.id, division.template_id, division.code, division.name, division.level, division.max_size);
+      insertPyramidDivision.run(division.id, division.template_id, division.code, division.name, division.level, division.max_size, divisionDisplayOrder.get(division.id) ?? null);
     }
 
     const insertPyramidEdge = db.prepare(`
-      INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type, allocation_type)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         from_division_id = excluded.from_division_id,
         to_division_id = excluded.to_division_id,
-        movement_type = excluded.movement_type
+        movement_type = excluded.movement_type,
+        allocation_type = excluded.allocation_type
     `);
     for (const edge of MEN_PYRAMID_EDGES) {
-      insertPyramidEdge.run(edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type);
+      insertPyramidEdge.run(edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type, edgeAllocationType.get(edge.id) ?? "allocation_dependent");
     }
 
     const insertPyramidSeason = db.prepare(`

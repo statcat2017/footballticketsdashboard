@@ -2,6 +2,7 @@ export type PyramidStatus = "active" | "retired";
 export type SeasonDivisionStatus = "open" | "locked";
 export type ClubStatus = "known" | "partial" | "missing";
 export type MovementType = "promotion" | "relegation";
+export type AllocationType = "fixed" | "allocation_dependent";
 
 export interface PyramidTemplateRow {
   id: number;
@@ -18,6 +19,7 @@ export interface PyramidDivisionRow {
   name: string;
   level: number;
   max_size: number;
+  display_order?: number | null;
 }
 
 export interface PyramidEdgeRow {
@@ -25,6 +27,9 @@ export interface PyramidEdgeRow {
   from_division_id: number;
   to_division_id: number;
   movement_type: MovementType;
+  allocation_type?: AllocationType;
+  notes?: string | null;
+  source_url?: string | null;
 }
 
 export interface PyramidSeasonRow {
@@ -93,6 +98,38 @@ export interface ClubVenueAssignmentRow {
 export interface PyramidValidationIssue {
   code: "duplicate_club" | "division_over_capacity" | "invalid_movement" | "season_template_mismatch" | "unknown_season_division";
   message: string;
+}
+
+/** Compute display_order within each level from the seed-array order. */
+export function computeDivisionDisplayOrder(): Map<number, number> {
+  const byLevel = new Map<number, typeof MEN_PYRAMID_DIVISIONS>();
+  for (const d of MEN_PYRAMID_DIVISIONS) {
+    const group = byLevel.get(d.level) ?? [];
+    group.push(d);
+    byLevel.set(d.level, group);
+  }
+  const order = new Map<number, number>();
+  for (const [, divs] of byLevel) {
+    divs.forEach((d, i) => order.set(d.id, i + 1));
+  }
+  return order;
+}
+
+/** Compute allocation_type from connected division levels. */
+export function computeEdgeAllocationType(): Map<number, "fixed" | "allocation_dependent"> {
+  const divLevel = new Map(MEN_PYRAMID_DIVISIONS.map((d) => [d.id, d.level]));
+  const result = new Map<number, "fixed" | "allocation_dependent">();
+  for (const edge of MEN_PYRAMID_EDGES) {
+    const fromLevel = divLevel.get(edge.from_division_id);
+    const toLevel = divLevel.get(edge.to_division_id);
+    if (fromLevel == null || toLevel == null) {
+      throw new Error(
+        `computeEdgeAllocationType: edge ${edge.id} references unknown division (from=${edge.from_division_id}, to=${edge.to_division_id})`
+      );
+    }
+    result.set(edge.id, fromLevel <= 6 && toLevel <= 6 ? "fixed" : "allocation_dependent");
+  }
+  return result;
 }
 
 export const MEN_PYRAMID_TEMPLATE: PyramidTemplateRow = {
