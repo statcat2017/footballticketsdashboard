@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { computeLayout } from "./pyramidLayout";
 import type {
   LayoutConfig,
+  LayoutOrientation,
   PositionedDivision,
   VisualConnection,
   PyramidExplorerData
@@ -31,10 +32,18 @@ export function PyramidGraph({
   const connections = layout.visualConnections;
   const cfg = layout.config;
 
-  const svgWidth =
-    Math.max(...divisions.map((d) => d.x)) + cfg.nodeWidth + 40;
-  const svgHeight =
-    Math.max(...divisions.map((d) => d.y)) + cfg.nodeHeight + 40;
+  if (divisions.length === 0) {
+    return (
+      <div role="status" style={{ borderRadius: 8, border: "1px dashed var(--grey-300)", padding: 24, fontSize: 14, color: "var(--grey-500)" }}>
+        No pyramid data available.
+      </div>
+    );
+  }
+
+  const maxX = Math.max(...divisions.map((d) => d.x));
+  const maxY = Math.max(...divisions.map((d) => d.y));
+  const svgWidth = maxX + cfg.nodeWidth + 40;
+  const svgHeight = maxY + cfg.nodeHeight + 40;
 
   return (
     <svg
@@ -83,6 +92,7 @@ export function PyramidGraph({
             toDiv={toDiv}
             nodeWidth={cfg.nodeWidth}
             nodeHeight={cfg.nodeHeight}
+            orientation={cfg.orientation}
             opacity={opacity}
             strokeWidth={strokeWidth}
             onMouseEnter={() =>
@@ -125,17 +135,26 @@ export function PyramidGraph({
   );
 }
 
-function edgePath(
+export function edgePath(
   fromDiv: PositionedDivision,
   toDiv: PositionedDivision,
   nodeWidth: number,
-  nodeHeight: number
+  nodeHeight: number,
+  orientation: LayoutOrientation
 ): string {
+  if (orientation === "vertical") {
+    const x1 = fromDiv.x + nodeWidth / 2;
+    const y1 = fromDiv.y + nodeHeight;
+    const x2 = toDiv.x + nodeWidth / 2;
+    const y2 = toDiv.y;
+    const dy = Math.abs(y2 - y1) * 0.4;
+    return `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
+  }
+
   const x1 = fromDiv.x + nodeWidth;
   const y1 = fromDiv.y + nodeHeight / 2;
   const x2 = toDiv.x;
   const y2 = toDiv.y + nodeHeight / 2;
-
   const dx = Math.abs(x2 - x1) * 0.4;
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
@@ -146,6 +165,7 @@ interface ConnectionLineProps {
   toDiv: PositionedDivision;
   nodeWidth: number;
   nodeHeight: number;
+  orientation: LayoutOrientation;
   opacity: number;
   strokeWidth: number;
   onMouseEnter: () => void;
@@ -158,12 +178,13 @@ function ConnectionLine({
   toDiv,
   nodeWidth,
   nodeHeight,
+  orientation,
   opacity,
   strokeWidth,
   onMouseEnter,
   onMouseLeave
 }: ConnectionLineProps) {
-  const path = edgePath(fromDiv, toDiv, nodeWidth, nodeHeight);
+  const path = edgePath(fromDiv, toDiv, nodeWidth, nodeHeight, orientation);
 
   const common = {
     d: path,

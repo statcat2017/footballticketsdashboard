@@ -3,6 +3,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createAppDatabase } from "@/lib/db/client";
 import { getPyramidExplorerData, type PyramidExplorerData } from "@/lib/db/pyramid-explorer";
 import { computeLayout } from "@/app/components/pyramid/pyramidLayout";
+import { edgePath } from "@/app/components/pyramid/PyramidGraph";
+import type { PositionedDivision } from "@/app/components/pyramid/pyramidGraphTypes";
 
 describe("pyramid graph layout", () => {
   let data: PyramidExplorerData;
@@ -77,6 +79,18 @@ describe("pyramid graph layout", () => {
 
     expect(a.divisions).toEqual(b.divisions);
     expect(a.visualConnections).toEqual(b.visualConnections);
+  });
+
+  it("handles empty graph data without invalid dimensions", () => {
+    const result = computeLayout({
+      season: { id: 0, label: "" },
+      divisions: [],
+      edges: [],
+      clubs: []
+    });
+
+    expect(result.divisions).toEqual([]);
+    expect(result.visualConnections).toEqual([]);
   });
 });
 
@@ -173,5 +187,34 @@ describe("visual edge derivation", () => {
       const fromLowerToHigher = backwardEdges.some((e) => e.movement_type === "promotion");
       expect(fromHigherToLower || fromLowerToHigher).toBe(true);
     }
+  });
+});
+
+describe("edgePath orientation", () => {
+  const nodeWidth = 190;
+  const nodeHeight = 42;
+
+  const fromDiv: PositionedDivision = {
+    id: 1, code: "PR", name: "Premier League", level: 1, max_size: 20,
+    display_order: 1, club_count: 20, clubs: [], x: 0, y: 0
+  };
+
+  const toDiv: PositionedDivision = {
+    id: 2, code: "CH", name: "Championship", level: 2, max_size: 24,
+    display_order: 1, club_count: 24, clubs: [], x: 220, y: 0
+  };
+
+  it("horizontal edgePath draws from right edge of source to left edge of target", () => {
+    const path = edgePath(fromDiv, toDiv, nodeWidth, nodeHeight, "horizontal");
+
+    expect(path).toContain(`M ${nodeWidth} 21`);
+    expect(path).toContain(`${toDiv.x} 21`);
+  });
+
+  it("vertical edgePath draws from bottom edge of source to top edge of target", () => {
+    const path = edgePath(fromDiv, toDiv, nodeWidth, nodeHeight, "vertical");
+
+    expect(path).toContain(`M 95 42`);
+    expect(path).toContain(`${toDiv.x + nodeWidth / 2} 0`);
   });
 });
