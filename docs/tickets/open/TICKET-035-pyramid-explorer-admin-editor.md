@@ -1,6 +1,6 @@
 # TICKET-035: Pyramid Explorer And Admin Edge Editor
 
-Status: open
+Status: open - Phases 1-2 complete, Phase 3 next
 Owner: Frontend / Data
 Priority: high
 Depends on: TICKET-034
@@ -10,6 +10,24 @@ Depends on: TICKET-034
 Build an interactive pyramid explorer that visualises the men's English pyramid from the database, supports club search and division focus, and doubles as an admin interface for maintaining promotion/relegation movement paths and division layout order.
 
 This feature turns the pyramid model into a navigable product surface and moves edge maintenance out of TypeScript constants and into audited admin workflows.
+
+## Current Status
+
+Sprint handoff: 2026-05-16.
+
+- Phase 1 merged in PR #79.
+- Phase 2 merged in PR #81.
+- Current `main` includes `lib/db/pyramid-explorer.ts` and `tests/pyramid-explorer.test.ts`.
+- The Phase 2 review fix is included: nested clubs are keyed by `division_id`, and divisions are scoped through `pyramid_season_divisions` for the latest season.
+- Next boot-up should begin Phase 3 on a new branch from `main`.
+
+## Next Steps
+
+- Build the shared graph rendering foundation before adding the public route.
+- Add deterministic horizontal and vertical layout helpers.
+- Add visual edge derivation that collapses reciprocal promotion/relegation pairs.
+- Render fixed connections as solid black, allocation-dependent connections as dotted black, and one-way edges as warning arrows.
+- Add tests for layout ordering, reciprocal edge collapsing, and one-way edge classification.
 
 ## Work
 
@@ -24,7 +42,7 @@ This feature turns the pyramid model into a navigable product surface and moves 
 
 ## Sub-Phases
 
-### Phase 1: Schema And Data Backfill
+### Phase 1: Schema And Data Backfill (Complete)
 
 - Add `pyramid_divisions.display_order`.
 - Add `pyramid_edges.allocation_type`, `notes`, and `source_url`.
@@ -32,14 +50,17 @@ This feature turns the pyramid model into a navigable product surface and moves 
 - Backfill `allocation_type = 'fixed'` for edges between divisions at levels 1-6.
 - Backfill `allocation_type = 'allocation_dependent'` for any edge touching level 7+.
 - Update seed constants, D1 seed paths, schema docs, and tests.
+- Merged in PR #79.
 
-### Phase 2: Explorer Data Service
+### Phase 2: Explorer Data Service (Complete)
 
 - Add `getPyramidExplorerData()` service reading from DB tables.
 - Return divisions, edges, latest-season memberships, club search records, and derived visual connections.
 - Keep TypeScript constants as seed data only.
+- Merged in PR #81.
+- The service reads latest-season divisions through `pyramid_season_divisions` and keys nested clubs by `division_id`.
 
-### Phase 3: Shared Graph Component
+### Phase 3: Shared Graph Component (Next)
 
 - Build custom React/SVG graph component.
 - Default horizontal layout: Premier League left, each level one slot to the right.
