@@ -155,22 +155,45 @@ export function computeLayout(
 ): LayoutResult {
   const config: LayoutConfig = { ...DEFAULT_CONFIG, ...partialConfig };
 
+  if (data.divisions.length === 0) {
+    return { divisions: [], visualConnections: [], config };
+  }
+
   const divisionLevels = new Map(data.divisions.map((d) => [d.id, d.level]));
   const optimizedOrder = computeOrdering(data.divisions, data.edges);
 
-  const positionedDivisions: PositionedDivision[] = data.divisions.map((d) => {
+  const byLevel = new Map<number, { d: PyramidExplorerData["divisions"][number]; row: number }[]>();
+  for (const d of data.divisions) {
     const row = optimizedOrder.get(d.id) ?? 0;
-    let x: number;
-    let y: number;
-    if (config.orientation === "horizontal") {
-      x = (d.level - 1) * config.columnWidth;
-      y = row * config.rowHeight;
+    const list = byLevel.get(d.level) ?? [];
+    list.push({ d, row });
+    byLevel.set(d.level, list);
+  }
+
+  for (const [, divs] of byLevel) {
+    divs.sort((a, b) => a.row - b.row);
+  }
+
+  const sortedLevels = [...byLevel.entries()].sort(([a], [b]) => a - b);
+  const positionedDivisions: PositionedDivision[] = [];
+  const isHorizontal = config.orientation === "horizontal";
+
+  for (const [level, divs] of sortedLevels) {
+    const n = divs.length;
+    if (isHorizontal) {
+      const x = (level - 1) * config.columnWidth;
+      const startY = -(n - 1) * config.rowHeight / 2;
+      for (let i = 0; i < n; i++) {
+        positionedDivisions.push({ ...divs[i].d, x, y: startY + i * config.rowHeight });
+      }
     } else {
-      x = row * config.columnWidth;
-      y = (d.level - 1) * config.rowHeight;
+      const y = (level - 1) * config.rowHeight;
+      const startX = -(n - 1) * config.columnWidth / 2;
+      for (let i = 0; i < n; i++) {
+        positionedDivisions.push({ ...divs[i].d, x: startX + i * config.columnWidth, y });
+      }
     }
-    return { ...d, x, y };
-  });
+  }
 
   const visualConnections = deriveVisualConnections(data.edges, divisionLevels);
 
