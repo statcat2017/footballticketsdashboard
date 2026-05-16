@@ -29,6 +29,7 @@ The admin source of truth is the pyramid model. Public-search tables are updated
 - Allow capacity overrides when a finalized division starts above or below its configured max size, with an override note stored on the season division.
 - Edit club identity, club status, and primary ground assignment in the first admin version. Implemented in Phase 2B with inline editing on the club detail page.
 - Keep league/division structure editing out of scope for the first version; only manage memberships.
+- Add a public pyramid explorer and admin edge/layout editor before the season swapper so movement-path validation is maintained from DB data instead of TypeScript constants.
 - Preserve venue assignment history with explicit admin-chosen effective dates. Default is next July 1st (overridable).
 - Allow shared venues, and warn (require confirmation) before editing a venue currently used by multiple clubs.
 - Use Google Maps JavaScript API in admin for place/postcode search and manual pin placement.
@@ -110,6 +111,16 @@ Purpose: allow manual maintenance of club identity and primary ground data.
 - Google Maps picker with place/postcode search and manual pin placement.
 - Travel-cache invalidation when venue coordinates move more than one straight-line mile.
 - Allow approximate coordinates until an admin manually places or drags the pin.
+
+### Phase 2D: Pyramid Explorer & Edge/Layout Editor (Planned)
+
+Detailed implementation planning lives in `docs/pyramid-explorer-spec.md` and `docs/tickets/open/TICKET-035-pyramid-explorer-admin-editor.md`.
+
+- Add public `/pyramid` explorer backed by DB tables.
+- Add protected `/admin/pyramid` editor using the same graph component.
+- Store division layout order and movement-path metadata in the database.
+- Maintain promotion/relegation edge topology with audited admin mutations.
+- Use this as the graph/data foundation for Phase 3 season swapper validation.
 
 ## Phase 3: Season League Swapper
 
