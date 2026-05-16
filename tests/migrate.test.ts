@@ -90,6 +90,35 @@ describe("migrate", () => {
     expect(migrationTableExists).toBe(false);
   });
 
+  it("dry run only reports unapplied migrations", () => {
+    writeMigration(dir, "001-a.sql", "CREATE TABLE a (id INTEGER PRIMARY KEY);");
+    writeMigration(dir, "002-b.sql", "CREATE TABLE b (id INTEGER PRIMARY KEY);");
+
+    applyPendingMigrations(db, dir);
+
+    writeMigration(dir, "003-c.sql", "CREATE TABLE c (id INTEGER PRIMARY KEY);");
+
+    const migrationCount = (
+      db.prepare("SELECT COUNT(*) as cnt FROM _migrations").get() as { cnt: number }
+    ).cnt;
+    expect(migrationCount).toBe(2);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    applyPendingMigrations(db, dir, { dryRun: true });
+
+    const output = logSpy.mock.calls.join("\n");
+    expect(output).not.toContain("001-a.sql");
+    expect(output).not.toContain("002-b.sql");
+    expect(output).toContain("003-c.sql");
+
+    logSpy.mockRestore();
+
+    const migrationCountAfter = (
+      db.prepare("SELECT COUNT(*) as cnt FROM _migrations").get() as { cnt: number }
+    ).cnt;
+    expect(migrationCountAfter).toBe(2);
+  });
+
   it("rollbackLast rolls back the latest migration and deletes its row", () => {
     writeMigration(dir, "001-create-users.sql", "CREATE TABLE users (id INTEGER PRIMARY KEY);");
     writeMigration(dir, "002-add-posts.sql", "CREATE TABLE posts (id INTEGER PRIMARY KEY);");

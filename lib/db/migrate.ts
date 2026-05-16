@@ -74,18 +74,27 @@ export function applyPendingMigrations(
 ): void {
   const files = pendingMigrationFiles(migrationsDir);
 
+  const tableExists = !!db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
+  ).get(MIGRATIONS_TABLE);
+
+  const applied = tableExists
+    ? getAppliedMigrations(db)
+    : new Map<string, string | null>();
+
   if (options?.dryRun) {
     for (const file of files) {
+      const name = upMigrationName(file);
+      if (applied.has(name)) continue;
       const fullPath = path.join(migrationsDir, file);
       const sha256 = hashFile(fullPath);
-      console.log(`[migrate] DRY RUN would apply: ${file}`);
+      console.log(`[migrate] DRY RUN would apply: ${name}`);
       console.log(`         SHA256: ${sha256}`);
     }
     return;
   }
 
   ensureMigrationsTable(db);
-  const applied = getAppliedMigrations(db);
 
   for (const file of files) {
     const name = upMigrationName(file);
