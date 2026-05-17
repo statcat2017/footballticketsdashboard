@@ -23,9 +23,9 @@ export default async function AdminDashboardPage() {
       <section style={{ marginTop: "1.5rem" }}>
         <h2>Phase 2B &mdash; Club &amp; Venue Editor</h2>
         <p style={{ margin: "0.25rem 0 0.75rem", color: "#6f7e7a", fontSize: "14px" }}>
-          Edit club identity, manage venues, and assign primary grounds.
+          Edit club identity, manage venues, assign primary grounds, and review data quality.
         </p>
-        <div style={{ display: "flex", gap: "0.75rem" }}>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <Link href="/admin/clubs" style={{
             display: "inline-flex",
             alignItems: "center",
@@ -55,6 +55,21 @@ export default async function AdminDashboardPage() {
             textDecoration: "none"
           }}>
             Manage venues &rarr;
+          </Link>
+          <Link href="/admin/data-quality" style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #a76800",
+            borderRadius: "7px",
+            background: "#fdf3e9",
+            color: "#8a5a00",
+            padding: "0.5rem 1rem",
+            fontSize: "14px",
+            fontWeight: 700,
+            textDecoration: "none"
+          }}>
+            Data quality &rarr;
           </Link>
         </div>
       </section>
