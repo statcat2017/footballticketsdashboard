@@ -4,6 +4,9 @@ import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getAdminClubDetail } from "@/lib/admin/clubs";
 import { getAdminVenueList, nextJuly1st } from "@/lib/admin/venues";
+import { getDatabase } from "@/lib/db/client";
+import { listAliasesForClub } from "@/lib/db/clubMapping";
+import { getKnownCompetitionCodes } from "@/lib/admin/clubs";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +36,12 @@ export default async function AdminClubDetailPage(props: {
   const isEditing = edit === "1";
   const allVenues = await getAdminVenueList();
   const defaultEffectiveFrom = nextJuly1st();
+
+  const db = await getDatabase();
+  const aliases = await listAliasesForClub(db, clubId);
+  const activeAliases = aliases.filter((a) => !a.retiredAt);
+  const retiredAliases = aliases.filter((a) => a.retiredAt);
+  const knownCodes = getKnownCompetitionCodes();
 
   return (
     <main style={{ maxWidth: "56rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
@@ -220,6 +229,147 @@ export default async function AdminClubDetailPage(props: {
                   <span>{data.club.verified_at}</span>
                 </div>
               )}
+            </div>
+          )}
+        </section>
+
+        <section style={{
+          border: "1px solid #dce3e2",
+          borderRadius: "8px",
+          overflow: "hidden"
+        }}>
+          <div style={{
+            padding: "0.75rem 1rem",
+            background: "#f5f7f7",
+            borderBottom: "1px solid #dce3e2",
+            fontSize: "0.9rem",
+            fontWeight: 700
+          }}>
+            Club Aliases ({activeAliases.length})
+          </div>
+
+          {activeAliases.length === 0 ? (
+            <div style={{ padding: "1rem", color: "#6f7e7a", fontSize: "14px" }}>
+              No aliases configured. Add aliases to improve import matching for this club.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                <thead>
+                  <tr style={{ background: "#fbfcfc", borderBottom: "1px solid #dce3e2" }}>
+                    <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Alias</th>
+                    <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Scope</th>
+                    <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Source</th>
+                    <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeAliases.map((a) => (
+                    <tr key={a.id} style={{ borderBottom: "1px solid #eef1f1" }}>
+                      <td style={{ padding: "0.6rem 1rem", fontWeight: 600 }}>{a.alias}</td>
+                      <td style={{ padding: "0.6rem 1rem" }}>
+                        {a.competitionCode ? (
+                          <span style={{ fontSize: "12px", background: "#e8f0ed", color: "#0e5737", padding: "2px 6px", borderRadius: "4px", fontWeight: 600 }}>{a.competitionCode}</span>
+                        ) : (
+                          <span style={{ color: "#6f7e7a", fontSize: "13px" }}>Global</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "0.6rem 1rem", color: "#6f7e7a" }}>{a.source}</td>
+                      <td style={{ padding: "0.6rem 1rem" }}>
+                        <form method="post" action={`/api/admin/clubs/${clubId}/aliases`} style={{ display: "inline" }}>
+                          <input type="hidden" name="csrf" value={csrfToken} />
+                          <input type="hidden" name="alias_id" value={a.id} />
+                          <input type="hidden" name="action" value="retire" />
+                          <button type="submit" style={{ border: "none", background: "none", color: "#a53a2d", cursor: "pointer", fontSize: "13px", fontWeight: 600, padding: 0 }}>
+                            Retire
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div style={{
+            padding: "1rem",
+            borderTop: "1px solid #dce3e2",
+            background: "#fbfcfc"
+          }}>
+            <details>
+              <summary style={{ cursor: "pointer", fontSize: "14px", fontWeight: 700, color: "#147a4d" }}>
+                Add Alias
+              </summary>
+              <form method="post" action={`/api/admin/clubs/${clubId}/aliases`} style={{ marginTop: "1rem", display: "grid", gap: "0.75rem" }}>
+                <input type="hidden" name="csrf" value={csrfToken} />
+
+                <div style={{ display: "grid", gap: "0.25rem" }}>
+                  <label htmlFor="alias" style={{ fontSize: "14px", fontWeight: 600, color: "#34413e" }}>Alias</label>
+                  <input id="alias" name="alias" type="text" required placeholder="e.g. Man Utd, The Magpies"
+                    style={{ padding: "0.5rem 0.75rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gap: "0.25rem" }}>
+                  <label htmlFor="competition_code" style={{ fontSize: "14px", fontWeight: 600, color: "#34413e" }}>
+                    Competition Scope <span style={{ fontWeight: 400, color: "#6f7e7a" }}>(optional)</span>
+                  </label>
+                  <select id="competition_code" name="competition_code"
+                    style={{ padding: "0.5rem 0.75rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px", background: "#fff" }}
+                  >
+                    <option value="">Global (unscoped)</option>
+                    {knownCodes.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: "12px", color: "#6f7e7a" }}>
+                    Scoped aliases only match imports from that competition. Leave blank for global matching.
+                  </span>
+                </div>
+
+                <button type="submit" style={{
+                  justifySelf: "start",
+                  border: "1px solid #147a4d",
+                  borderRadius: "7px",
+                  background: "#147a4d",
+                  color: "#fff",
+                  padding: "0.5rem 1.25rem",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}>
+                  Add Alias
+                </button>
+              </form>
+            </details>
+          </div>
+
+          {retiredAliases.length > 0 && (
+            <div style={{
+              padding: "0.75rem 1rem",
+              borderTop: "1px solid #dce3e2",
+              fontSize: "13px",
+              color: "#6f7e7a"
+            }}>
+              <details>
+                <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                  Retired aliases ({retiredAliases.length})
+                </summary>
+                <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                  {retiredAliases.map((a) => (
+                    <span key={a.id} style={{
+                      background: "#f5f7f7",
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      textDecoration: "line-through",
+                      color: "#a0a8a5"
+                    }}>
+                      {a.alias}{a.competitionCode ? ` (${a.competitionCode})` : ""}
+                    </span>
+                  ))}
+                </div>
+              </details>
             </div>
           )}
         </section>
