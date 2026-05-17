@@ -194,7 +194,8 @@ export async function updateAdminVenue(
   const updatedCoordinatesNotes = input.coordinates_notes ?? current.coordinates_notes;
 
   const coordsChanged =
-    input.latitude !== undefined || input.longitude !== undefined;
+    updatedLatitude !== current.latitude ||
+    updatedLongitude !== current.longitude;
   const distanceMoved = coordsChanged
     ? distanceMiles(
         { latitude: current.latitude, longitude: current.longitude },
@@ -202,45 +203,47 @@ export async function updateAdminVenue(
       )
     : 0;
 
-  let invalidatedTravelCount = 0;
-  if (coordsChanged && distanceMoved > 1) {
-    invalidatedTravelCount = await invalidateTravelCacheForVenue(db, venueId);
-  }
-
-  await db.run(
-    `UPDATE venues
-     SET name = ?, postcode = ?, latitude = ?, longitude = ?, is_approximate = ?,
-         admin_updated_at = ?, coordinate_precision = ?, coordinates_confidence = ?, coordinates_notes = ?
-     WHERE id = ?`,
-    [
-      updatedName, updatedPostcode, updatedLatitude, updatedLongitude, updatedIsApproximate,
-      now, updatedCoordinatePrecision, updatedCoordinatesConfidence, updatedCoordinatesNotes, venueId
-    ]
-  );
-
-  await writeAdminAuditLog(db, {
-    action: "update",
-    entityType: "venue",
-    entityId: venueId,
-    before: {
-      name: current.name, postcode: current.postcode,
-      latitude: current.latitude, longitude: current.longitude,
-      is_approximate: current.is_approximate,
-      coordinate_precision: current.coordinate_precision,
-      coordinates_confidence: current.coordinates_confidence,
-      coordinates_notes: current.coordinates_notes
-    },
-    after: {
-      name: updatedName, postcode: updatedPostcode,
-      latitude: updatedLatitude, longitude: updatedLongitude,
-      is_approximate: updatedIsApproximate,
-      coordinate_precision: updatedCoordinatePrecision,
-      coordinates_confidence: updatedCoordinatesConfidence,
-      coordinates_notes: updatedCoordinatesNotes
+  return db.transaction<AdminVenueUpdateResult>(async (txDb) => {
+    let invalidatedTravelCount = 0;
+    if (coordsChanged && distanceMoved > 1) {
+      invalidatedTravelCount = await invalidateTravelCacheForVenue(txDb, venueId);
     }
-  });
 
-  return { invalidatedTravelCount };
+    await txDb.run(
+      `UPDATE venues
+       SET name = ?, postcode = ?, latitude = ?, longitude = ?, is_approximate = ?,
+           admin_updated_at = ?, coordinate_precision = ?, coordinates_confidence = ?, coordinates_notes = ?
+       WHERE id = ?`,
+      [
+        updatedName, updatedPostcode, updatedLatitude, updatedLongitude, updatedIsApproximate,
+        now, updatedCoordinatePrecision, updatedCoordinatesConfidence, updatedCoordinatesNotes, venueId
+      ]
+    );
+
+    await writeAdminAuditLog(txDb, {
+      action: "update",
+      entityType: "venue",
+      entityId: venueId,
+      before: {
+        name: current.name, postcode: current.postcode,
+        latitude: current.latitude, longitude: current.longitude,
+        is_approximate: current.is_approximate,
+        coordinate_precision: current.coordinate_precision,
+        coordinates_confidence: current.coordinates_confidence,
+        coordinates_notes: current.coordinates_notes
+      },
+      after: {
+        name: updatedName, postcode: updatedPostcode,
+        latitude: updatedLatitude, longitude: updatedLongitude,
+        is_approximate: updatedIsApproximate,
+        coordinate_precision: updatedCoordinatePrecision,
+        coordinates_confidence: updatedCoordinatesConfidence,
+        coordinates_notes: updatedCoordinatesNotes
+      }
+    });
+
+    return { invalidatedTravelCount };
+  });
 }
 
 export async function assignAdminVenue(

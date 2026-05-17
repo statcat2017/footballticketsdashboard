@@ -11,6 +11,6 @@ ALTER TABLE venues ADD COLUMN coordinates_confidence TEXT DEFAULT 'unknown'
 
 ALTER TABLE venues ADD COLUMN coordinates_notes TEXT;
 
--- Backfill: venues with is_approximate=0 get 'ground_approximate', others get 'unknown'
+-- Backfill: existing venues with is_approximate=0 (manually set, may be unreliable) get ground_approximate; is_approximate=1 get unknown
 UPDATE venues SET coordinate_precision = 'ground_approximate' WHERE is_approximate = 0 AND coordinate_precision = 'unknown';
 UPDATE venues SET coordinate_precision = 'unknown' WHERE is_approximate = 1 AND coordinate_precision = 'unknown';

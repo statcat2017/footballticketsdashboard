@@ -45,6 +45,7 @@ export default async function AdminNewVenuePage(props: { searchParams: Promise<{
         latInputId="latitude"
         lngInputId="longitude"
         approxInputId="is_approximate"
+        precisionInputId="coordinate_precision"
         mode="create"
       />
 
@@ -85,6 +86,18 @@ export default async function AdminNewVenuePage(props: { searchParams: Promise<{
           <label htmlFor="is_approximate" style={{ fontSize: "14px", color: "#34413e" }}>
             Coordinates are approximate
           </label>
+        </div>
+
+        <div style={{ display: "grid", gap: "0.25rem" }}>
+          <label htmlFor="coordinate_precision" style={{ fontSize: "14px", fontWeight: 700, color: "#34413e" }}>Coordinate Precision</label>
+          <select id="coordinate_precision" name="coordinate_precision" defaultValue="unknown"
+            style={{ padding: "0.5rem 0.75rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px", background: "#fff" }}
+          >
+            <option value="exact">Exact — surveyed or official source</option>
+            <option value="postcode">Postcode — from postcode lookup</option>
+            <option value="ground_approximate">Ground approximate — placed on map</option>
+            <option value="unknown">Unknown</option>
+          </select>
         </div>
 
         <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>

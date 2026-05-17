@@ -2,11 +2,18 @@ import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { getCloudflareEnv } from "@/lib/runtime-env";
 
-export async function POST(request: Request) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getAdminSessionFromRequest(request);
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const venueId = Number(id);
+
+  if (!Number.isInteger(venueId) || venueId <= 0) {
+    return NextResponse.json({ error: "Invalid venue ID." }, { status: 400 });
   }
 
   const body = await request.json().catch(() => null);

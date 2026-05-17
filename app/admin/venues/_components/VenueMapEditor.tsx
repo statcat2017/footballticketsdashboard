@@ -21,12 +21,18 @@ interface VenueMapEditorProps {
   latInputId: string;
   lngInputId: string;
   approxInputId: string;
+  precisionInputId: string;
   mode: "edit" | "create";
-  onCoordsChange?: (lat: number, lng: number, source: string) => void;
+  venueId?: number;
 }
 
 function setInputValue(id: string, value: string) {
   const el = document.getElementById(id) as HTMLInputElement | null;
+  if (el) el.value = value;
+}
+
+function setSelectValue(id: string, value: string) {
+  const el = document.getElementById(id) as HTMLSelectElement | null;
   if (el) el.value = value;
 }
 
@@ -42,8 +48,9 @@ export function VenueMapEditor({
   latInputId,
   lngInputId,
   approxInputId,
+  precisionInputId,
   mode,
-  onCoordsChange,
+  venueId,
 }: VenueMapEditorProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -67,12 +74,18 @@ export function VenueMapEditor({
 
   const defaultOpen = mode === "create" || isApproximate;
 
-  function syncInputs(lat: number, lng: number, markApproximate = true) {
+  function syncInputs(lat: number, lng: number, source: "map" | "postcode") {
     setInputValue(latInputId, lat.toFixed(6));
     setInputValue(lngInputId, lng.toFixed(6));
 
-    if (markApproximate && !wasApproximate.current && mode === "edit") {
-      setCheckbox(approxInputId, true);
+    if (source === "postcode") {
+      setSelectValue(precisionInputId, "postcode");
+      setCheckbox(approxInputId, false);
+    } else {
+      setSelectValue(precisionInputId, "ground_approximate");
+      if (!wasApproximate.current && mode === "edit") {
+        setCheckbox(approxInputId, true);
+      }
     }
   }
 
@@ -86,16 +99,14 @@ export function VenueMapEditor({
     markerRef.current.on("dragend", () => {
       if (markerRef.current) {
         const { lat, lng } = markerRef.current.getLatLng();
-        syncInputs(lat, lng, true);
-        onCoordsChange?.(lat, lng, "map");
+        syncInputs(lat, lng, "map");
       }
     });
   }
 
-  function placeMarkerAndSync(latlng: L.LatLng) {
+  function placeMarkerAndSync(latlng: L.LatLng, source: "map" | "postcode") {
     placeMarker(latlng);
-    syncInputs(latlng.lat, latlng.lng, true);
-    onCoordsChange?.(latlng.lat, latlng.lng, "map");
+    syncInputs(latlng.lat, latlng.lng, source);
   }
 
   async function handleLookupPostcode() {
@@ -104,19 +115,34 @@ export function VenueMapEditor({
 
     setLookupLoading(true);
     try {
-      const res = await fetch(
-        `https://api.postcodes.io/postcodes/${pcInput.value.replace(/\s+/g, "")}`
-      );
-      const data = await res.json();
-      const lat: number | undefined = data.result?.latitude;
-      const lng: number | undefined = data.result?.longitude;
-      if (lat == null || lng == null) return;
+      if (mode === "edit" && venueId) {
+        const res = await fetch(`/api/admin/venues/${venueId}/geocode`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postcode: pcInput.value }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const lat: number | undefined = data.latitude;
+        const lng: number | undefined = data.longitude;
+        if (lat == null || lng == null) return;
 
-      mapRef.current?.setView([lat, lng], 15);
-      placeMarkerAndSync(L.latLng(lat, lng));
-      onCoordsChange?.(lat, lng, "postcode");
+        mapRef.current?.setView([lat, lng], 15);
+        placeMarkerAndSync(L.latLng(lat, lng), "postcode");
+      } else {
+        const res = await fetch(
+          `https://api.postcodes.io/postcodes/${pcInput.value.replace(/\s+/g, "")}`
+        );
+        const data = await res.json();
+        const lat: number | undefined = data.result?.latitude;
+        const lng: number | undefined = data.result?.longitude;
+        if (lat == null || lng == null) return;
+
+        mapRef.current?.setView([lat, lng], 15);
+        placeMarkerAndSync(L.latLng(lat, lng), "postcode");
+      }
     } catch {
-      // postcodes.io failure — silently ignore
+      // geocoding failure — silently ignore
     } finally {
       setLookupLoading(false);
     }
@@ -147,7 +173,7 @@ export function VenueMapEditor({
     }
 
     map.on("click", (e: L.LeafletMouseEvent) => {
-      placeMarkerAndSync(e.latlng);
+      placeMarkerAndSync(e.latlng, "map");
     });
     setTimeout(() => map.invalidateSize(), 100);
 

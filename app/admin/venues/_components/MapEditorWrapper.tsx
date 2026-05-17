@@ -11,8 +11,9 @@ interface MapEditorWrapperProps {
   latInputId: string;
   lngInputId: string;
   approxInputId: string;
+  precisionInputId: string;
   mode: "edit" | "create";
-  onCoordsChange?: (lat: number, lng: number, source: string) => void;
+  venueId?: number;
 }
 
 export function MapEditorWrapper(props: MapEditorWrapperProps) {

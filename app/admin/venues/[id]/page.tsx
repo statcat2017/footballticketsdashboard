@@ -145,6 +145,8 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
         latInputId="latitude"
         lngInputId="longitude"
         approxInputId="is_approximate"
+        precisionInputId="coordinate_precision"
+        venueId={venueId}
         mode="edit"
       />
 
