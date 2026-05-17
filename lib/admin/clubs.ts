@@ -350,13 +350,40 @@ export interface PublishableClub {
   isPublished: boolean;
 }
 
+const KNOWN_COMPETITION_MAP: Record<string, string> = {
+  "Premier League": "PL",
+  "Championship": "ELC",
+  "National League": "NL",
+  "National League North": "NLN",
+  "National League South": "NLS",
+  "Northern Premier League Premier Division": "NPL_PREM",
+  "Southern Football League Premier Division Central": "SFL_CEN",
+  "Southern Football League Premier Division South": "SFL_SOU",
+  "Isthmian League Premier Division": "ISM_PREM",
+  "Northern Premier League Division One East": "NPL_E",
+  "Northern Premier League Division One West": "NPL_W",
+  "Southern Football League Division One East": "SFL_E",
+  "Southern Football League Division One West": "SFL_W",
+  "Isthmian League Division One North": "ISM_N",
+  "Isthmian League Division One South Central": "ISM_SC",
+  "Isthmian League Division One South East": "ISM_SE",
+  "Northern Premier League Division One Midlands": "NPL_M",
+};
+
 export function divisionCodeFromName(name: string): string {
+  const known = KNOWN_COMPETITION_MAP[name];
+  if (known) return known;
+
   return name
     .toUpperCase()
     .replace(/['']/g, "")
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_|_$/g, "")
     .substring(0, 10);
+}
+
+export function getKnownCompetitionCodes(): string[] {
+  return Array.from(new Set(Object.values(KNOWN_COMPETITION_MAP)));
 }
 
 export async function getPublishableDivisions(): Promise<PublishableDivision[]> {

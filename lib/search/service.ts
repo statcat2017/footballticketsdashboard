@@ -182,6 +182,10 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     warnings.push("Travel time unavailable for this postcode district; showing straight-line distance only.");
   }
 
+  if (row.home_one_off === 1 && row.generic_ticket_url === null) {
+    warnings.push("One-off fixture: check the fixture source for ticket information.");
+  }
+
   return {
     id: row.id,
     title: `${row.home_club} vs ${row.away_club}`,

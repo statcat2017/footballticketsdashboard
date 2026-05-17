@@ -60,7 +60,11 @@ INSERT INTO club_ticket_prices (
 SELECT
   club_id, sale_mode, adult_price_pence, concession_price_pence,
   source_url, verified_at,
-  CASE WHEN confidence = 'imported' THEN 'seed' ELSE confidence END
+  CASE
+    WHEN confidence = 'imported' THEN 'seed'
+    WHEN confidence IN ('verified', 'unknown') THEN confidence
+    ELSE 'unknown'
+  END
 FROM club_ticket_prices_new;
 
 DROP TABLE club_ticket_prices_new;
@@ -87,7 +91,11 @@ INSERT INTO fixture_ticket_price_overrides (
 SELECT
   fixture_id, sale_mode, adult_price_pence, concession_price_pence,
   source_url, verified_at, note,
-  CASE WHEN confidence = 'imported' THEN 'seed' ELSE confidence END
+  CASE
+    WHEN confidence = 'imported' THEN 'seed'
+    WHEN confidence IN ('verified', 'unknown') THEN confidence
+    ELSE 'unknown'
+  END
 FROM fixture_ticket_price_overrides_new;
 
 DROP TABLE fixture_ticket_price_overrides_new;

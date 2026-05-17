@@ -59,12 +59,17 @@ CREATE TABLE fixtures (
 
 INSERT INTO fixtures (
   id, source, source_id, competition_code, home_club_id, away_club_id,
-  venue_id, kickoff_at, status, is_demo_data, is_historical,
+  venue_id, kickoff_at, fixture_date, kickoff_time, kickoff_time_status,
+  status, is_demo_data, is_historical,
   confidence, source_updated_at, imported_at
 )
 SELECT
   id, source, source_id, competition_code, home_club_id, away_club_id,
-  venue_id, kickoff_at, status, is_demo_data, is_historical,
+  venue_id, kickoff_at,
+  date(kickoff_at),
+  CASE WHEN kickoff_at IS NOT NULL THEN substr(time(kickoff_at), 1, 5) ELSE NULL END,
+  CASE WHEN kickoff_at IS NOT NULL THEN 'confirmed' ELSE 'unknown' END,
+  status, is_demo_data, is_historical,
   'imported', source_updated_at, imported_at
 FROM fixtures_old;
 

@@ -63,14 +63,33 @@ export async function POST(request: Request) {
 
     const code = divisionCodeFromName(division.name);
 
-    const existingCompetition = await db.get<{ id: number }>(
-      `SELECT id FROM competitions WHERE code = ?`,
+    // Check if the competition code already exists in the table
+    const existingCompetition = await db.get<{ code: string; id: number }>(
+      `SELECT code, id FROM competitions WHERE code = ?`,
       [code]
     );
 
     if (existingCompetition) {
+      // Link to existing competition instead of creating a duplicate
+      await db.run(
+        `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
+        [divisionId, code]
+      );
+
+      await writeAdminAuditLog(db, {
+        action: "publish",
+        entityType: "division_competition_mapping",
+        entityId: divisionId,
+        after: {
+          division_id: divisionId,
+          competition_code: code,
+          competition_name: division.name,
+          note: "mapped to existing competition"
+        }
+      });
+
       return NextResponse.redirect(
-        new URL(`/admin/publish?error=Competition code "${code}" already exists.`, request.url),
+        new URL(`/admin/publish?success=Division "${division.name}" mapped to existing competition "${code}".`, request.url),
         { status: 303 }
       );
     }
