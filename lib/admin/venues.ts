@@ -1,5 +1,7 @@
 import { getDatabase } from "@/lib/db/client";
 import { writeAdminAuditLog } from "@/lib/admin/audit";
+import { invalidateTravelCacheForVenue } from "@/lib/travel/cache";
+import { distanceMiles } from "@/lib/distance";
 import type { SqlWrite } from "@/lib/db/adapter";
 
 export interface AdminVenueRow {
@@ -10,6 +12,10 @@ export interface AdminVenueRow {
   longitude: number;
   is_approximate: number;
   admin_updated_at: string | null;
+  coordinate_precision: string | null;
+  coordinates_verified_at: string | null;
+  coordinates_confidence: string | null;
+  coordinates_notes: string | null;
 }
 
 export interface AdminVenueListRow extends AdminVenueRow {
@@ -27,6 +33,9 @@ export interface AdminVenueCreateInput {
   latitude: number;
   longitude: number;
   is_approximate?: number;
+  coordinate_precision?: string;
+  coordinates_confidence?: string;
+  coordinates_notes?: string;
 }
 
 export interface AdminVenueUpdateInput {
@@ -35,6 +44,13 @@ export interface AdminVenueUpdateInput {
   latitude?: number;
   longitude?: number;
   is_approximate?: number;
+  coordinate_precision?: string;
+  coordinates_confidence?: string;
+  coordinates_notes?: string;
+}
+
+export interface AdminVenueUpdateResult {
+  invalidatedTravelCount: number;
 }
 
 export function nextJuly1st(): string {
@@ -49,12 +65,15 @@ export function isValidDate(str: string): boolean {
   return !isNaN(d.getTime()) && d.toISOString().split("T")[0] === str;
 }
 
+const venueSelectColumns = `v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate, v.admin_updated_at,
+  v.coordinate_precision, v.coordinates_verified_at, v.coordinates_confidence, v.coordinates_notes`;
+
 export async function getAdminVenueList(options?: { approximateOnly?: boolean }): Promise<AdminVenueListRow[]> {
   const db = await getDatabase();
 
   return db.all<AdminVenueListRow>(
     `SELECT
-      v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate, v.admin_updated_at,
+      ${venueSelectColumns},
       COUNT(cva.id) AS current_club_count
     FROM venues v
     LEFT JOIN club_venue_assignments cva
@@ -69,8 +88,8 @@ export async function getAdminVenue(venueId: number): Promise<AdminVenueDetailDa
   const db = await getDatabase();
 
   const venue = await db.get<AdminVenueRow>(
-    `SELECT id, name, postcode, latitude, longitude, is_approximate, admin_updated_at
-     FROM venues WHERE id = ?`,
+    `SELECT ${venueSelectColumns}
+     FROM venues v WHERE v.id = ?`,
     [venueId]
   );
 
@@ -95,9 +114,16 @@ export async function createAdminVenue(input: AdminVenueCreateInput): Promise<nu
   const now = new Date().toISOString();
 
   const result = await db.run(
-    `INSERT INTO venues (name, postcode, latitude, longitude, is_approximate, admin_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [input.name, input.postcode, input.latitude, input.longitude, input.is_approximate ?? 0, now]
+    `INSERT INTO venues (name, postcode, latitude, longitude, is_approximate, admin_updated_at,
+      coordinate_precision, coordinates_confidence, coordinates_notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.name, input.postcode, input.latitude, input.longitude,
+      input.is_approximate ?? 0, now,
+      input.coordinate_precision ?? null,
+      input.coordinates_confidence ?? null,
+      input.coordinates_notes ?? null
+    ]
   );
 
   const venueId = result.lastInsertRowid!;
@@ -106,7 +132,14 @@ export async function createAdminVenue(input: AdminVenueCreateInput): Promise<nu
     action: "create",
     entityType: "venue",
     entityId: venueId,
-    after: { name: input.name, postcode: input.postcode, latitude: input.latitude, longitude: input.longitude, is_approximate: input.is_approximate ?? 0 }
+    after: {
+      name: input.name, postcode: input.postcode,
+      latitude: input.latitude, longitude: input.longitude,
+      is_approximate: input.is_approximate ?? 0,
+      coordinate_precision: input.coordinate_precision,
+      coordinates_confidence: input.coordinates_confidence,
+      coordinates_notes: input.coordinates_notes
+    }
   });
 
   return venueId;
@@ -116,12 +149,14 @@ export async function updateAdminVenue(
   venueId: number,
   input: AdminVenueUpdateInput,
   confirmed: boolean
-): Promise<void> {
+): Promise<AdminVenueUpdateResult> {
   const db = await getDatabase();
   const now = new Date().toISOString();
 
   const current = await db.get<AdminVenueRow>(
-    `SELECT id, name, postcode, latitude, longitude, is_approximate FROM venues WHERE id = ?`,
+    `SELECT id, name, postcode, latitude, longitude, is_approximate,
+      coordinate_precision, coordinates_confidence, coordinates_notes
+     FROM venues WHERE id = ?`,
     [venueId]
   );
 
@@ -154,21 +189,58 @@ export async function updateAdminVenue(
   const updatedLatitude = input.latitude ?? current.latitude;
   const updatedLongitude = input.longitude ?? current.longitude;
   const updatedIsApproximate = input.is_approximate ?? current.is_approximate;
+  const updatedCoordinatePrecision = input.coordinate_precision ?? current.coordinate_precision;
+  const updatedCoordinatesConfidence = input.coordinates_confidence ?? current.coordinates_confidence;
+  const updatedCoordinatesNotes = input.coordinates_notes ?? current.coordinates_notes;
+
+  const coordsChanged =
+    input.latitude !== undefined || input.longitude !== undefined;
+  const distanceMoved = coordsChanged
+    ? distanceMiles(
+        { latitude: current.latitude, longitude: current.longitude },
+        { latitude: updatedLatitude, longitude: updatedLongitude }
+      )
+    : 0;
+
+  let invalidatedTravelCount = 0;
+  if (coordsChanged && distanceMoved > 1) {
+    invalidatedTravelCount = await invalidateTravelCacheForVenue(db, venueId);
+  }
 
   await db.run(
     `UPDATE venues
-     SET name = ?, postcode = ?, latitude = ?, longitude = ?, is_approximate = ?, admin_updated_at = ?
+     SET name = ?, postcode = ?, latitude = ?, longitude = ?, is_approximate = ?,
+         admin_updated_at = ?, coordinate_precision = ?, coordinates_confidence = ?, coordinates_notes = ?
      WHERE id = ?`,
-    [updatedName, updatedPostcode, updatedLatitude, updatedLongitude, updatedIsApproximate, now, venueId]
+    [
+      updatedName, updatedPostcode, updatedLatitude, updatedLongitude, updatedIsApproximate,
+      now, updatedCoordinatePrecision, updatedCoordinatesConfidence, updatedCoordinatesNotes, venueId
+    ]
   );
 
   await writeAdminAuditLog(db, {
     action: "update",
     entityType: "venue",
     entityId: venueId,
-    before: { name: current.name, postcode: current.postcode, latitude: current.latitude, longitude: current.longitude, is_approximate: current.is_approximate },
-    after: { name: updatedName, postcode: updatedPostcode, latitude: updatedLatitude, longitude: updatedLongitude, is_approximate: updatedIsApproximate }
+    before: {
+      name: current.name, postcode: current.postcode,
+      latitude: current.latitude, longitude: current.longitude,
+      is_approximate: current.is_approximate,
+      coordinate_precision: current.coordinate_precision,
+      coordinates_confidence: current.coordinates_confidence,
+      coordinates_notes: current.coordinates_notes
+    },
+    after: {
+      name: updatedName, postcode: updatedPostcode,
+      latitude: updatedLatitude, longitude: updatedLongitude,
+      is_approximate: updatedIsApproximate,
+      coordinate_precision: updatedCoordinatePrecision,
+      coordinates_confidence: updatedCoordinatesConfidence,
+      coordinates_notes: updatedCoordinatesNotes
+    }
   });
+
+  return { invalidatedTravelCount };
 }
 
 export async function assignAdminVenue(

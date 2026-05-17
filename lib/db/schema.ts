@@ -78,7 +78,11 @@ CREATE TABLE IF NOT EXISTS pyramid_clubs (
   source_url TEXT,
   verified_at TEXT,
   status TEXT NOT NULL DEFAULT 'partial' CHECK (status IN ('known', 'partial', 'missing')),
-  admin_updated_at TEXT
+  admin_updated_at TEXT,
+  coordinate_precision TEXT DEFAULT 'unknown' CHECK (coordinate_precision IN ('exact', 'postcode', 'ground_approximate', 'unknown')),
+  coordinates_verified_at TEXT,
+  coordinates_confidence TEXT DEFAULT 'unknown' CHECK (coordinates_confidence IN ('high', 'medium', 'low', 'unknown')),
+  coordinates_notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pyramid_season_memberships (
@@ -116,7 +120,11 @@ CREATE TABLE IF NOT EXISTS venues (
   latitude REAL NOT NULL,
   longitude REAL NOT NULL,
   is_approximate INTEGER NOT NULL DEFAULT 0 CHECK (is_approximate IN (0, 1)),
-  admin_updated_at TEXT
+  admin_updated_at TEXT,
+  coordinate_precision TEXT DEFAULT 'unknown' CHECK (coordinate_precision IN ('exact', 'postcode', 'ground_approximate', 'unknown')),
+  coordinates_verified_at TEXT,
+  coordinates_confidence TEXT DEFAULT 'unknown' CHECK (coordinates_confidence IN ('high', 'medium', 'low', 'unknown')),
+  coordinates_notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS clubs (

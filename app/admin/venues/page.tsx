@@ -5,6 +5,18 @@ import { getAdminVenueList } from "@/lib/admin/venues";
 
 export const dynamic = "force-dynamic";
 
+const precisionColors: Record<string, { bg: string; fg: string; border: string }> = {
+  exact: { bg: "#0e573718", fg: "#0e5737", border: "#0e573740" },
+  postcode: { bg: "#1a6b9c18", fg: "#1a6b9c", border: "#1a6b9c40" },
+  ground_approximate: { bg: "#a7680018", fg: "#a76800", border: "#a7680040" },
+  unknown: { bg: "#6f7e7a18", fg: "#6f7e7a", border: "#6f7e7a40" },
+};
+
+function precisionLabel(value: string | null): string {
+  if (!value) return "Unknown";
+  return value.charAt(0).toUpperCase() + value.slice(1).replace("_", " ");
+}
+
 export default async function AdminVenuesPage(props: { searchParams: Promise<{ approximate?: string }> }) {
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
@@ -95,40 +107,57 @@ export default async function AdminVenuesPage(props: { searchParams: Promise<{ a
               <tr style={{ background: "#fbfcfc", borderBottom: "1px solid #dce3e2" }}>
                 <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Venue</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Postcode</th>
+                <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Precision</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Current Clubs</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Coords</th>
               </tr>
             </thead>
             <tbody>
-              {venues.map((venue) => (
-                <tr key={venue.id} style={{ borderBottom: "1px solid #eef1f1" }}>
-                  <td style={{ padding: "0.6rem 1rem" }}>
-                    <Link href={`/admin/venues/${venue.id}`} style={{
-                      color: "#17221f",
-                      textDecoration: "none",
-                      fontWeight: 700
-                    }}>
-                      {venue.name}
-                    </Link>
-                    {venue.is_approximate === 1 && (
-                      <span style={{ marginLeft: "0.5rem", fontSize: "11px", color: "#a76800", fontWeight: 600 }}>
-                        Approx
+              {venues.map((venue) => {
+                const colors = precisionColors[venue.coordinate_precision ?? "unknown"] ?? precisionColors.unknown;
+                return (
+                  <tr key={venue.id} style={{ borderBottom: "1px solid #eef1f1" }}>
+                    <td style={{ padding: "0.6rem 1rem" }}>
+                      <Link href={`/admin/venues/${venue.id}`} style={{
+                        color: "#17221f",
+                        textDecoration: "none",
+                        fontWeight: 700
+                      }}>
+                        {venue.name}
+                      </Link>
+                    </td>
+                    <td style={{ padding: "0.6rem 1rem", color: "#34413e" }}>{venue.postcode}</td>
+                    <td style={{ padding: "0.6rem 1rem" }}>
+                      <span style={{
+                        padding: "0.1rem 0.4rem",
+                        borderRadius: "4px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        background: colors.bg,
+                        color: colors.fg,
+                        border: `1px solid ${colors.border}`
+                      }}>
+                        {precisionLabel(venue.coordinate_precision)}
                       </span>
-                    )}
-                  </td>
-                  <td style={{ padding: "0.6rem 1rem", color: "#34413e" }}>{venue.postcode}</td>
-                  <td style={{ padding: "0.6rem 1rem" }}>
-                    {venue.current_club_count > 0 ? (
-                      <span style={{ fontWeight: 600, color: "#0e5737" }}>{venue.current_club_count}</span>
-                    ) : (
-                      <span style={{ color: "#6f7e7a" }}>None</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "0.6rem 1rem", color: "#6f7e7a", fontSize: "13px" }}>
-                    {venue.latitude.toFixed(4)}, {venue.longitude.toFixed(4)}
-                  </td>
-                </tr>
-              ))}
+                      {venue.is_approximate === 1 && (
+                        <span style={{ marginLeft: "0.3rem", fontSize: "11px", color: "#a76800", fontWeight: 600 }}>
+                          Approx
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: "0.6rem 1rem" }}>
+                      {venue.current_club_count > 0 ? (
+                        <span style={{ fontWeight: 600, color: "#0e5737" }}>{venue.current_club_count}</span>
+                      ) : (
+                        <span style={{ color: "#6f7e7a" }}>None</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "0.6rem 1rem", color: "#6f7e7a", fontSize: "13px" }}>
+                      {venue.latitude.toFixed(4)}, {venue.longitude.toFixed(4)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

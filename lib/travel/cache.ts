@@ -281,3 +281,15 @@ export async function fillTravelCacheForGroundDistricts(
     distanceOnlySkipped
   };
 }
+
+export async function invalidateTravelCacheForVenue(
+  db: AppDatabase,
+  venueId: number
+): Promise<number> {
+  const result = await db.run(
+    "DELETE FROM travel_cache WHERE venue_id = ?",
+    [venueId]
+  );
+
+  return result.changes;
+}

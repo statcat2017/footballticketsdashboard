@@ -7,9 +7,9 @@ import { MapEditorWrapper } from "../_components/MapEditorWrapper";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminVenueDetailPage(props: { params: Promise<{ id: string }>, searchParams: Promise<{ error?: string }> }) {
+export default async function AdminVenueDetailPage(props: { params: Promise<{ id: string }>, searchParams: Promise<{ error?: string; travelInvalidated?: string }> }) {
   const { id } = await props.params;
-  const { error } = await props.searchParams;
+  const { error, travelInvalidated } = await props.searchParams;
   const venueId = Number(id);
 
   if (!Number.isInteger(venueId) || venueId <= 0) {
@@ -26,6 +26,14 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
   }
 
   const isShared = data.sharingClubs.length > 1;
+  const precision = data.venue.coordinate_precision ?? "unknown";
+  const precisionLabel = precision.charAt(0).toUpperCase() + precision.slice(1).replace("_", " ");
+
+  const precisionColor =
+    precision === "exact" ? "#0e5737" :
+    precision === "postcode" ? "#1a6b9c" :
+    precision === "ground_approximate" ? "#a76800" :
+    "#6f7e7a";
 
   return (
     <main style={{ maxWidth: "40rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
@@ -43,6 +51,18 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
         <h1 style={{ margin: "0.25rem 0 0", fontSize: "1.5rem" }}>{data.venue.name}</h1>
         <p style={{ margin: "0.25rem 0 0", color: "#6f7e7a", fontSize: "14px" }}>
           {data.venue.postcode}
+          <span style={{
+            marginLeft: "0.5rem",
+            padding: "0.1rem 0.4rem",
+            borderRadius: "4px",
+            fontSize: "11px",
+            fontWeight: 600,
+            background: precisionColor + "18",
+            color: precisionColor,
+            border: `1px solid ${precisionColor}40`
+          }}>
+            {precisionLabel}
+          </span>
           {data.venue.is_approximate === 1 && <span style={{ marginLeft: "0.5rem", color: "#a76800", fontWeight: 600 }}>Approximate coordinates</span>}
         </p>
       </header>
@@ -58,6 +78,20 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
           color: "#a53a2d"
         }}>
           {error}
+        </div>
+      )}
+
+      {travelInvalidated && (
+        <div style={{
+          border: "1px solid #f0d5b7",
+          borderRadius: "8px",
+          background: "#fdf3e9",
+          padding: "0.75rem 1rem",
+          marginBottom: "1.5rem",
+          fontSize: "14px",
+          color: "#8a5a00"
+        }}>
+          Travel cache invalidated: {travelInvalidated} row{travelInvalidated !== "1" ? "s" : ""} removed. Travel estimates will be recalculated on next search.
         </div>
       )}
 
@@ -176,6 +210,48 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
             <label htmlFor="is_approximate" style={{ fontSize: "14px", color: "#34413e" }}>
               Coordinates are approximate
             </label>
+          </div>
+
+          <div style={{ display: "grid", gap: "0.25rem" }}>
+            <label htmlFor="coordinate_precision" style={{ fontSize: "14px", fontWeight: 700, color: "#34413e" }}>Coordinate Precision</label>
+            <select id="coordinate_precision" name="coordinate_precision" defaultValue={data.venue.coordinate_precision ?? "unknown"}
+              style={{ padding: "0.5rem 0.75rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px", background: "#fff" }}
+            >
+              <option value="exact">Exact — surveyed or official source</option>
+              <option value="postcode">Postcode — from postcode lookup</option>
+              <option value="ground_approximate">Ground approximate — placed on map</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+
+          <div style={{ display: "grid", gap: "0.25rem" }}>
+            <label htmlFor="coordinates_notes" style={{ fontSize: "14px", fontWeight: 700, color: "#34413e" }}>Coordinate Notes</label>
+            <textarea id="coordinates_notes" name="coordinates_notes" defaultValue={data.venue.coordinates_notes ?? ""}
+              rows={3}
+              style={{ padding: "0.5rem 0.75rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px", fontFamily: "inherit", resize: "vertical" }}
+              placeholder="e.g. Source URL, verification method, known issues..."
+            />
+          </div>
+
+          <div style={{
+            border: "1px solid #dce3e2",
+            borderRadius: "8px",
+            background: "#f5f7f7",
+            padding: "0.75rem 1rem",
+            fontSize: "13px",
+            color: "#6f7e7a"
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: "0.25rem", color: "#34413e" }}>Coordinate Confirmation</div>
+            <p style={{ margin: "0 0 0.5rem" }}>
+              If you changed the coordinates above, confirm below to save.
+              Moving coordinates more than 1 mile will invalidate cached travel estimates.
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input id="coords_confirmed" name="coords_confirmed" type="checkbox" value="true" />
+              <label htmlFor="coords_confirmed" style={{ fontSize: "14px", fontWeight: 600, color: "#34413e" }}>
+                I confirm the coordinates are correct
+              </label>
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
