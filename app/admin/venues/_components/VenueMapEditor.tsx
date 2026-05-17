@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -21,11 +21,18 @@ interface VenueMapEditorProps {
   latInputId: string;
   lngInputId: string;
   approxInputId: string;
+  precisionInputId: string;
   mode: "edit" | "create";
+  venueId?: number;
 }
 
 function setInputValue(id: string, value: string) {
   const el = document.getElementById(id) as HTMLInputElement | null;
+  if (el) el.value = value;
+}
+
+function setSelectValue(id: string, value: string) {
+  const el = document.getElementById(id) as HTMLSelectElement | null;
   if (el) el.value = value;
 }
 
@@ -41,13 +48,16 @@ export function VenueMapEditor({
   latInputId,
   lngInputId,
   approxInputId,
+  precisionInputId,
   mode,
+  venueId,
 }: VenueMapEditorProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const wasApproximate = useRef(isApproximate);
+  const [lookupLoading, setLookupLoading] = useState(false);
 
   const hasCoords =
     initialLat !== undefined &&
@@ -64,12 +74,18 @@ export function VenueMapEditor({
 
   const defaultOpen = mode === "create" || isApproximate;
 
-  function syncInputs(lat: number, lng: number, markApproximate = true) {
+  function syncInputs(lat: number, lng: number, source: "map" | "postcode") {
     setInputValue(latInputId, lat.toFixed(6));
     setInputValue(lngInputId, lng.toFixed(6));
 
-    if (markApproximate && !wasApproximate.current && mode === "edit") {
-      setCheckbox(approxInputId, true);
+    if (source === "postcode") {
+      setSelectValue(precisionInputId, "postcode");
+      setCheckbox(approxInputId, false);
+    } else {
+      setSelectValue(precisionInputId, "ground_approximate");
+      if (!wasApproximate.current && mode === "edit") {
+        setCheckbox(approxInputId, true);
+      }
     }
   }
 
@@ -83,33 +99,52 @@ export function VenueMapEditor({
     markerRef.current.on("dragend", () => {
       if (markerRef.current) {
         const { lat, lng } = markerRef.current.getLatLng();
-        syncInputs(lat, lng, true);
+        syncInputs(lat, lng, "map");
       }
     });
   }
 
-  function placeMarkerAndSync(latlng: L.LatLng) {
+  function placeMarkerAndSync(latlng: L.LatLng, source: "map" | "postcode") {
     placeMarker(latlng);
-    syncInputs(latlng.lat, latlng.lng, true);
+    syncInputs(latlng.lat, latlng.lng, source);
   }
 
   async function handleLookupPostcode() {
     const pcInput = document.getElementById("postcode") as HTMLInputElement | null;
     if (!pcInput?.value.trim()) return;
 
+    setLookupLoading(true);
     try {
-      const res = await fetch(
-        `https://api.postcodes.io/postcodes/${pcInput.value.replace(/\s+/g, "")}`
-      );
-      const data = await res.json();
-      const lat: number | undefined = data.result?.latitude;
-      const lng: number | undefined = data.result?.longitude;
-      if (lat == null || lng == null) return;
+      if (mode === "edit" && venueId) {
+        const res = await fetch(`/api/admin/venues/${venueId}/geocode`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postcode: pcInput.value }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const lat: number | undefined = data.latitude;
+        const lng: number | undefined = data.longitude;
+        if (lat == null || lng == null) return;
 
-      mapRef.current?.setView([lat, lng], 15);
-      placeMarkerAndSync(L.latLng(lat, lng));
+        mapRef.current?.setView([lat, lng], 15);
+        placeMarkerAndSync(L.latLng(lat, lng), "postcode");
+      } else {
+        const res = await fetch(
+          `https://api.postcodes.io/postcodes/${pcInput.value.replace(/\s+/g, "")}`
+        );
+        const data = await res.json();
+        const lat: number | undefined = data.result?.latitude;
+        const lng: number | undefined = data.result?.longitude;
+        if (lat == null || lng == null) return;
+
+        mapRef.current?.setView([lat, lng], 15);
+        placeMarkerAndSync(L.latLng(lat, lng), "postcode");
+      }
     } catch {
-      // postcodes.io failure — silently ignore
+      // geocoding failure — silently ignore
+    } finally {
+      setLookupLoading(false);
     }
   }
 
@@ -138,7 +173,7 @@ export function VenueMapEditor({
     }
 
     map.on("click", (e: L.LeafletMouseEvent) => {
-      placeMarkerAndSync(e.latlng);
+      placeMarkerAndSync(e.latlng, "map");
     });
     setTimeout(() => map.invalidateSize(), 100);
 
@@ -181,36 +216,36 @@ export function VenueMapEditor({
         {summaryText}
       </summary>
       <div style={{ padding: "0.75rem" }}>
-        {mode === "create" && (
-          <div
+        <div
+          style={{
+            marginBottom: "0.5rem",
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleLookupPostcode}
+            disabled={lookupLoading}
             style={{
-              marginBottom: "0.5rem",
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
+              border: "1px solid #147a4d",
+              borderRadius: "7px",
+              background: "#147a4d",
+              color: "#fff",
+              padding: "0.4rem 0.8rem",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: lookupLoading ? "wait" : "pointer",
+              opacity: lookupLoading ? 0.7 : 1,
             }}
           >
-            <button
-              type="button"
-              onClick={handleLookupPostcode}
-              style={{
-                border: "1px solid #147a4d",
-                borderRadius: "7px",
-                background: "#147a4d",
-                color: "#fff",
-                padding: "0.4rem 0.8rem",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Look up postcode
-            </button>
-            <span style={{ fontSize: "13px", color: "#6f7e7a" }}>
-              Enter a postcode above, then click to center the map.
-            </span>
-          </div>
-        )}
+            {lookupLoading ? "Looking up..." : "Look up postcode"}
+          </button>
+          <span style={{ fontSize: "13px", color: "#6f7e7a" }}>
+            Enter a postcode above, then click to center the map.
+          </span>
+        </div>
         <div
           ref={mapContainerRef}
           style={{ height: "400px", width: "100%", borderRadius: "6px" }}
@@ -230,4 +265,3 @@ export function VenueMapEditor({
 }
 
 export default VenueMapEditor;
-

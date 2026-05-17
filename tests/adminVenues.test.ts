@@ -402,3 +402,130 @@ describe("admin venue service", () => {
     });
   });
 });
+
+  describe("coordinate precision and provenance", () => {
+    it("accepts coordinate_precision on create", async () => {
+      const db = createMinimalDb();
+      getDatabase.mockResolvedValue(db);
+
+      await createAdminVenue({
+        name: "Precision Stadium",
+        postcode: "PR1 1AA",
+        latitude: 51.5,
+        longitude: -0.2,
+        coordinate_precision: "exact"
+      });
+
+      const venue = await db.get<{ coordinate_precision: string }>(
+        "SELECT coordinate_precision FROM venues WHERE name = ?", ["Precision Stadium"]
+      );
+      expect(venue!.coordinate_precision).toBe("exact");
+    });
+
+    it("accepts coordinates_notes on create", async () => {
+      const db = createMinimalDb();
+      getDatabase.mockResolvedValue(db);
+
+      await createAdminVenue({
+        name: "Noted Ground",
+        postcode: "NO1 1TE",
+        latitude: 51.5,
+        longitude: -0.2,
+        coordinates_notes: "Surveyed by OS in 2024"
+      });
+
+      const venue = await db.get<{ coordinates_notes: string }>(
+        "SELECT coordinates_notes FROM venues WHERE name = ?", ["Noted Ground"]
+      );
+      expect(venue!.coordinates_notes).toBe("Surveyed by OS in 2024");
+    });
+
+    it("updates coordinate_precision and writes audit log", async () => {
+      const db = createMinimalDb();
+      getDatabase.mockResolvedValue(db);
+
+      await updateAdminVenue(50, { coordinate_precision: "exact" }, true);
+
+      const venue = await db.get<{ coordinate_precision: string }>(
+        "SELECT coordinate_precision FROM venues WHERE id = ?", [50]
+      );
+      expect(venue!.coordinate_precision).toBe("exact");
+
+      const audit = await db.get<{ after_json: string }>(
+        "SELECT after_json FROM admin_audit_log WHERE entity_type = 'venue' AND action = 'update' ORDER BY id DESC LIMIT 1"
+      );
+      const after = JSON.parse(audit!.after_json);
+      expect(after.coordinate_precision).toBe("exact");
+    });
+  });
+
+  describe("travel cache invalidation", () => {
+    it("invalidates travel cache when coordinates move more than 1 mile", async () => {
+      const db = createMinimalDb();
+
+      db.exec(`
+        INSERT INTO travel_cache (id, postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at) VALUES
+          (1, 'TE1', 50, 5.2, 15, 25, 'seed', '2026-01-01T00:00:00Z'),
+          (2, 'CT1', 50, 8.1, 22, 35, 'seed', '2026-01-01T00:00:00Z');
+      `);
+
+      getDatabase.mockResolvedValue(db);
+
+      const result = await updateAdminVenue(50, {
+        latitude: 52.5,
+        longitude: -1.0
+      }, true);
+
+      expect(result.invalidatedTravelCount).toBe(2);
+
+      const remaining = await db.all<{ id: number }>(
+        "SELECT id FROM travel_cache WHERE venue_id = ?", [50]
+      );
+      expect(remaining).toHaveLength(0);
+    });
+
+    it("does not invalidate travel cache when coordinates move less than 1 mile", async () => {
+      const db = createMinimalDb();
+
+      db.exec(`
+        INSERT INTO travel_cache (id, postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at) VALUES
+          (1, 'TE1', 50, 5.2, 15, 25, 'seed', '2026-01-01T00:00:00Z');
+      `);
+
+      getDatabase.mockResolvedValue(db);
+
+      const result = await updateAdminVenue(50, {
+        latitude: 51.501,
+        longitude: -0.101
+      }, true);
+
+      expect(result.invalidatedTravelCount).toBe(0);
+
+      const remaining = await db.all<{ id: number }>(
+        "SELECT id FROM travel_cache WHERE venue_id = ?", [50]
+      );
+      expect(remaining).toHaveLength(1);
+    });
+
+    it("does not invalidate travel cache when coordinates are unchanged", async () => {
+      const db = createMinimalDb();
+
+      db.exec(`
+        INSERT INTO travel_cache (id, postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at) VALUES
+          (1, 'TE1', 50, 5.2, 15, 25, 'seed', '2026-01-01T00:00:00Z');
+      `);
+
+      getDatabase.mockResolvedValue(db);
+
+      const result = await updateAdminVenue(50, {
+        name: "Renamed Only"
+      }, true);
+
+      expect(result.invalidatedTravelCount).toBe(0);
+
+      const remaining = await db.all<{ id: number }>(
+        "SELECT id FROM travel_cache WHERE venue_id = ?", [50]
+      );
+      expect(remaining).toHaveLength(1);
+    });
+  });

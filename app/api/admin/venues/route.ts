@@ -27,6 +27,7 @@ export async function POST(request: Request) {
   const latitude = form.get("latitude");
   const longitude = form.get("longitude");
   const isApproximate = form.get("is_approximate");
+  const coordinatePrecision = form.get("coordinate_precision");
 
   if (typeof name !== "string" || name.length === 0) {
     return NextResponse.redirect(
@@ -65,7 +66,10 @@ export async function POST(request: Request) {
       postcode,
       latitude: latNum,
       longitude: lngNum,
-      is_approximate: isApproximate === "1" ? 1 : 0
+      is_approximate: isApproximate === "1" ? 1 : 0,
+      coordinate_precision: typeof coordinatePrecision === "string" && coordinatePrecision.length > 0
+        ? coordinatePrecision
+        : undefined
     });
 
     return NextResponse.redirect(new URL(`/admin/venues/${venueId}`, request.url), { status: 303 });
