@@ -113,7 +113,11 @@ export function SearchDashboard() {
   }, [results, sortKey]);
 
   const resultCount = sortedResults.length;
-  const featuredFixture = sortedResults[0] ?? null;
+  const featuredFixture = useMemo(() => {
+    if (results.length === 0) return null;
+    const sorted = [...results].sort((a, b) => a.travel.distanceMiles - b.travel.distanceMiles);
+    return sorted[0];
+  }, [results]);
   const visibleResults = useMemo(() => sortedResults.slice(0, visibleCount), [sortedResults, visibleCount]);
   const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
 
