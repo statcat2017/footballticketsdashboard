@@ -44,7 +44,7 @@ vi.mock("@/lib/db/pyramid", () => ({
 }));
 
 import { initializeD1Database } from "@/lib/db/d1";
-import type { D1DatabaseLike, D1PreparedStatement } from "@/lib/db/adapter";
+import type { D1RootDatabaseLike, D1PreparedStatement } from "@/lib/db/adapter";
 
 describe("D1 initialization", () => {
   it("writes the pyramid sections before dependent rows", async () => {
@@ -67,11 +67,12 @@ describe("D1 initialization", () => {
     expect(batchIndex).toBe(operations.length - 1);
     const totalPrepares = operations.filter((operation) => operation.startsWith("prepare:"));
     const batchPrepares = totalPrepares.filter((op) => !op.includes("pragma_table_info"));
+
     expect(batchSizes).toEqual([batchPrepares.length]);
   });
 });
 
-function createFakeBinding(operations: string[], batchSizes: number[]): D1DatabaseLike {
+function createFakeBinding(operations: string[], batchSizes: number[]): D1RootDatabaseLike {
   return {
     prepare(query: string) {
       operations.push(`prepare:${query}`);
@@ -100,6 +101,9 @@ function createFakeBinding(operations: string[], batchSizes: number[]): D1Databa
       batchSizes.push(statements.length);
       operations.push(`batch:${statements.length}`);
       return statements.map(() => ({ success: true }));
+    },
+    async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+      return callback(this);
     }
   };
 }

@@ -52,6 +52,9 @@ const db = createD1AppDatabase({
     }
 
     return results;
+  },
+  async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+    return callback(this);
   }
 });
 

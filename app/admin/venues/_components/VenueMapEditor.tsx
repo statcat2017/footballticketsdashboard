@@ -17,6 +17,7 @@ const pinIcon = L.divIcon({
 interface VenueMapEditorProps {
   initialLat?: number;
   initialLng?: number;
+  initialPostcode?: string;
   isApproximate: boolean;
   latInputId: string;
   lngInputId: string;
@@ -44,6 +45,7 @@ function setCheckbox(id: string, checked: boolean) {
 export function VenueMapEditor({
   initialLat,
   initialLng,
+  initialPostcode = "",
   isApproximate,
   latInputId,
   lngInputId,
@@ -58,9 +60,8 @@ export function VenueMapEditor({
   const markerRef = useRef<L.Marker | null>(null);
   const wasApproximate = useRef(isApproximate);
   const [lookupLoading, setLookupLoading] = useState(false);
-  const [postcodeInput, setPostcodeInput] = useState(
-    () => (document.getElementById("postcode") as HTMLInputElement)?.value ?? ""
-  );
+  const [postcodeInput, setPostcodeInput] = useState(initialPostcode);
+  const lastSourceRef = useRef<"map" | "postcode">("map");
 
   const hasCoords =
     initialLat !== undefined &&
@@ -108,6 +109,7 @@ export function VenueMapEditor({
   }
 
   function placeMarkerAndSync(latlng: L.LatLng, source: "map" | "postcode") {
+    lastSourceRef.current = source;
     placeMarker(latlng);
     syncInputs(latlng.lat, latlng.lng, source);
   }
@@ -115,7 +117,7 @@ export function VenueMapEditor({
   function handleConfirmLocation() {
     if (markerRef.current) {
       const { lat, lng } = markerRef.current.getLatLng();
-      syncInputs(lat, lng, "map");
+      syncInputs(lat, lng, lastSourceRef.current);
     }
     const details = detailsRef.current;
     if (details) details.open = false;

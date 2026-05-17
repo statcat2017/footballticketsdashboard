@@ -36,14 +36,19 @@ export interface D1PreparedStatement {
   run(): Promise<D1ResultRow>;
 }
 
-export interface D1DatabaseLike {
+export interface D1TransactionLike {
   prepare(query: string): D1PreparedStatement;
   exec(query: string): Promise<unknown>;
-  batch?(statements: D1PreparedStatement[]): Promise<D1ResultRow[]>;
-  transaction?: <T>(callback: (txn: D1DatabaseLike) => Promise<T>) => Promise<T>;
 }
 
-function wrapD1(client: D1DatabaseLike): AppDatabase {
+export interface D1RootDatabaseLike extends D1TransactionLike {
+  batch(statements: D1PreparedStatement[]): Promise<D1ResultRow[]>;
+  transaction<T>(callback: (txn: D1TransactionLike) => Promise<T>): Promise<T>;
+}
+
+export type D1DatabaseLike = D1RootDatabaseLike;
+
+function wrapD1(client: D1TransactionLike): AppDatabase {
   return {
     async all<T>(sql: string, params: QueryParam[] = []) {
       const result = await client.prepare(sql).bind(...params).all<T>();
@@ -68,9 +73,10 @@ function wrapD1(client: D1DatabaseLike): AppDatabase {
         return [];
       }
 
-      if ("batch" in client && client.batch) {
-        const prepared = statements.map((s) => client.prepare(s.sql).bind(...(s.params ?? [])));
-        const results = await client.batch(prepared);
+      if ("batch" in client && typeof (client as D1RootDatabaseLike).batch === "function") {
+        const d1 = client as D1RootDatabaseLike;
+        const prepared = statements.map((s) => d1.prepare(s.sql).bind(...(s.params ?? [])));
+        const results = await d1.batch(prepared);
 
         const failedIndex = results.findIndex((r) => !r.success);
 
@@ -95,10 +101,11 @@ function wrapD1(client: D1DatabaseLike): AppDatabase {
       return results;
     },
     async transaction<T>(fn: (txDb: AppDatabase) => Promise<T>): Promise<T> {
-      if ("transaction" in client && typeof client.transaction === "function") {
-        return client.transaction(async (txn) => fn(wrapD1(txn)));
+      if ("transaction" in client && typeof (client as D1RootDatabaseLike).transaction === "function") {
+        const d1 = client as D1RootDatabaseLike;
+        return d1.transaction(async (txn) => fn(wrapD1(txn)));
       }
-      return fn(this);
+      throw new Error("D1 transaction API is not available in this context.");
     }
   };
 }
@@ -161,6 +168,6 @@ export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
   return appDb;
 }
 
-export function createD1AppDatabase(db: D1DatabaseLike): AppDatabase {
+export function createD1AppDatabase(db: D1RootDatabaseLike): AppDatabase {
   return wrapD1(db);
 }

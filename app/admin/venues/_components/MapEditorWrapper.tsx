@@ -7,6 +7,7 @@ const VenueMapEditor = dynamic(() => import("./VenueMapEditor").then((m) => m.de
 interface MapEditorWrapperProps {
   initialLat?: number;
   initialLng?: number;
+  initialPostcode?: string;
   isApproximate: boolean;
   latInputId: string;
   lngInputId: string;

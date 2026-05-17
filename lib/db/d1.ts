@@ -1,4 +1,4 @@
-import { createD1AppDatabase, type AppDatabase, type D1DatabaseLike, type D1PreparedStatement } from "./adapter.ts";
+import { createD1AppDatabase, type AppDatabase, type D1RootDatabaseLike, type D1PreparedStatement } from "./adapter.ts";
 import { schemaSql } from "./schema.ts";
 import {
   CLUB_VENUE_ASSIGNMENTS,
@@ -568,11 +568,11 @@ export const SEED_DATA: SeedData = {
   ]
 };
 
-export function createD1Database(binding: D1DatabaseLike): AppDatabase {
+export function createD1Database(binding: D1RootDatabaseLike): AppDatabase {
   return createD1AppDatabase(binding);
 }
 
-export async function initializeD1Database(binding: D1DatabaseLike): Promise<void> {
+export async function initializeD1Database(binding: D1RootDatabaseLike): Promise<void> {
   const db = createD1Database(binding);
 
   await db.exec(schemaSql);
@@ -707,5 +707,5 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
     );
   }
 
-  await binding.batch!(statements);
+  await binding.batch(statements);
 }
