@@ -5,10 +5,14 @@ import { getAdminVenueList } from "@/lib/admin/venues";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminVenuesPage() {
+export default async function AdminVenuesPage(props: { searchParams: Promise<{ approximate?: string }> }) {
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
-  const venues = await getAdminVenueList();
+  const { approximate } = await props.searchParams;
+  const approximateOnly = approximate === "1";
+
+  const venues = await getAdminVenueList({ approximateOnly });
+  const allVenues = approximateOnly ? await getAdminVenueList() : venues;
 
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
@@ -27,12 +31,32 @@ export default async function AdminVenuesPage() {
             textDecoration: "none",
             fontWeight: 600
           }}>&larr; Dashboard</Link>
-          <h1 style={{ margin: "0.25rem 0 0", fontSize: "1.5rem" }}>Venues</h1>
+          <h1 style={{ margin: "0.25rem 0 0", fontSize: "1.5rem" }}>
+            {approximateOnly ? "Approximate Venues" : "Venues"}
+          </h1>
           <p style={{ margin: "0.25rem 0 0", color: "#6f7e7a", fontSize: "14px" }}>
-            {venues.length} venue{venues.length !== 1 ? "s" : ""}
+            {approximateOnly
+              ? `${venues.length} approximate of ${allVenues.length} total`
+              : `${venues.length} venue${venues.length !== 1 ? "s" : ""}`
+            }
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <Link href={approximateOnly ? "/admin/venues" : "/admin/venues?approximate=1"} style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #dce3e2",
+            borderRadius: "7px",
+            background: approximateOnly ? "#147a4d" : "#fff",
+            color: approximateOnly ? "#fff" : "#34413e",
+            padding: "0.4rem 0.8rem",
+            fontSize: "13px",
+            fontWeight: 700,
+            textDecoration: "none"
+          }}>
+            {approximateOnly ? "All venues" : "Approximate only"}
+          </Link>
           <Link href="/admin/venues/new" style={{
             display: "inline-flex",
             alignItems: "center",
@@ -63,7 +87,7 @@ export default async function AdminVenuesPage() {
       </header>
 
       {venues.length === 0 ? (
-        <p style={{ color: "#6f7e7a" }}>No venues found.</p>
+        <p style={{ color: "#6f7e7a" }}>{approximateOnly ? "No approximate venues found." : "No venues found."}</p>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>

@@ -49,7 +49,7 @@ export function isValidDate(str: string): boolean {
   return !isNaN(d.getTime()) && d.toISOString().split("T")[0] === str;
 }
 
-export async function getAdminVenueList(): Promise<AdminVenueListRow[]> {
+export async function getAdminVenueList(options?: { approximateOnly?: boolean }): Promise<AdminVenueListRow[]> {
   const db = await getDatabase();
 
   return db.all<AdminVenueListRow>(
@@ -59,6 +59,7 @@ export async function getAdminVenueList(): Promise<AdminVenueListRow[]> {
     FROM venues v
     LEFT JOIN club_venue_assignments cva
       ON cva.venue_id = v.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+    ${options?.approximateOnly ? "WHERE v.is_approximate = 1" : ""}
     GROUP BY v.id
     ORDER BY v.name`
   );
