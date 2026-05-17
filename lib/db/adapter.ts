@@ -39,7 +39,68 @@ export interface D1PreparedStatement {
 export interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatement;
   exec(query: string): Promise<unknown>;
-  batch(statements: D1PreparedStatement[]): Promise<D1ResultRow[]>;
+  batch?(statements: D1PreparedStatement[]): Promise<D1ResultRow[]>;
+  transaction?: <T>(callback: (txn: D1DatabaseLike) => Promise<T>) => Promise<T>;
+}
+
+function wrapD1(client: D1DatabaseLike): AppDatabase {
+  return {
+    async all<T>(sql: string, params: QueryParam[] = []) {
+      const result = await client.prepare(sql).bind(...params).all<T>();
+      return result.results;
+    },
+    async get<T>(sql: string, params: QueryParam[] = []) {
+      const result = await client.prepare(sql).bind(...params).first<T>();
+      return result ?? undefined;
+    },
+    async run(sql: string, params: QueryParam[] = []) {
+      const result = await client.prepare(sql).bind(...params).run();
+      return {
+        lastInsertRowid: result.meta?.last_row_id,
+        changes: result.meta?.changes ?? 0
+      };
+    },
+    async exec(sql: string) {
+      await client.exec(sql);
+    },
+    async writeBatch(statements: SqlWrite[]) {
+      if (statements.length === 0) {
+        return [];
+      }
+
+      if ("batch" in client && client.batch) {
+        const prepared = statements.map((s) => client.prepare(s.sql).bind(...(s.params ?? [])));
+        const results = await client.batch(prepared);
+
+        const failedIndex = results.findIndex((r) => !r.success);
+
+        if (failedIndex !== -1) {
+          throw new Error(`D1 batch statement ${failedIndex + 1} failed.`);
+        }
+
+        return results.map((r) => ({
+          lastInsertRowid: r.meta?.last_row_id,
+          changes: r.meta?.changes ?? 0
+        }));
+      }
+
+      const results: WriteResult[] = [];
+      for (const statement of statements) {
+        const r = await client.prepare(statement.sql).bind(...(statement.params ?? [])).run();
+        results.push({
+          lastInsertRowid: r.meta?.last_row_id,
+          changes: r.meta?.changes ?? 0
+        });
+      }
+      return results;
+    },
+    async transaction<T>(fn: (txDb: AppDatabase) => Promise<T>): Promise<T> {
+      if ("transaction" in client && typeof client.transaction === "function") {
+        return client.transaction(async (txn) => fn(wrapD1(txn)));
+      }
+      return fn(this);
+    }
+  };
 }
 
 export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
@@ -101,60 +162,5 @@ export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
 }
 
 export function createD1AppDatabase(db: D1DatabaseLike): AppDatabase {
-  const appDb: AppDatabase = {
-    async all<T>(sql: string, params: QueryParam[] = []) {
-      const result = await db.prepare(sql).bind(...params).all<T>();
-      return result.results;
-    },
-    async get<T>(sql: string, params: QueryParam[] = []) {
-      const result = await db.prepare(sql).bind(...params).first<T>();
-      return result ?? undefined;
-    },
-    async run(sql: string, params: QueryParam[] = []) {
-      const result = await db.prepare(sql).bind(...params).run();
-      return {
-        lastInsertRowid: result.meta?.last_row_id,
-        changes: result.meta?.changes ?? 0
-      };
-    },
-    async exec(sql: string) {
-      await db.exec(sql);
-    },
-    async writeBatch(statements: SqlWrite[]) {
-      if (statements.length === 0) {
-        return [];
-      }
-
-      const prepared = statements.map((statement) => db.prepare(statement.sql).bind(...(statement.params ?? [])));
-      const results = await db.batch(prepared);
-
-      const failedIndex = results.findIndex((result) => !result.success);
-
-      if (failedIndex !== -1) {
-        throw new Error(`D1 batch statement ${failedIndex + 1} failed.`);
-      }
-
-      return results.map((result) => ({
-        lastInsertRowid: result.meta?.last_row_id,
-        changes: result.meta?.changes ?? 0
-      }));
-    },
-    async transaction<T>(fn: (txDb: AppDatabase) => Promise<T>): Promise<T> {
-      await db.exec("BEGIN");
-      try {
-        const result = await fn(appDb);
-        await db.exec("COMMIT");
-        return result;
-      } catch (error) {
-        try {
-          await db.exec("ROLLBACK");
-        } catch {
-          // Rollback may fail if transaction already ended
-        }
-        throw error;
-      }
-    }
-  };
-
-  return appDb;
+  return wrapD1(db);
 }

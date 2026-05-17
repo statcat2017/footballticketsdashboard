@@ -58,6 +58,9 @@ export function VenueMapEditor({
   const markerRef = useRef<L.Marker | null>(null);
   const wasApproximate = useRef(isApproximate);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [postcodeInput, setPostcodeInput] = useState(
+    () => (document.getElementById("postcode") as HTMLInputElement)?.value ?? ""
+  );
 
   const hasCoords =
     initialLat !== undefined &&
@@ -109,9 +112,18 @@ export function VenueMapEditor({
     syncInputs(latlng.lat, latlng.lng, source);
   }
 
+  function handleConfirmLocation() {
+    if (markerRef.current) {
+      const { lat, lng } = markerRef.current.getLatLng();
+      syncInputs(lat, lng, "map");
+    }
+    const details = detailsRef.current;
+    if (details) details.open = false;
+  }
+
   async function handleLookupPostcode() {
-    const pcInput = document.getElementById("postcode") as HTMLInputElement | null;
-    if (!pcInput?.value.trim()) return;
+    const pc = postcodeInput.trim();
+    if (!pc) return;
 
     setLookupLoading(true);
     try {
@@ -119,7 +131,7 @@ export function VenueMapEditor({
         const res = await fetch(`/api/admin/venues/${venueId}/geocode`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ postcode: pcInput.value }),
+          body: JSON.stringify({ postcode: pc }),
         });
         if (!res.ok) return;
         const data = await res.json();
@@ -131,7 +143,7 @@ export function VenueMapEditor({
         placeMarkerAndSync(L.latLng(lat, lng), "postcode");
       } else {
         const res = await fetch(
-          `https://api.postcodes.io/postcodes/${pcInput.value.replace(/\s+/g, "")}`
+          `https://api.postcodes.io/postcodes/${pc.replace(/\s+/g, "")}`
         );
         const data = await res.json();
         const lat: number | undefined = data.result?.latitude;
@@ -224,6 +236,21 @@ export function VenueMapEditor({
             alignItems: "center",
           }}
         >
+          <input
+            type="text"
+            value={postcodeInput}
+            onChange={(e) => setPostcodeInput(e.target.value)}
+            placeholder="e.g. SW1A 1AA"
+            onKeyDown={(e) => { if (e.key === "Enter") handleLookupPostcode(); }}
+            style={{
+              flex: 1,
+              padding: "0.45rem 0.7rem",
+              border: "1px solid #dce3e2",
+              borderRadius: "6px",
+              fontSize: "14px",
+              fontFamily: "monospace",
+            }}
+          />
           <button
             type="button"
             onClick={handleLookupPostcode}
@@ -238,13 +265,28 @@ export function VenueMapEditor({
               fontWeight: 700,
               cursor: lookupLoading ? "wait" : "pointer",
               opacity: lookupLoading ? 0.7 : 1,
+              whiteSpace: "nowrap",
             }}
           >
-            {lookupLoading ? "Looking up..." : "Look up postcode"}
+            {lookupLoading ? "Looking up..." : "Look up"}
           </button>
-          <span style={{ fontSize: "13px", color: "#6f7e7a" }}>
-            Enter a postcode above, then click to center the map.
-          </span>
+          <button
+            type="button"
+            onClick={handleConfirmLocation}
+            style={{
+              border: "1px solid #0e5737",
+              borderRadius: "7px",
+              background: "#0e5737",
+              color: "#fff",
+              padding: "0.4rem 0.8rem",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Confirm location
+          </button>
         </div>
         <div
           ref={mapContainerRef}

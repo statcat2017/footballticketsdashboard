@@ -707,5 +707,5 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
     );
   }
 
-  await binding.batch(statements);
+  await binding.batch!(statements);
 }
