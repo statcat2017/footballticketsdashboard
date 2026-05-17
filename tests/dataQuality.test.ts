@@ -31,7 +31,7 @@ describe("data quality checks", () => {
   it("detects clubs with no primary venue", async () => {
     const db = minimalDb();
     db.exec(`
-      INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
+      INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
       INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
@@ -72,6 +72,7 @@ describe("data quality checks", () => {
     const match = issues.filter((i) => i.id.startsWith("mapped-club-no-venue"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Mapped Bad Venue");
+    expect(match[0].entityId).toBe(100);
     expect(match[0].severity).toBe("error");
   });
 
@@ -112,7 +113,7 @@ describe("data quality checks", () => {
     expect(match[0].severity).toBe("warning");
   });
 
-  it("detects duplicate aliases", async () => {
+  it("does not flag cross-scope aliases as duplicates", async () => {
     const db = minimalDb();
     db.exec(`
       INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Club A', 'known'), (101, 'Club B', 'known');
@@ -127,8 +128,7 @@ describe("data quality checks", () => {
 
     const issues = await runDataQualityChecks();
     const match = issues.filter((i) => i.id.startsWith("duplicate-alias"));
-    expect(match).toHaveLength(1);
-    expect(match[0].severity).toBe("warning");
+    expect(match).toHaveLength(0);
   });
 
   it("detects clubs without ticket URL", async () => {

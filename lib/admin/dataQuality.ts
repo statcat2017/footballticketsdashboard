@@ -1,5 +1,7 @@
 import { getDatabase } from "@/lib/db/client";
 import { getLatestSeasonId } from "@/lib/admin/clubs";
+import { findAmbiguousAliases } from "@/lib/db/clubMapping";
+import type { AppDatabase } from "@/lib/db/adapter";
 
 export type DataQualitySeverity = "error" | "warning" | "info";
 
@@ -13,8 +15,18 @@ export interface DataQualityIssue {
   actionUrl: string | null;
 }
 
-async function clubsWithNoPrimaryVenue(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
+async function tryGetSeasonId(db: AppDatabase): Promise<number | null> {
+  try {
+    return await getLatestSeasonId(db);
+  } catch {
+    return null;
+  }
+}
+
+async function clubsWithNoPrimaryVenue(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const seasonId = await tryGetSeasonId(db);
+  if (seasonId === null) return [];
+
   const rows = await db.all<{ id: number; name: string }>(
     `SELECT pc.id, pc.name
      FROM pyramid_season_memberships psm
@@ -22,13 +34,15 @@ async function clubsWithNoPrimaryVenue(): Promise<DataQualityIssue[]> {
      LEFT JOIN club_venue_assignments cva
        ON cva.club_id = pc.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
      WHERE cva.id IS NULL
+       AND psm.season_id = ?
      GROUP BY pc.id
-     ORDER BY pc.name`
+     ORDER BY pc.name`,
+    [seasonId]
   );
 
   return rows.map((r) => ({
     id: `no-primary-venue-${r.id}`,
-    severity: "error" as const,
+    severity: "error",
     category: "Club",
     entity: r.name,
     entityId: r.id,
@@ -37,10 +51,9 @@ async function clubsWithNoPrimaryVenue(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function mappedClubsMissingVenueData(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-  const rows = await db.all<{ club_id: number; club_name: string; venue_id: number | null }>(
-    `SELECT cm.club_id, c.name AS club_name, c.venue_id
+async function mappedClubsMissingVenueData(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const rows = await db.all<{ pyramid_club_id: number; club_name: string }>(
+    `SELECT cm.pyramid_club_id, c.name AS club_name
      FROM club_mappings cm
      JOIN pyramid_clubs pc ON pc.id = cm.pyramid_club_id
      JOIN clubs c ON c.id = cm.club_id
@@ -53,25 +66,24 @@ async function mappedClubsMissingVenueData(): Promise<DataQualityIssue[]> {
   );
 
   return rows.map((r) => ({
-    id: `mapped-club-no-venue-${r.club_id}`,
-    severity: "error" as const,
+    id: `mapped-club-no-venue-${r.pyramid_club_id}`,
+    severity: "error",
     category: "Mapped Club",
     entity: r.club_name,
-    entityId: r.club_id,
+    entityId: r.pyramid_club_id,
     summary: "Mapped club is missing required venue data.",
-    actionUrl: `/admin/clubs/${r.club_id}`
+    actionUrl: `/admin/clubs/${r.pyramid_club_id}`
   }));
 }
 
-async function venuesWithBlankPostcode(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
+async function venuesWithBlankPostcode(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; name: string }>(
     `SELECT id, name FROM venues WHERE postcode IS NULL OR postcode = '' ORDER BY name`
   );
 
   return rows.map((r) => ({
     id: `blank-postcode-${r.id}`,
-    severity: "warning" as const,
+    severity: "warning",
     category: "Venue",
     entity: r.name,
     entityId: r.id,
@@ -80,8 +92,7 @@ async function venuesWithBlankPostcode(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function venuesWithInvalidCoordinates(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
+async function venuesWithInvalidCoordinates(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; name: string; latitude: number; longitude: number }>(
     `SELECT id, name, latitude, longitude
      FROM venues
@@ -93,7 +104,7 @@ async function venuesWithInvalidCoordinates(): Promise<DataQualityIssue[]> {
 
   return rows.map((r) => ({
     id: `invalid-coords-${r.id}`,
-    severity: "error" as const,
+    severity: "error",
     category: "Venue",
     entity: r.name,
     entityId: r.id,
@@ -102,8 +113,7 @@ async function venuesWithInvalidCoordinates(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function venuesImpreciseCoords(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
+async function venuesImpreciseCoords(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; name: string; precision: string | null }>(
     `SELECT id, name, coordinate_precision AS precision
      FROM venues
@@ -114,7 +124,7 @@ async function venuesImpreciseCoords(): Promise<DataQualityIssue[]> {
 
   return rows.map((r) => ({
     id: `imprecise-coords-${r.id}`,
-    severity: "warning" as const,
+    severity: "warning",
     category: "Venue",
     entity: r.name,
     entityId: r.id,
@@ -123,30 +133,21 @@ async function venuesImpreciseCoords(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function duplicateClubAliases(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-  const rows = await db.all<{ normalized_alias: string; club_count: number }>(
-    `SELECT normalized_alias, COUNT(DISTINCT club_id) AS club_count
-     FROM club_aliases
-     WHERE retired_at IS NULL
-     GROUP BY normalized_alias
-     HAVING COUNT(DISTINCT club_id) > 1
-     ORDER BY normalized_alias`
-  );
+async function duplicateClubAliases(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const groups = await findAmbiguousAliases(db);
 
-  return rows.map((r) => ({
-    id: `duplicate-alias-${r.normalized_alias}`,
-    severity: "warning" as const,
+  return groups.map((g) => ({
+    id: `duplicate-alias-${g.normalizedAlias}-${g.competitionCode ?? "unscoped"}`,
+    severity: "warning",
     category: "Alias",
-    entity: r.normalized_alias,
+    entity: `${g.normalizedAlias} (${g.competitionCode ?? "unscoped"})`,
     entityId: 0,
-    summary: `Alias "${r.normalized_alias}" maps to ${r.club_count} different clubs.`,
+    summary: `Alias "${g.normalizedAlias}" maps to ${g.clubs.length} clubs: ${g.clubs.map((c) => c.clubName).join(", ")}.`,
     actionUrl: null
   }));
 }
 
-async function clubsWithoutTicketUrl(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
+async function clubsWithoutTicketUrl(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; name: string }>(
     `SELECT c.id, c.name
      FROM clubs c
@@ -156,7 +157,7 @@ async function clubsWithoutTicketUrl(): Promise<DataQualityIssue[]> {
 
   return rows.map((r) => ({
     id: `no-ticket-url-${r.id}`,
-    severity: "info" as const,
+    severity: "info",
     category: "Club",
     entity: r.name,
     entityId: r.id,
@@ -165,14 +166,9 @@ async function clubsWithoutTicketUrl(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function divisionsOverMaxSize(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-  let seasonId: number;
-  try {
-    seasonId = await getLatestSeasonId(db);
-  } catch {
-    return [];
-  }
+async function divisionsOverMaxSize(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const seasonId = await tryGetSeasonId(db);
+  if (seasonId === null) return [];
 
   const rows = await db.all<{ id: number; name: string; club_count: number; max_size: number }>(
     `SELECT d.id, d.name, COUNT(psm.id) AS club_count, d.max_size
@@ -188,7 +184,7 @@ async function divisionsOverMaxSize(): Promise<DataQualityIssue[]> {
 
   return rows.map((r) => ({
     id: `division-over-size-${r.id}`,
-    severity: "warning" as const,
+    severity: "warning",
     category: "Division",
     entity: r.name,
     entityId: r.id,
@@ -197,14 +193,9 @@ async function divisionsOverMaxSize(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function divisionsWithoutCompetitionMapping(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-  let seasonId: number;
-  try {
-    seasonId = await getLatestSeasonId(db);
-  } catch {
-    return [];
-  }
+async function divisionsWithoutCompetitionMapping(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const seasonId = await tryGetSeasonId(db);
+  if (seasonId === null) return [];
 
   const rows = await db.all<{ id: number; name: string }>(
     `SELECT d.id, d.name
@@ -221,23 +212,18 @@ async function divisionsWithoutCompetitionMapping(): Promise<DataQualityIssue[]>
 
   return rows.map((r) => ({
     id: `division-no-mapping-${r.id}`,
-    severity: "warning" as const,
+    severity: "warning",
     category: "Division",
-    entity: String(r.name),
+    entity: r.name,
     entityId: r.id,
     summary: "Populated division has no competition mapping.",
     actionUrl: `/admin/publish`
   }));
 }
 
-async function clubsWithoutPublicMapping(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-  let seasonId: number;
-  try {
-    seasonId = await getLatestSeasonId(db);
-  } catch {
-    return [];
-  }
+async function clubsWithoutPublicMapping(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const seasonId = await tryGetSeasonId(db);
+  if (seasonId === null) return [];
 
   const rows = await db.all<{ id: number; name: string }>(
     `SELECT pc.id, pc.name
@@ -253,7 +239,7 @@ async function clubsWithoutPublicMapping(): Promise<DataQualityIssue[]> {
 
   return rows.map((r) => ({
     id: `club-no-mapping-${r.id}`,
-    severity: "warning" as const,
+    severity: "warning",
     category: "Club",
     entity: r.name,
     entityId: r.id,
@@ -262,20 +248,19 @@ async function clubsWithoutPublicMapping(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function fixturesMissingSourceUrl(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-
+async function fixturesMissingSourceUrl(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string }>(
     `SELECT id, source, source_id
      FROM fixtures
      WHERE source_url IS NULL
+       AND is_demo_data = 0
      ORDER BY id
      LIMIT 100`
   );
 
   return rows.map((r) => ({
     id: `fixture-no-source-url-${r.id}`,
-    severity: "info" as const,
+    severity: "info",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -284,20 +269,19 @@ async function fixturesMissingSourceUrl(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function fixturesWithAssumedKickoff(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-
+async function fixturesWithAssumedKickoff(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string }>(
     `SELECT id, source, source_id
      FROM fixtures
      WHERE kickoff_time_status = 'assumed'
+       AND is_demo_data = 0
      ORDER BY id
      LIMIT 100`
   );
 
   return rows.map((r) => ({
     id: `fixture-assumed-kickoff-${r.id}`,
-    severity: "warning" as const,
+    severity: "warning",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -306,22 +290,21 @@ async function fixturesWithAssumedKickoff(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function fixturesMissingTicketInfo(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-
+async function fixturesMissingTicketInfo(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string }>(
     `SELECT f.id, f.source, f.source_id
      FROM fixtures f
      LEFT JOIN club_ticket_prices ctp ON ctp.club_id = f.home_club_id
      LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = f.id
      WHERE ctp.club_id IS NULL AND ftpo.fixture_id IS NULL
+       AND f.is_demo_data = 0
      ORDER BY f.id
      LIMIT 100`
   );
 
   return rows.map((r) => ({
     id: `fixture-no-ticket-${r.id}`,
-    severity: "info" as const,
+    severity: "info",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -330,23 +313,22 @@ async function fixturesMissingTicketInfo(): Promise<DataQualityIssue[]> {
   }));
 }
 
-async function fixturesHiddenByLocation(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-
+async function fixturesHiddenByLocation(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string; venue_name: string }>(
     `SELECT f.id, f.source, f.source_id, v.name AS venue_name
      FROM fixtures f
      JOIN venues v ON v.id = f.venue_id
-     WHERE v.latitude IS NULL OR v.longitude IS NULL
+     WHERE (v.latitude IS NULL OR v.longitude IS NULL
         OR v.latitude < -90 OR v.latitude > 90
-        OR v.longitude < -180 OR v.longitude > 180
+        OR v.longitude < -180 OR v.longitude > 180)
+       AND f.is_demo_data = 0
      ORDER BY f.id
      LIMIT 100`
   );
 
   return rows.map((r) => ({
     id: `fixture-hidden-location-${r.id}`,
-    severity: "error" as const,
+    severity: "error",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -356,21 +338,23 @@ async function fixturesHiddenByLocation(): Promise<DataQualityIssue[]> {
 }
 
 export async function runDataQualityChecks(): Promise<DataQualityIssue[]> {
+  const db = await getDatabase();
+
   const checks = [
-    clubsWithNoPrimaryVenue(),
-    mappedClubsMissingVenueData(),
-    venuesWithBlankPostcode(),
-    venuesWithInvalidCoordinates(),
-    venuesImpreciseCoords(),
-    duplicateClubAliases(),
-    clubsWithoutTicketUrl(),
-    divisionsOverMaxSize(),
-    divisionsWithoutCompetitionMapping(),
-    clubsWithoutPublicMapping(),
-    fixturesMissingSourceUrl(),
-    fixturesWithAssumedKickoff(),
-    fixturesMissingTicketInfo(),
-    fixturesHiddenByLocation(),
+    clubsWithNoPrimaryVenue(db),
+    mappedClubsMissingVenueData(db),
+    venuesWithBlankPostcode(db),
+    venuesWithInvalidCoordinates(db),
+    venuesImpreciseCoords(db),
+    duplicateClubAliases(db),
+    clubsWithoutTicketUrl(db),
+    divisionsOverMaxSize(db),
+    divisionsWithoutCompetitionMapping(db),
+    clubsWithoutPublicMapping(db),
+    fixturesMissingSourceUrl(db),
+    fixturesWithAssumedKickoff(db),
+    fixturesMissingTicketInfo(db),
+    fixturesHiddenByLocation(db),
   ];
 
   const results = await Promise.all(checks);
