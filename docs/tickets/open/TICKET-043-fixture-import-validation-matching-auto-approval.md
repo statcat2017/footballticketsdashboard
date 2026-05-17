@@ -12,16 +12,19 @@ Validate normalized fixture import rows, match them to public entities, and safe
 ## Work
 
 - Validate required fixture row fields after source adapter normalization.
-- Resolve home and away clubs through mappings, source IDs, canonical names, and scoped aliases.
+- Resolve home and away participants through mappings, source IDs, canonical club names, scoped aliases, or explicit one-off team markers.
+- Require unknown team names to be resolved as mapped clubs or explicitly marked as one-off teams before approval.
+- Do not infer one-off teams automatically from unknown names.
 - Resolve competition through public competition mappings.
-- Resolve venue from explicit venue text or home club primary venue fallback.
+- Resolve venue from explicit venue text or mapped home club primary venue fallback.
+- Require an explicit matched venue when the home participant is a one-off team.
 - Apply assumed kickoff time rules for missing times.
-- Detect existing fixtures by home club, away club, competition, and season.
+- Detect existing fixtures by home participant, away participant, competition, and season.
 - Treat kickoff date/time and status as updateable fields, not identity fields.
 - Implement latest-import-wins behavior for explicitly provided fields.
 - Prevent blank import fields from erasing existing values.
 - Block auto-approval for structurally unsafe rows:
-  - unknown or unmapped clubs
+  - unknown or unmapped clubs unless explicitly marked as one-off teams with sufficient evidence
   - unmatched explicit venues
   - missing or invalid venue coordinates
   - ambiguous aliases
@@ -42,7 +45,9 @@ Validate normalized fixture import rows, match them to public entities, and safe
 
 ## Verification
 
-- Matching tests for canonical, alias, scoped alias, ambiguous, and unknown clubs.
+- Matching tests for canonical, alias, scoped alias, ambiguous, unknown clubs, and explicit one-off teams.
+- Validation tests proving unknown names are not auto-converted into one-off teams.
+- Venue validation tests proving home one-off fixtures require explicit matched venues.
 - Venue fallback and unmatched venue tests.
 - Duplicate/update detection tests.
 - Auto-approval gate tests for API and agent sources.

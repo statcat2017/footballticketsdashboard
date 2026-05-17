@@ -54,11 +54,15 @@ public search display with clear caveats
 - Public clubs and competitions are created or linked through an explicit bulk publish/mapping flow, not implicitly during fixture import.
 - Fixture import covers all populated pyramid divisions once their clubs and divisions are mapped.
 - Add a lightweight `fixture_seasons` table and store fixture season identity on imported fixtures.
-- Use additive schema changes only for this sprint. Avoid destructive refactors of existing `fixtures`, `clubs`, or `pyramid_clubs`.
+- Use additive schema changes where possible. Fixture participant support may require a targeted fixture schema migration because the current `fixtures` table requires public `clubs` rows for both teams.
 
 ### Fixture Identity And Updates
 
-- A fixture is uniquely identified by home club, away club, competition, and season.
+- A fixture is uniquely identified by home participant, away participant, competition, and season.
+- Participants are normally mapped public clubs, but a participant can be explicitly marked as a one-off team for invitational, representative, academy, charity, or exhibition fixtures.
+- One-off teams must not require public club creation and must not be added to the club mapping layer.
+- One-off teams must be explicitly marked by an import source, agent output, or admin action. Unknown team names must not silently become one-off teams.
+- One-off participants need a display name, source/evidence, and side (`home` or `away`). They should be excluded from club pages, club aliases, division membership counts, and club default ticket data.
 - Kickoff date and time are attributes that can change.
 - Latest trusted import wins for explicitly supplied fields.
 - Blank import fields must not erase existing admin or fixture data.
@@ -83,7 +87,7 @@ public search display with clear caveats
 - Trusted API and trusted agentic scrape sources can auto-approve structurally safe rows.
 - Agentic scrape rows must include evidence and confidence metadata before they can be auto-approved.
 - Auto-approval must be blocked by:
-  - unknown or unmapped clubs
+  - unknown or unmapped clubs unless the participant is explicitly marked as a one-off team with sufficient source evidence
   - unmatched explicit venues
   - missing or invalid venue coordinates
   - ambiguous aliases
@@ -137,6 +141,7 @@ public search display with clear caveats
 ### Venue Matching And Coordinates
 
 - Blank venue in an import row defaults to the mapped home club's current primary venue.
+- If the home participant is a one-off team, there is no club primary venue fallback; the row must provide a matched explicit venue.
 - Explicit venue text that cannot be matched blocks that row.
 - If the home club has no primary venue, the row blocks until the venue is resolved.
 - Blank venue postcode is always a warning, not an import blocker.
@@ -243,6 +248,7 @@ The following dependencies must be implemented before the site can operate real 
 | Public mapping layer | Existing fixtures reference `clubs`, while admin data uses `pyramid_clubs` | TICKET-037 |
 | Bulk publish/link flow | All populated divisions need public `clubs` and `competitions` before imports can resolve | TICKET-037 |
 | Fixture seasons | Duplicate/update identity depends on season | TICKET-038 |
+| Fixture participant model | One-off fixture teams need displayable participants without creating permanent clubs | TICKET-038 |
 | Fixture date/time provenance | Assumed kickoff times must be stored and displayed honestly | TICKET-038 |
 | Broader confidence model | Fixtures, prices, venues, and import rows need shared provenance language | TICKET-038 |
 | Structured scoped aliases | API/scrape names need deterministic matching without global nickname collisions | TICKET-039 |
@@ -297,6 +303,7 @@ Exit criteria:
 - A trusted agent source can auto-approve rows with sufficient evidence and passing validation.
 - Unsafe rows are blocked from auto-approval and routed to preview or import review.
 - Fixture moves update existing fixtures by home, away, competition, and season.
+- Fixture identity supports mapped clubs and explicit one-off team participants without creating permanent clubs.
 - Blank import fields never erase existing data.
 
 ### Milestone 3: Public Readiness And Operational Visibility
@@ -319,6 +326,23 @@ Exit criteria:
 - Admins can inspect travel cache coverage and staleness.
 - Launch readiness review can be repeated with screenshots.
 
+### Post-Operations Enhancement: Weather Risk
+
+Purpose: add forecast-based weather risk badges after the fixture operations foundation is complete.
+
+Ticket:
+
+- TICKET-051: Weather Risk Postponement Warning Enhancement
+
+Plan:
+
+- [docs/weather-risk-enhancement-plan.md](weather-risk-enhancement-plan.md)
+
+Scheduling rule:
+
+- Do not start product integration until TICKET-038, TICKET-040, TICKET-045, and TICKET-046 are complete.
+- A small Open-Meteo spike may happen earlier only if it does not change production schema or public UI.
+
 ## Out Of Scope For This Sprint
 
 - Normal user accounts.
@@ -330,3 +354,4 @@ Exit criteria:
 - Automatic correction application.
 - Full admin pyramid edge editor unless it blocks mapping or import work.
 - Complex analytics dashboards.
+- Weather risk badges and forecast ingestion; see the post-operations enhancement plan.
