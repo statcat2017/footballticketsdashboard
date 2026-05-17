@@ -1,5 +1,5 @@
 import { fillTravelCacheForGroundDistricts } from "../lib/travel/cache.ts";
-import { createD1AppDatabase, type AppDatabase, type D1PreparedStatement, type QueryParam } from "../lib/db/adapter.ts";
+import { createD1AppDatabase, type AppDatabase, type D1PreparedStatement, type D1TransactionLike, type QueryParam } from "../lib/db/adapter.ts";
 import { executeD1, executeD1Json } from "../lib/db/d1-exec.ts";
 
 const databaseName = process.argv[2];
@@ -50,7 +50,7 @@ const db = createD1AppDatabase({
 
     return results;
   },
-  async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+  async transaction<T>(callback: (txn: D1TransactionLike) => Promise<T>): Promise<T> {
     return callback(this);
   }
 });

@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
-import { createD1AppDatabase, createSqliteAppDatabase, type D1RootDatabaseLike, type D1PreparedStatement } from "@/lib/db/adapter";
+import { createD1AppDatabase, createSqliteAppDatabase, type D1RootDatabaseLike, type D1PreparedStatement, type D1TransactionLike } from "@/lib/db/adapter";
 
 describe("database adapter writeBatch", () => {
   it("commits all SQLite writes when the batch succeeds", async () => {
@@ -63,7 +63,7 @@ describe("database adapter writeBatch", () => {
         operations.push(`batch:${statements.length}`);
         return statements.map((_, index) => ({ success: true, meta: { changes: 1, last_row_id: index + 1 } }));
       },
-      async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+      async transaction<T>(callback: (txn: D1TransactionLike) => Promise<T>): Promise<T> {
         return callback(this);
       }
     };
@@ -112,7 +112,7 @@ describe("database adapter writeBatch", () => {
       async batch() {
         return [{ success: true }, { success: false }];
       },
-      async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+      async transaction<T>(callback: (txn: D1TransactionLike) => Promise<T>): Promise<T> {
         return callback(this);
       }
     };

@@ -44,7 +44,7 @@ vi.mock("@/lib/db/pyramid", () => ({
 }));
 
 import { initializeD1Database } from "@/lib/db/d1";
-import type { D1RootDatabaseLike, D1PreparedStatement } from "@/lib/db/adapter";
+import type { D1RootDatabaseLike, D1PreparedStatement, D1TransactionLike } from "@/lib/db/adapter";
 
 describe("D1 initialization", () => {
   it("writes the pyramid sections before dependent rows", async () => {
@@ -102,7 +102,7 @@ function createFakeBinding(operations: string[], batchSizes: number[]): D1RootDa
       operations.push(`batch:${statements.length}`);
       return statements.map(() => ({ success: true }));
     },
-    async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+    async transaction<T>(callback: (txn: D1TransactionLike) => Promise<T>): Promise<T> {
       return callback(this);
     }
   };
