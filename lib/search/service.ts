@@ -67,7 +67,11 @@ export async function searchFixtures(
   };
   const origin = await resolvePostcodeOrigin(request.postcode);
 
-  const rows = await queryFixtures(db, dateRange, origin.district);
+  let rows = await queryFixtures(db, dateRange, origin.district);
+
+  if (rows.length === 0) {
+    rows = await queryFixtures(db, dateRange, origin.district, true);
+  }
 
   const radiusFilter = request.radiusMiles;
   const inRadius = radiusFilter === undefined
@@ -99,7 +103,8 @@ export async function searchFixtures(
 function queryFixtures(
   db: AppDatabase,
   request: Required<Pick<SearchRequest, "dateFrom" | "dateTo">>,
-  postcodeDistrictValue: string
+  postcodeDistrictValue: string,
+  includeHistorical = false
 ): Promise<FixtureRow[]> {
   return db.all<FixtureRow>(`
     SELECT
@@ -138,8 +143,8 @@ function queryFixtures(
     LEFT JOIN fixture_ticket_price_overrides fpo ON fpo.fixture_id = f.id
     LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
     WHERE date(f.kickoff_at) BETWEEN date(?) AND date(?)
-      AND f.is_historical = 0
-      AND f.status = 'scheduled'
+      ${includeHistorical ? "" : "AND f.is_historical = 0"}
+      ${includeHistorical ? "" : "AND f.status = 'scheduled'"}
     ORDER BY f.kickoff_at ASC
   `, [
     postcodeDistrictValue,

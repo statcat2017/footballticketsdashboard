@@ -34,6 +34,27 @@ describe("fixture search", () => {
     expect(results).toEqual([]);
   });
 
+  it("falls back to historical fixtures when no live fixtures match and historical seed data exists", async () => {
+    const db = createAppDatabase();
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2025-05-01",
+      dateTo: "2025-05-31"
+    });
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const result of results) {
+      expect(result.isHistorical).toBe(true);
+      expect(result.isDemoData).toBe(true);
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("Historical fixture shown")
+        ])
+      );
+    }
+  });
+
   it("returns live fixtures sorted by distance when no radius is supplied", async () => {
     const db = createAppDatabase();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
