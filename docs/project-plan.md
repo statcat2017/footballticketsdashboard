@@ -21,6 +21,13 @@ Near Me FC is a fixture finder demo intended to support a future Non League Day 
 - Public-search tables will be updated through an explicit publish step for supported divisions only.
 - The first implementation phase is admin auth, audit logging, transaction support, and foundational schema work.
 
+## Fixture Operations Readiness
+
+- The fixture ingestion and operational readiness plan lives in `docs/fixture-operations-readiness-plan.md`.
+- Fixture ingestion should be source-agnostic: API feeds, agentic scrapes, URL table scrapes, CSV upload, and CSV paste all produce import batches with the same validation and approval workflow.
+- Trusted API and agentic scrape sources may auto-approve structurally safe rows, while exceptions go to import review.
+- Public fixture data should prefer clear caveats and provenance over hiding every incomplete but usable fixture.
+
 ## Deferred
 
 - Non-league fixture ingestion until a data partnership/source is agreed.
