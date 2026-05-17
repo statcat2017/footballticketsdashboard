@@ -13,7 +13,9 @@ Let admins inspect, correct, verify, and preview fixtures after imports create o
 
 - Add protected admin fixture list and detail pages.
 - Support filtering by season, competition, source, status, assumed time, missing ticket data, and hidden-public location issues.
-- Add fixture edit support for home club, away club, competition, season, date, kickoff time, time status, fixture status, venue, ticket URL, sale mode, adult price, concession price, source URL, verified date, notes, and demo/historical flags.
+- Add fixture edit support for home participant, away participant, competition, season, date, kickoff time, time status, fixture status, venue, ticket URL, sale mode, adult price, concession price, source URL, verified date, notes, and demo/historical flags.
+- Allow each participant to be a mapped club or an explicit one-off team with display name and source/evidence.
+- Make clear in admin UI that one-off teams do not create club records and do not receive aliases, memberships, or club default ticket data.
 - Preserve fixture-specific ticket overrides taking precedence over club defaults.
 - Audit all admin fixture mutations.
 - Extract shared public fixture display formatters or a minimal shared card component.
@@ -23,6 +25,7 @@ Let admins inspect, correct, verify, and preview fixtures after imports create o
 ## Acceptance Criteria
 
 - Admins can find and edit imported fixtures without direct database edits.
+- Admins can create or edit fixtures involving one-off teams without creating public club rows.
 - Fixture-specific ticket data overrides club defaults in preview and public display.
 - Assumed kickoff times and status labels appear in admin preview.
 - Admin preview uses the same display rules as public fixture cards.

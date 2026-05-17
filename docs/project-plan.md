@@ -28,6 +28,12 @@ Near Me FC is a fixture finder demo intended to support a future Non League Day 
 - Trusted API and agentic scrape sources may auto-approve structurally safe rows, while exceptions go to import review.
 - Public fixture data should prefer clear caveats and provenance over hiding every incomplete but usable fixture.
 
+## Weather Risk Enhancement
+
+- The weather risk enhancement plan lives in `docs/weather-risk-enhancement-plan.md`.
+- This is scheduled after fixture operations readiness, because it depends on fixture date/time fields, venue metadata, fixture admin, and public warning badges.
+- The first version should use Open-Meteo forecasts, cached weather risk snapshots, and cautious public `weather risk` badges for rain, frost, and storm conditions.
+
 ## Deferred
 
 - Non-league fixture ingestion until a data partnership/source is agreed.
