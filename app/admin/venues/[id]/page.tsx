@@ -141,6 +141,7 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
       <MapEditorWrapper
         initialLat={data.venue.latitude}
         initialLng={data.venue.longitude}
+        initialPostcode={data.venue.postcode}
         isApproximate={data.venue.is_approximate === 1}
         latInputId="latitude"
         lngInputId="longitude"

@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
-import { createD1AppDatabase, createSqliteAppDatabase, type D1DatabaseLike, type D1PreparedStatement } from "@/lib/db/adapter";
+import { createD1AppDatabase, createSqliteAppDatabase, type D1RootDatabaseLike, type D1PreparedStatement } from "@/lib/db/adapter";
 
 describe("database adapter writeBatch", () => {
   it("commits all SQLite writes when the batch succeeds", async () => {
@@ -36,7 +36,7 @@ describe("database adapter writeBatch", () => {
 
   it("uses D1 batch for D1 writes", async () => {
     const operations: string[] = [];
-    const binding: D1DatabaseLike = {
+    const binding: D1RootDatabaseLike = {
       prepare(query: string) {
         operations.push(`prepare:${query}`);
         const statement = {
@@ -62,6 +62,9 @@ describe("database adapter writeBatch", () => {
       async batch(statements: D1PreparedStatement[]) {
         operations.push(`batch:${statements.length}`);
         return statements.map((_, index) => ({ success: true, meta: { changes: 1, last_row_id: index + 1 } }));
+      },
+      async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+        return callback(this);
       }
     };
 
@@ -85,7 +88,7 @@ describe("database adapter writeBatch", () => {
   });
 
   it("throws when a D1 batch result reports failure", async () => {
-    const binding: D1DatabaseLike = {
+    const binding: D1RootDatabaseLike = {
       prepare() {
         const statement = {
           bind() {
@@ -108,6 +111,9 @@ describe("database adapter writeBatch", () => {
       },
       async batch() {
         return [{ success: true }, { success: false }];
+      },
+      async transaction<T>(callback: (txn: any) => Promise<T>): Promise<T> {
+        return callback(this);
       }
     };
 

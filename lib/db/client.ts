@@ -1,7 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 
-import { createSqliteAppDatabase, type AppDatabase, type D1DatabaseLike } from "./adapter.ts";
+import { createSqliteAppDatabase, type AppDatabase, type D1RootDatabaseLike } from "./adapter.ts";
 import { createD1Database } from "./d1.ts";
 import { defaultDatabasePath, setupDatabase } from "./setup.ts";
 
@@ -43,7 +43,7 @@ export async function getDatabase(): Promise<AppDatabase> {
 async function getCloudflareDatabase(): Promise<AppDatabase | null> {
   try {
     const context = await getCloudflareContext({ async: true });
-    const binding = (context.env as { DB?: D1DatabaseLike }).DB;
+    const binding = (context.env as { DB?: D1RootDatabaseLike }).DB;
 
     if (!binding) {
       return null;
