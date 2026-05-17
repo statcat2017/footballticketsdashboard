@@ -18,6 +18,7 @@ export interface AppDatabase {
   run(sql: string, params?: QueryParam[]): Promise<WriteResult>;
   exec(sql: string): Promise<void>;
   writeBatch(statements: SqlWrite[]): Promise<WriteResult[]>;
+  transaction<T>(fn: (db: AppDatabase) => Promise<T>): Promise<T>;
 }
 
 export interface D1ResultRow {
@@ -42,7 +43,7 @@ export interface D1DatabaseLike {
 }
 
 export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
-  return {
+  const appDb: AppDatabase = {
     async all<T>(sql: string, params: QueryParam[] = []) {
       return db.prepare(sql).all(...params) as T[];
     },
@@ -82,12 +83,25 @@ export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
         db.exec("ROLLBACK");
         throw error;
       }
+    },
+    async transaction<T>(fn: (txDb: AppDatabase) => Promise<T>): Promise<T> {
+      db.exec("BEGIN");
+      try {
+        const result = await fn(appDb);
+        db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     }
   };
+
+  return appDb;
 }
 
 export function createD1AppDatabase(db: D1DatabaseLike): AppDatabase {
-  return {
+  const appDb: AppDatabase = {
     async all<T>(sql: string, params: QueryParam[] = []) {
       const result = await db.prepare(sql).bind(...params).all<T>();
       return result.results;
@@ -124,6 +138,23 @@ export function createD1AppDatabase(db: D1DatabaseLike): AppDatabase {
         lastInsertRowid: result.meta?.last_row_id,
         changes: result.meta?.changes ?? 0
       }));
+    },
+    async transaction<T>(fn: (txDb: AppDatabase) => Promise<T>): Promise<T> {
+      await db.exec("BEGIN");
+      try {
+        const result = await fn(appDb);
+        await db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        try {
+          await db.exec("ROLLBACK");
+        } catch {
+          // Rollback may fail if transaction already ended
+        }
+        throw error;
+      }
     }
   };
+
+  return appDb;
 }
