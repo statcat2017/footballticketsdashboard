@@ -20,8 +20,10 @@ function describeLevel(title: string, start: number, end: number, expectApproxim
       for (const m of memberships) {
         counts.set(m.club_id, (counts.get(m.club_id) ?? 0) + 1);
       }
-      const multiples = [...counts.entries()].filter(([, count]) => count !== 1);
-      expect(multiples).toEqual([]);
+      const bad = clubs
+        .map((c) => ({ clubId: c.id, count: counts.get(c.id) ?? 0 }))
+        .filter((x) => x.count !== 1);
+      expect(bad).toEqual([]);
     });
 
     it("every membership references an existing club", () => {
@@ -36,9 +38,14 @@ function describeLevel(title: string, start: number, end: number, expectApproxim
     });
 
     it("every club has exactly one primary venue assignment", () => {
-      expect(assignments.length).toBe(clubs.length);
-      const allPrimary = assignments.every((a) => a.is_primary === 1);
-      expect(allPrimary).toBe(true);
+      const primaryCounts = new Map<number, number>();
+      for (const a of assignments.filter((a) => a.is_primary === 1)) {
+        primaryCounts.set(a.club_id, (primaryCounts.get(a.club_id) ?? 0) + 1);
+      }
+      const bad = clubs
+        .map((c) => ({ clubId: c.id, count: primaryCounts.get(c.id) ?? 0 }))
+        .filter((x) => x.count !== 1);
+      expect(bad).toEqual([]);
     });
 
     it("every venue assignment references an existing venue", () => {
