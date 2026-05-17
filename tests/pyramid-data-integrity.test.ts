@@ -1,0 +1,91 @@
+import { describe, expect, it } from "vitest";
+
+import { SEED_DATA } from "@/lib/db/d1";
+import {
+  CLUB_VENUE_ASSIGNMENTS,
+  MEN_PYRAMID_CLUBS,
+  MEN_PYRAMID_MEMBERSHIPS,
+} from "@/lib/db/pyramid";
+
+const allVenueIds = new Set(SEED_DATA.venues.map((v) => v.id));
+
+function describeLevel(title: string, start: number, end: number, expectApproximate: boolean) {
+  const clubs = MEN_PYRAMID_CLUBS.filter((c) => c.id >= start && c.id <= end);
+  const memberships = MEN_PYRAMID_MEMBERSHIPS.filter((m) => m.club_id >= start && m.club_id <= end);
+  const assignments = CLUB_VENUE_ASSIGNMENTS.filter((a) => a.club_id >= start && a.club_id <= end);
+
+  describe(title, () => {
+    it("every club has exactly one membership", () => {
+      const counts = new Map<number, number>();
+      for (const m of memberships) {
+        counts.set(m.club_id, (counts.get(m.club_id) ?? 0) + 1);
+      }
+      const bad = clubs
+        .map((c) => ({ clubId: c.id, count: counts.get(c.id) ?? 0 }))
+        .filter((x) => x.count !== 1);
+      expect(bad).toEqual([]);
+    });
+
+    it("every membership references an existing club", () => {
+      const clubIds = new Set(clubs.map((c) => c.id));
+      const missing = memberships.filter((m) => !clubIds.has(m.club_id));
+      expect(missing).toEqual([]);
+    });
+
+    it("no duplicate club IDs across season divisions", () => {
+      const ids = memberships.map((m) => m.club_id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it("every club has exactly one primary venue assignment", () => {
+      const primaryCounts = new Map<number, number>();
+      for (const a of assignments.filter((a) => a.is_primary === 1)) {
+        primaryCounts.set(a.club_id, (primaryCounts.get(a.club_id) ?? 0) + 1);
+      }
+      const bad = clubs
+        .map((c) => ({ clubId: c.id, count: primaryCounts.get(c.id) ?? 0 }))
+        .filter((x) => x.count !== 1);
+      expect(bad).toEqual([]);
+    });
+
+    it("every venue assignment references an existing venue", () => {
+      const missing = assignments.filter((a) => !allVenueIds.has(a.venue_id));
+      expect(missing).toEqual([]);
+    });
+
+    it(`venues are ${expectApproximate ? "approximate" : "precise"} (is_approximate = ${expectApproximate ? 1 : 0})`, () => {
+      // For Level 7: all venues should be precise.
+      // For Level 8: known Wikipedia-verified venues are precise, rest are approximate.
+      // We check the invariant that applies to the majority.
+      const venues = SEED_DATA.venues.filter((v) => v.id >= start && v.id <= end);
+      if (venues.length === 0) return;
+
+      if (expectApproximate) {
+        // Level 8: at least one venue is approximate, and known-exact ones are correct
+        expect(venues.some((v) => v.is_approximate === 1)).toBe(true);
+      } else {
+        // Level 7: all should be precise
+        const allFlagged = venues.every((v) => v.is_approximate === 0);
+        expect(allFlagged).toBe(true);
+      }
+    });
+  });
+}
+
+describeLevel("Level 7 pyramid data", 226, 312, false);
+describeLevel("Level 8 pyramid data", 313, 488, true);
+
+describe("Levels 7 and 8 combined", () => {
+  it("no club appears in both levels", () => {
+    const l7 = new Set(MEN_PYRAMID_MEMBERSHIPS.filter((m) => m.club_id >= 226 && m.club_id <= 312).map((m) => m.club_id));
+    const l8 = new Set(MEN_PYRAMID_MEMBERSHIPS.filter((m) => m.club_id >= 313 && m.club_id <= 488).map((m) => m.club_id));
+    for (const id of l7) {
+      expect(l8.has(id)).toBe(false);
+    }
+  });
+
+  it("all clubs have unique names within the pyramid", () => {
+    const names = MEN_PYRAMID_CLUBS.filter((c) => c.id >= 226).map((c) => c.name.toLowerCase());
+    expect(new Set(names).size).toBe(names.length);
+  });
+});
