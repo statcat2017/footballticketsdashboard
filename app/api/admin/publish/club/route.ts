@@ -106,24 +106,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // Atomically create club and mapping
-    const batchResults = await db.writeBatch([
-      {
-        sql: `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
-        params: [pyramidClub.name, pyramidClub.aliases, divisionMapping.competition_code, venue.id]
-      },
-      {
-        sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
-        params: [pyramidClubId, -1]  // club_id updated below
-      }
-    ]);
+    // Publish club
+    const clubResult = await db.run(
+      `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
+      [pyramidClub.name, pyramidClub.aliases, divisionMapping.competition_code, venue.id]
+    );
 
-    const newClubId = batchResults[0].lastInsertRowid!;
+    const newClubId = clubResult.lastInsertRowid!;
     if (!newClubId) throw new Error("Failed to create club record.");
 
     await db.run(
-      `UPDATE club_mappings SET club_id = ? WHERE pyramid_club_id = ?`,
-      [newClubId, pyramidClubId]
+      `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
+      [pyramidClubId, newClubId]
     );
 
     await writeAdminAuditLog(db, {
