@@ -9,13 +9,19 @@ import { defaultDateRange } from "../date.ts";
 
 interface FixtureRow {
   id: number;
-  competition_code: "PL" | "ELC";
+  competition_code: string;
   competition_name: string;
   kickoff_at: string | null;
+  fixture_date: string | null;
+  kickoff_time: string | null;
+  kickoff_time_status: "confirmed" | "assumed" | "unknown" | null;
+  season_label: string | null;
   is_demo_data: 0 | 1;
   is_historical: 0 | 1;
   home_club: string;
   away_club: string;
+  home_one_off: 0 | 1;
+  away_one_off: 0 | 1;
   official_site_url: string | null;
   generic_ticket_url: string | null;
   venue_id: number;
@@ -28,7 +34,7 @@ interface FixtureRow {
   concession_price_pence: number | null;
   source_url: string | null;
   verified_at: string | null;
-  price_confidence: "verified" | "seed" | "unknown" | null;
+  price_confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown" | null;
   has_price_override: number;
   cached_distance_miles: number | null;
   driving_minutes: number | null;
@@ -114,8 +120,14 @@ function queryFixtures(
       f.kickoff_at,
       f.is_demo_data,
       f.is_historical,
-      home.name as home_club,
-      away.name as away_club,
+      COALESCE(home.name, f.home_one_off_name) as home_club,
+      COALESCE(away.name, f.away_one_off_name) as away_club,
+      f.home_one_off,
+      f.away_one_off,
+      f.fixture_date,
+      f.kickoff_time,
+      f.kickoff_time_status,
+      f.season_label,
       home.official_site_url,
       home.generic_ticket_url,
       v.id as venue_id,
@@ -136,8 +148,8 @@ function queryFixtures(
       tc.provider as cached_provider
     FROM fixtures f
     JOIN competitions c ON c.code = f.competition_code
-    JOIN clubs home ON home.id = f.home_club_id
-    JOIN clubs away ON away.id = f.away_club_id
+    LEFT JOIN clubs home ON home.id = f.home_club_id
+    LEFT JOIN clubs away ON away.id = f.away_club_id
     JOIN venues v ON v.id = f.venue_id
     LEFT JOIN club_ticket_prices ctp ON ctp.club_id = home.id
     LEFT JOIN fixture_ticket_price_overrides fpo ON fpo.fixture_id = f.id
@@ -176,6 +188,12 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     competitionCode: row.competition_code,
     competitionName: row.competition_name,
     kickoffAt: row.kickoff_at,
+    fixtureDate: row.fixture_date,
+    kickoffTime: row.kickoff_time,
+    kickoffTimeStatus: row.kickoff_time_status,
+    seasonLabel: row.season_label,
+    homeOneOff: row.home_one_off === 1,
+    awayOneOff: row.away_one_off === 1,
     venueName: row.venue_name,
     venuePostcode: row.venue_postcode,
     homeClub: row.home_club,

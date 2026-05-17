@@ -1,4 +1,4 @@
-export type CompetitionCode = "PL" | "ELC";
+export type CompetitionCode = string;
 
 export interface SearchRequest {
   postcode: string;
@@ -13,7 +13,7 @@ export interface PriceSummary {
   concessionPricePence: number | null;
   sourceUrl: string | null;
   verifiedAt: string | null;
-  confidence: "verified" | "seed" | "unknown";
+  confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown";
   isOverride: boolean;
 }
 
@@ -28,13 +28,19 @@ export interface TravelSummary {
 export interface FixtureResult {
   id: number;
   title: string;
-  competitionCode: CompetitionCode;
+  competitionCode: string;
   competitionName: string;
   kickoffAt: string | null;
+  fixtureDate: string | null;
+  kickoffTime: string | null;
+  kickoffTimeStatus: "confirmed" | "assumed" | "unknown" | null;
+  seasonLabel: string | null;
   venueName: string;
   venuePostcode: string;
   homeClub: string;
   awayClub: string;
+  homeOneOff: boolean;
+  awayOneOff: boolean;
   officialSiteUrl: string | null;
   genericTicketUrl: string | null;
   price: PriceSummary;

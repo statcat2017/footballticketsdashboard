@@ -2,10 +2,24 @@ export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: 
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
   const from = fmt.format(now);
 
-  const endDate = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+  const endDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   const to = fmt.format(endDate);
 
   return { dateFrom: from, dateTo: to };
+}
+
+export function inferAssumedKickoff(fixtureDate: string): { time: string; status: "assumed" } {
+  const day = new Date(fixtureDate + "T12:00:00Z").getUTCDay();
+  const isWeekend = day === 0 || day === 6;
+  return {
+    time: isWeekend ? "15:00" : "19:45",
+    status: "assumed"
+  };
+}
+
+export function parseKickoffFromDateTime(dateStr: string | null, timeStr: string | null): string | null {
+  if (!dateStr) return null;
+  return timeStr ? `${dateStr}T${timeStr}:00.000Z` : null;
 }
 
 function toDateString(date: Date): string {

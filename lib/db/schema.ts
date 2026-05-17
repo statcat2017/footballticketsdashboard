@@ -6,7 +6,16 @@ CREATE TABLE IF NOT EXISTS competitions (
   id INTEGER PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 4)
+  tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 10)
+);
+
+CREATE TABLE IF NOT EXISTS fixture_seasons (
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL UNIQUE,
+  starts_on TEXT NOT NULL,
+  ends_on TEXT NOT NULL,
+  is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS pyramid_templates (
@@ -131,16 +140,38 @@ CREATE TABLE IF NOT EXISTS fixtures (
   source TEXT NOT NULL,
   source_id TEXT NOT NULL,
   competition_code TEXT NOT NULL REFERENCES competitions(code),
-  home_club_id INTEGER NOT NULL REFERENCES clubs(id),
-  away_club_id INTEGER NOT NULL REFERENCES clubs(id),
+  home_club_id INTEGER REFERENCES clubs(id),
+  away_club_id INTEGER REFERENCES clubs(id),
   venue_id INTEGER NOT NULL REFERENCES venues(id),
   kickoff_at TEXT,
+  fixture_date TEXT,
+  kickoff_time TEXT,
+  kickoff_time_status TEXT DEFAULT 'unknown' CHECK (kickoff_time_status IN ('confirmed', 'assumed', 'unknown')),
   status TEXT NOT NULL CHECK (status IN ('scheduled', 'postponed', 'cancelled', 'finished', 'unknown')),
   is_demo_data INTEGER NOT NULL DEFAULT 0 CHECK (is_demo_data IN (0, 1)),
   is_historical INTEGER NOT NULL DEFAULT 0 CHECK (is_historical IN (0, 1)),
+  season_label TEXT REFERENCES fixture_seasons(label),
+  home_one_off INTEGER NOT NULL DEFAULT 0 CHECK (home_one_off IN (0, 1)),
+  away_one_off INTEGER NOT NULL DEFAULT 0 CHECK (away_one_off IN (0, 1)),
+  home_one_off_name TEXT,
+  away_one_off_name TEXT,
+  home_one_off_source TEXT,
+  away_one_off_source TEXT,
+  confidence TEXT DEFAULT 'imported' CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown')),
+  source_url TEXT,
+  verified_at TEXT,
+  notes TEXT,
   source_updated_at TEXT,
   imported_at TEXT,
-  UNIQUE (source, source_id)
+  UNIQUE (source, source_id),
+  CHECK (
+    (home_one_off = 0 AND home_club_id IS NOT NULL) OR
+    (home_one_off = 1 AND home_club_id IS NULL AND home_one_off_name IS NOT NULL)
+  ),
+  CHECK (
+    (away_one_off = 0 AND away_club_id IS NOT NULL) OR
+    (away_one_off = 1 AND away_club_id IS NULL AND away_one_off_name IS NOT NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS club_ticket_prices (
@@ -150,7 +181,7 @@ CREATE TABLE IF NOT EXISTS club_ticket_prices (
   concession_price_pence INTEGER,
   source_url TEXT,
   verified_at TEXT,
-  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'seed', 'unknown'))
+  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown'))
 );
 
 CREATE TABLE IF NOT EXISTS fixture_ticket_price_overrides (
@@ -161,7 +192,7 @@ CREATE TABLE IF NOT EXISTS fixture_ticket_price_overrides (
   source_url TEXT,
   verified_at TEXT,
   note TEXT,
-  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'seed', 'unknown'))
+  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown'))
 );
 
 CREATE TABLE IF NOT EXISTS travel_cache (
@@ -201,6 +232,20 @@ CREATE TABLE IF NOT EXISTS corrections (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS club_mappings (
+  id INTEGER PRIMARY KEY,
+  pyramid_club_id INTEGER NOT NULL UNIQUE REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
+  club_id INTEGER NOT NULL UNIQUE REFERENCES clubs(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS division_competition_mappings (
+  id INTEGER PRIMARY KEY,
+  division_id INTEGER NOT NULL UNIQUE REFERENCES pyramid_divisions(id) ON DELETE CASCADE,
+  competition_code TEXT NOT NULL REFERENCES competitions(code),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS admin_audit_log (
   id INTEGER PRIMARY KEY,
   actor TEXT NOT NULL,
@@ -233,4 +278,6 @@ CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_club ON club_venue_assignm
 CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_venue ON club_venue_assignments(venue_id);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_entity ON admin_audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_season ON fixtures(season_label);
+CREATE INDEX IF NOT EXISTS idx_fixtures_identity ON fixtures(home_club_id, away_club_id, competition_code, season_label);
 `;

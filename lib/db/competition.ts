@@ -1,19 +1,23 @@
+const TIER_MAP: Record<string, number> = {
+  "PL": 1,
+  "ELC": 2,
+  "NL": 5,
+  "NLN": 6,
+  "NLS": 6,
+};
+
 export function competitionName(code: string): string {
-  if (code === "PL") {
-    return "Premier League";
-  }
-  if (code === "ELC") {
-    return "Championship";
-  }
-  return code;
+  const names: Record<string, string> = {
+    "PL": "Premier League",
+    "ELC": "Championship",
+  };
+  return names[code] ?? code;
 }
 
 export function competitionTier(code: string): number {
-  if (code === "PL") {
-    return 1;
-  }
-  if (code === "ELC") {
-    return 2;
-  }
-  return 2;
+  return TIER_MAP[code] ?? 2;
+}
+
+export function competitionCodeFromDivisionCode(divisionCode: string): string {
+  return divisionCode.toUpperCase();
 }

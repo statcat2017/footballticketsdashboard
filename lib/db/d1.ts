@@ -20,7 +20,25 @@ export interface SeedData {
   venues: Array<{ id: number; name: string; postcode: string; latitude: number; longitude: number; is_approximate: number }>;
   clubs: Array<{ id: number; name: string; football_data_team_id: number; aliases: string; short_name: string; competition_code: string; venue_id: number; official_site_url: string; generic_ticket_url: string; price_source_url: string; verified_at: string }>;
   club_ticket_prices: Array<{ club_id: number; sale_mode: string; adult_price_pence: number; concession_price_pence: number; source_url: string; verified_at: string; confidence: string }>;
-  fixtures: Array<{ source: string; source_id: string; competition_code: string; home_club_id: number; away_club_id: number; venue_id: number; kickoff_at: string; status: string; is_demo_data: number; is_historical: number }>;
+  fixtures: Array<{
+    source: string;
+    source_id: string;
+    competition_code: string;
+    home_club_id: number;
+    away_club_id: number;
+    venue_id: number;
+    kickoff_at: string;
+    fixture_date: string | null;
+    kickoff_time: string | null;
+    kickoff_time_status: string | null;
+    season_label: string | null;
+    status: string;
+    is_demo_data: number;
+    is_historical: number;
+    home_one_off: number;
+    away_one_off: number;
+    confidence: string;
+  }>;
   travel_cache: Array<{ postcode_district: string; venue_id: number; distance_miles: number; driving_minutes: number; public_transport_minutes: number; provider: string; calculated_at: string }>;
 }
 
@@ -527,18 +545,18 @@ export const SEED_DATA: SeedData = {
     { id: 6, name: "Birmingham City", football_data_team_id: 332, aliases: "Birmingham City FC|Birmingham City|Birmingham", short_name: "Birmingham", competition_code: "ELC", venue_id: 6, official_site_url: "https://www.bcfc.com/", generic_ticket_url: "https://www.bcfc.com/tickets/", price_source_url: "https://www.bcfc.com/tickets/", verified_at: "2026-05-10" }
   ],
   club_ticket_prices: [
-    { club_id: 1, sale_mode: "all_ticket", adult_price_pence: 3000, concession_price_pence: 2000, source_url: "https://www.chelseafc.com/en/tickets", verified_at: "2026-05-10", confidence: "seed" },
-    { club_id: 2, sale_mode: "all_ticket", adult_price_pence: 2800, concession_price_pence: 1800, source_url: "https://www.arsenal.com/tickets", verified_at: "2026-05-10", confidence: "seed" },
-    { club_id: 3, sale_mode: "all_ticket", adult_price_pence: 3100, concession_price_pence: 2100, source_url: "https://tickets.manutd.com/", verified_at: "2026-05-10", confidence: "seed" },
-    { club_id: 4, sale_mode: "pay_on_gate", adult_price_pence: 2200, concession_price_pence: 1500, source_url: "https://www.eticketing.co.uk/qpr/", verified_at: "2026-05-10", confidence: "seed" },
-    { club_id: 5, sale_mode: "all_ticket", adult_price_pence: 2500, concession_price_pence: 1700, source_url: "https://tickets.canaries.co.uk/", verified_at: "2026-05-10", confidence: "seed" },
-    { club_id: 6, sale_mode: "pay_on_gate", adult_price_pence: 2000, concession_price_pence: 1200, source_url: "https://www.bcfc.com/tickets/", verified_at: "2026-05-10", confidence: "seed" }
+    { club_id: 1, sale_mode: "all_ticket", adult_price_pence: 3000, concession_price_pence: 2000, source_url: "https://www.chelseafc.com/en/tickets", verified_at: "2026-05-10", confidence: "imported" },
+    { club_id: 2, sale_mode: "all_ticket", adult_price_pence: 2800, concession_price_pence: 1800, source_url: "https://www.arsenal.com/tickets", verified_at: "2026-05-10", confidence: "imported" },
+    { club_id: 3, sale_mode: "all_ticket", adult_price_pence: 3100, concession_price_pence: 2100, source_url: "https://tickets.manutd.com/", verified_at: "2026-05-10", confidence: "imported" },
+    { club_id: 4, sale_mode: "pay_on_gate", adult_price_pence: 2200, concession_price_pence: 1500, source_url: "https://www.eticketing.co.uk/qpr/", verified_at: "2026-05-10", confidence: "imported" },
+    { club_id: 5, sale_mode: "all_ticket", adult_price_pence: 2500, concession_price_pence: 1700, source_url: "https://tickets.canaries.co.uk/", verified_at: "2026-05-10", confidence: "imported" },
+    { club_id: 6, sale_mode: "pay_on_gate", adult_price_pence: 2000, concession_price_pence: 1200, source_url: "https://www.bcfc.com/tickets/", verified_at: "2026-05-10", confidence: "imported" }
   ],
   fixtures: [
-    { source: "historical_seed", source_id: "pl-che-ars-2025-05-18", competition_code: "PL", home_club_id: 1, away_club_id: 2, venue_id: 1, kickoff_at: "2025-05-18T15:00:00.000Z", status: "finished", is_demo_data: 1, is_historical: 1 },
-    { source: "historical_seed", source_id: "elc-qpr-nor-2025-05-03", competition_code: "ELC", home_club_id: 4, away_club_id: 5, venue_id: 2, kickoff_at: "2025-05-03T14:00:00.000Z", status: "finished", is_demo_data: 1, is_historical: 1 },
-    { source: "historical_seed", source_id: "pl-mut-che-2025-05-25", competition_code: "PL", home_club_id: 3, away_club_id: 1, venue_id: 4, kickoff_at: "2025-05-25T15:00:00.000Z", status: "finished", is_demo_data: 1, is_historical: 1 },
-    { source: "historical_seed", source_id: "elc-bir-qpr-2025-04-26", competition_code: "ELC", home_club_id: 6, away_club_id: 4, venue_id: 6, kickoff_at: "2025-04-26T14:00:00.000Z", status: "finished", is_demo_data: 1, is_historical: 1 }
+    { source: "historical_seed", source_id: "pl-che-ars-2025-05-18", competition_code: "PL", home_club_id: 1, away_club_id: 2, venue_id: 1, kickoff_at: "2025-05-18T15:00:00.000Z", fixture_date: "2025-05-18", kickoff_time: "15:00", kickoff_time_status: "unknown", season_label: "2025-26", status: "finished", is_demo_data: 1, is_historical: 1, home_one_off: 0, away_one_off: 0, confidence: "imported" },
+    { source: "historical_seed", source_id: "elc-qpr-nor-2025-05-03", competition_code: "ELC", home_club_id: 4, away_club_id: 5, venue_id: 2, kickoff_at: "2025-05-03T14:00:00.000Z", fixture_date: "2025-05-03", kickoff_time: "14:00", kickoff_time_status: "unknown", season_label: "2025-26", status: "finished", is_demo_data: 1, is_historical: 1, home_one_off: 0, away_one_off: 0, confidence: "imported" },
+    { source: "historical_seed", source_id: "pl-mut-che-2025-05-25", competition_code: "PL", home_club_id: 3, away_club_id: 1, venue_id: 4, kickoff_at: "2025-05-25T15:00:00.000Z", fixture_date: "2025-05-25", kickoff_time: "15:00", kickoff_time_status: "unknown", season_label: "2025-26", status: "finished", is_demo_data: 1, is_historical: 1, home_one_off: 0, away_one_off: 0, confidence: "imported" },
+    { source: "historical_seed", source_id: "elc-bir-qpr-2025-04-26", competition_code: "ELC", home_club_id: 6, away_club_id: 4, venue_id: 6, kickoff_at: "2025-04-26T14:00:00.000Z", fixture_date: "2025-04-26", kickoff_time: "14:00", kickoff_time_status: "unknown", season_label: "2025-26", status: "finished", is_demo_data: 1, is_historical: 1, home_one_off: 0, away_one_off: 0, confidence: "imported" }
   ],
   travel_cache: [
     { postcode_district: "SW6", venue_id: 1, distance_miles: 0.4, driving_minutes: 6, public_transport_minutes: 8, provider: "seed", calculated_at: "2026-05-10T00:00:00.000Z" },
@@ -627,6 +645,11 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
     );
   }
 
+  add(
+    "INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET label = excluded.label, starts_on = excluded.starts_on, ends_on = excluded.ends_on, is_current = excluded.is_current",
+    [1, "2025-26", "2025-08-01", "2026-07-31", 1]
+  );
+
   for (const v of SEED_DATA.venues) {
     add(
       "INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, postcode = excluded.postcode, latitude = excluded.latitude, longitude = excluded.longitude, is_approximate = excluded.is_approximate",
@@ -664,8 +687,8 @@ export async function initializeD1Database(binding: D1DatabaseLike): Promise<voi
 
   for (const f of SEED_DATA.fixtures) {
     add(
-      "INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, status, is_demo_data, is_historical) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source, source_id) DO UPDATE SET competition_code = excluded.competition_code, home_club_id = excluded.home_club_id, away_club_id = excluded.away_club_id, venue_id = excluded.venue_id, kickoff_at = excluded.kickoff_at, status = excluded.status, is_demo_data = excluded.is_demo_data, is_historical = excluded.is_historical",
-      [f.source, f.source_id, f.competition_code, f.home_club_id, f.away_club_id, f.venue_id, f.kickoff_at, f.status, f.is_demo_data, f.is_historical]
+      "INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source, source_id) DO UPDATE SET competition_code = excluded.competition_code, home_club_id = excluded.home_club_id, away_club_id = excluded.away_club_id, venue_id = excluded.venue_id, kickoff_at = excluded.kickoff_at, fixture_date = excluded.fixture_date, kickoff_time = excluded.kickoff_time, kickoff_time_status = excluded.kickoff_time_status, season_label = excluded.season_label, status = excluded.status, is_demo_data = excluded.is_demo_data, is_historical = excluded.is_historical, home_one_off = excluded.home_one_off, away_one_off = excluded.away_one_off, confidence = excluded.confidence",
+      [f.source, f.source_id, f.competition_code, f.home_club_id, f.away_club_id, f.venue_id, f.kickoff_at, f.fixture_date, f.kickoff_time, f.kickoff_time_status, f.season_label, f.status, f.is_demo_data, f.is_historical, f.home_one_off, f.away_one_off, f.confidence]
     );
   }
 

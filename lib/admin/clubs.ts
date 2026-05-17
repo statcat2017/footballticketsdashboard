@@ -119,7 +119,7 @@ interface SharingClubRow {
   name: string;
 }
 
-async function getLatestSeasonId(db: AppDatabase): Promise<number> {
+export async function getLatestSeasonId(db: AppDatabase): Promise<number> {
   const row = await db.get<{ id: number }>("SELECT id FROM pyramid_seasons ORDER BY id DESC LIMIT 1");
 
   if (!row) {
@@ -331,4 +331,103 @@ export async function updateAdminClub(clubId: number, input: AdminClubUpdateInpu
       verified_at: updatedVerifiedAt
     }
   });
+}
+
+export interface PublishableDivision {
+  id: number;
+  name: string;
+  level: number;
+  clubCount: number;
+  isPublished: boolean;
+  competitionCode: string | null;
+}
+
+export interface PublishableClub {
+  id: number;
+  name: string;
+  divisionName: string;
+  venueName: string | null;
+  isPublished: boolean;
+}
+
+export function divisionCodeFromName(name: string): string {
+  return name
+    .toUpperCase()
+    .replace(/['']/g, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .substring(0, 10);
+}
+
+export async function getPublishableDivisions(): Promise<PublishableDivision[]> {
+  const db = await getDatabase();
+  const seasonId = await getLatestSeasonId(db);
+
+  const rows = await db.all<{
+    id: number;
+    name: string;
+    level: number;
+    clubCount: number;
+    competition_code: string | null;
+  }>(
+    `SELECT
+      d.id, d.name, d.level,
+      COUNT(psm.id) AS clubCount,
+      dcm.competition_code
+    FROM pyramid_season_divisions psd
+    JOIN pyramid_divisions d ON d.id = psd.division_id
+    JOIN pyramid_season_memberships psm ON psm.season_division_id = psd.id
+    LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
+    WHERE psd.season_id = ?
+    GROUP BY d.id
+    ORDER BY d.level, d.name`,
+    [seasonId]
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    level: row.level,
+    clubCount: row.clubCount,
+    isPublished: row.competition_code !== null,
+    competitionCode: row.competition_code
+  }));
+}
+
+export async function getPublishableClubs(): Promise<PublishableClub[]> {
+  const db = await getDatabase();
+  const seasonId = await getLatestSeasonId(db);
+
+  const rows = await db.all<{
+    id: number;
+    name: string;
+    division_name: string;
+    venue_name: string | null;
+    club_mapping_id: number | null;
+  }>(
+    `SELECT
+      pc.id, pc.name,
+      d.name AS division_name,
+      v.name AS venue_name,
+      cm.id AS club_mapping_id
+    FROM pyramid_season_memberships psm
+    JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
+    JOIN pyramid_divisions d ON d.id = psd.division_id
+    JOIN pyramid_clubs pc ON pc.id = psm.club_id
+    LEFT JOIN club_venue_assignments cva
+      ON cva.club_id = pc.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+    LEFT JOIN venues v ON v.id = cva.venue_id
+    LEFT JOIN club_mappings cm ON cm.pyramid_club_id = pc.id
+    WHERE psm.season_id = ?
+    ORDER BY d.level, d.name, pc.name`,
+    [seasonId]
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    divisionName: row.division_name,
+    venueName: row.venue_name,
+    isPublished: row.club_mapping_id !== null
+  }));
 }

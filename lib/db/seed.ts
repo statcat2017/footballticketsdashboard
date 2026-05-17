@@ -245,24 +245,43 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertPrice.run(p.club_id, p.sale_mode, p.adult_price_pence, p.concession_price_pence, p.source_url, p.verified_at, p.confidence);
     }
 
+    const insertFixtureSeason = db.prepare(`
+      INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        label = excluded.label,
+        starts_on = excluded.starts_on,
+        ends_on = excluded.ends_on,
+        is_current = excluded.is_current
+    `);
+    insertFixtureSeason.run(1, "2025-26", "2025-08-01", "2026-07-31", 1);
+
     const insertFixture = db.prepare(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
-        kickoff_at, status, is_demo_data, is_historical
+        kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label,
+        status, is_demo_data, is_historical, home_one_off, away_one_off, confidence
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(source, source_id) DO UPDATE SET
         competition_code = excluded.competition_code,
         home_club_id = excluded.home_club_id,
         away_club_id = excluded.away_club_id,
         venue_id = excluded.venue_id,
         kickoff_at = excluded.kickoff_at,
+        fixture_date = excluded.fixture_date,
+        kickoff_time = excluded.kickoff_time,
+        kickoff_time_status = excluded.kickoff_time_status,
+        season_label = excluded.season_label,
         status = excluded.status,
         is_demo_data = excluded.is_demo_data,
-        is_historical = excluded.is_historical
+        is_historical = excluded.is_historical,
+        home_one_off = excluded.home_one_off,
+        away_one_off = excluded.away_one_off,
+        confidence = excluded.confidence
     `);
     for (const f of SEED_DATA.fixtures) {
-      insertFixture.run(f.source, f.source_id, f.competition_code, f.home_club_id, f.away_club_id, f.venue_id, f.kickoff_at, f.status, f.is_demo_data, f.is_historical);
+      insertFixture.run(f.source, f.source_id, f.competition_code, f.home_club_id, f.away_club_id, f.venue_id, f.kickoff_at, f.fixture_date, f.kickoff_time, f.kickoff_time_status, f.season_label, f.status, f.is_demo_data, f.is_historical, f.home_one_off, f.away_one_off, f.confidence);
     }
 
     const insertTravel = db.prepare(`
