@@ -270,3 +270,65 @@ describe("admin publish route", () => {
     expect(location).toContain("Create a venue first");
   });
 });
+
+describe("D1 production compatibility (no transaction API)", () => {
+  afterEach(() => {
+    getDatabase.mockReset();
+  });
+
+  function createNoTransactionDb(opts?: Parameters<typeof createPublishTestDb>[0]): AppDatabase {
+    const base = createPublishTestDb(opts);
+    return {
+      ...base,
+      transaction: vi.fn().mockRejectedValue(new Error("D1 transaction API is not available in this context."))
+    };
+  }
+
+  it("publishes new club via writeBatch when transaction is unavailable", async () => {
+    const db = createNoTransactionDb();
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("pyramid_club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    expect(location).toContain("success=Club");
+
+    const mapping = await db.get<{ id: number }>(
+      "SELECT id FROM club_mappings WHERE pyramid_club_id = 100"
+    );
+    expect(mapping).toBeDefined();
+  });
+
+  it("maps existing public club via writeBatch when transaction is unavailable", async () => {
+    const db = createNoTransactionDb({ publishExistingClub: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("pyramid_club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    expect(location).toContain("mapped to existing public club");
+
+    const clubs = await db.all<{ id: number }>(
+      "SELECT id FROM clubs WHERE name = 'Test Town United'"
+    );
+    expect(clubs).toHaveLength(1);
+  });
+});
