@@ -568,10 +568,11 @@ describe("applyBatchRows", () => {
     expect(result.updated).toBe(0);
     expect(result.skipped).toBe(1);
 
-    // Row should be marked as blocked
+    // Row should be marked blocked but recoverable (no final_action)
     const rows = await getBatchRows(db, batchId);
     expect(rows[0].matchResult).toBe("blocked");
-    expect(rows[0].finalAction).toBe("blocked");
+    expect(rows[0].finalAction).toBeNull();
+    expect(rows[0].finalFixtureId).toBeNull();
     expect(rows[0].warningsJson).toContain("not found at apply time");
   });
 
@@ -592,7 +593,7 @@ describe("applyBatchRows", () => {
     await validateImportBatch(db, batchId);
     await applyBatchRows(db, batchId, "test");
 
-    await expect(applyBatchRows(db, batchId, "test")).rejects.toThrow("already been applied");
+    await expect(applyBatchRows(db, batchId, "test")).rejects.toThrow("already been approved");
   });
 
   it("writes audit log entries for applied fixtures", async () => {

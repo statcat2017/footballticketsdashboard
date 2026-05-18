@@ -7,6 +7,53 @@ export type FinalAction = "insert" | "update" | "skip" | "blocked";
 export type FixtureStatus = "scheduled" | "postponed" | "cancelled" | "finished" | "unknown";
 export type Confidence = "verified" | "imported" | "inferred" | "approximate" | "unknown";
 
+export type IssueCode =
+  | "unknown_competition"
+  | "unknown_club"
+  | "missing_primary_venue"
+  | "missing_ticket_info"
+  | "venue_not_found"
+  | "ambiguous_club"
+  | "invalid_date"
+  | "invalid_time"
+  | "assumed_time"
+  | "invalid_status"
+  | "invalid_source_url"
+  | "invalid_ticket_url"
+  | "venue_unusable_coords"
+  | "one_off_needs_venue"
+  | "missing_date"
+  | "missing_participant"
+  | "missing_competition";
+
+export interface WarningIssue {
+  code: IssueCode;
+  field?: string;
+  rawValue?: string;
+  severity: "blocker" | "warning";
+  message: string;
+  issueKey: string;
+}
+
+export interface WarningsPayload {
+  issues: WarningIssue[];
+  messages: string[];
+}
+
+export type RowActionType = "import_insert" | "import_update" | "skip" | "edit_row";
+
+export interface RowEditFields {
+  homeParticipantRaw?: string | null;
+  awayParticipantRaw?: string | null;
+  competitionRaw?: string | null;
+  venueRaw?: string | null;
+  kickoffDate?: string | null;
+  kickoffTime?: string | null;
+  status?: FixtureStatus | null;
+  ticketUrl?: string | null;
+  sourceUrl?: string | null;
+}
+
 export interface FixtureSource {
   id: number;
   sourceType: SourceType;

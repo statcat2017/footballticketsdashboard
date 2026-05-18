@@ -3,17 +3,23 @@ import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getBatchDetail } from "@/lib/admin/imports";
-import type { ImportBatchRow } from "@/lib/import/types";
+import type { ImportBatchRow, WarningIssue } from "@/lib/import/types";
 
 export const dynamic = "force-dynamic";
 
-const outcomeStyles: Record<string, { bg: string; fg: string; border: string; label: string }> = {
-  insert: { bg: "#e8f4f1", fg: "#0e5737", border: "#b8d9cf", label: "Insert" },
-  update: { bg: "#e0effa", fg: "#1a5a8a", border: "#b8d4e8", label: "Update" },
-  blocked: { bg: "#fde9e5", fg: "#a53a2d", border: "#f0beb7", label: "Blocked" },
-  skip: { bg: "#f5f6f6", fg: "#6f7e7a", border: "#dce3e2", label: "Skip" },
-  pending: { bg: "#fdf3e9", fg: "#8a5a00", border: "#f0d5b7", label: "Pending" },
-};
+const sInsert = { bg: "#e8f4f1", fg: "#0e5737", border: "#b8d9cf", label: "Insert" };
+const sBlocked = { bg: "#fde9e5", fg: "#a53a2d", border: "#f0beb7", label: "Blocked" };
+const sSkip = { bg: "#f5f6f6", fg: "#6f7e7a", border: "#dce3e2", label: "Skip" };
+const sPending = { bg: "#fdf3e9", fg: "#8a5a00", border: "#f0d5b7", label: "Pending" };
+const sImported = { bg: "#e8f4f1", fg: "#0e5737", border: "#b8d9cf", label: "Imported" };
+
+function countActive(grouped: Record<string, ImportBatchRow[]>): { blocked: number; ready: number; pending: number } {
+  return {
+    blocked: (grouped.blocked ?? []).length,
+    ready: (grouped.insert ?? []).length + (grouped.update ?? []).length,
+    pending: (grouped.pending ?? []).length,
+  };
+}
 
 export default async function AdminImportDetailPage({
   params,
@@ -28,9 +34,7 @@ export default async function AdminImportDetailPage({
   const sp = await searchParams;
 
   const batchId = parseInt(id, 10);
-  if (isNaN(batchId)) {
-    return <div>Invalid batch ID.</div>;
-  }
+  if (isNaN(batchId)) return <div>Invalid batch ID.</div>;
 
   const db = await getDatabase();
   let detail;
@@ -45,28 +49,46 @@ export default async function AdminImportDetailPage({
     );
   }
 
-  const { batch, source, grouped } = detail;
-
-  const insertRows = grouped.insert ?? [];
-  const updateRows = grouped.update ?? [];
-  const blockedRows = grouped.blocked ?? [];
-  const skipRows = grouped.skip ?? [];
-  const pendingRows = grouped.pending ?? [];
-  const applyableCount = insertRows.length + updateRows.length;
-
+  const { batch, source, activeGrouped, finalizedRows } = detail;
+  const counts = countActive(activeGrouped);
+  const finalizedInsert = finalizedRows.filter((r) => r.finalAction === "insert" || r.finalAction === "update");
+  const finalizedSkip = finalizedRows.filter((r) => r.finalAction === "skip");
   const hasBeenApplied = batch.approvalStatus === "approved" || batch.approvalStatus === "partially_approved";
 
   const error = sp.error;
-  const inserted = sp.inserted;
-  const updated = sp.updated;
-  const skipped = sp.skipped;
+  const success = sp.success;
+
+  const insertRows = detail.grouped.insert ?? [];
+  const updateRows = detail.grouped.update ?? [];
+  const blockedRows = detail.grouped.blocked ?? [];
+  const pendingRows = detail.grouped.pending ?? [];
+  const applyableCount = insertRows.length + updateRows.length;
+
+  // Fetch data needed for inline forms
+  const clubs = await db.all<{ id: number; name: string }>(`SELECT id, name FROM clubs ORDER BY name`);
+  const venues = await db.all<{ id: number; name: string; postcode: string }>(`SELECT id, name, postcode FROM venues ORDER BY name`);
+
+  // Fetch acknowledged issue keys so ticket acknowledgement has visible effect
+  const resolutions = await db.all<{ issue_key: string; row_id: number | null }>(
+    `SELECT issue_key, row_id FROM import_batch_issue_resolutions WHERE batch_id = ?`,
+    [batchId]
+  );
+  const acknowledgedKeys = new Set<string>();
+  const acknowledgedRowKeys = new Map<number, Set<string>>();
+  for (const r of resolutions) {
+    if (r.row_id) {
+      const rowSet = acknowledgedRowKeys.get(r.row_id) ?? new Set();
+      rowSet.add(r.issue_key);
+      acknowledgedRowKeys.set(r.row_id, rowSet);
+    } else {
+      acknowledgedKeys.add(r.issue_key);
+    }
+  }
 
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
       <header style={{
-        padding: "1.25rem 0",
-        borderBottom: "1px solid #dce3e2",
-        marginBottom: "1.5rem",
+        padding: "1.25rem 0", borderBottom: "1px solid #dce3e2", marginBottom: "1.5rem",
       }}>
         <Link href="/admin/imports" style={{
           color: "#6f7e7a", fontSize: "13px", textDecoration: "none", fontWeight: 600
@@ -79,133 +101,164 @@ export default async function AdminImportDetailPage({
           border: "1px solid #f0beb7", borderRadius: "8px",
           background: "#fde9e5", padding: "0.75rem 1rem",
           marginBottom: "1rem", color: "#a53a2d", fontSize: "14px"
-        }}>
-          {error}
-        </div>
+        }}>{error}</div>
       )}
 
-      {inserted && (
+      {success && (
         <div style={{
           border: "1px solid #b8d9cf", borderRadius: "8px",
           background: "#e8f4f1", padding: "0.75rem 1rem",
           marginBottom: "1rem", color: "#0e5737", fontSize: "14px", fontWeight: 600
-        }}>
-          Apply complete: {inserted} inserted, {updated ?? 0} updated, {skipped ?? 0} skipped.
-        </div>
+        }}>{success}</div>
       )}
 
+      {/* Meta */}
       <section style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "0.5rem" }}>
           <MetaCard label="Source" value={source?.name ?? `Source #${batch.sourceId}`} />
           <MetaCard label="Type" value={batch.adapterType} />
           <MetaCard label="Season" value={batch.seasonLabel ?? "—"} />
           <MetaCard label="Actor" value={batch.actor} />
-          <MetaCard label="Parse Status" value={batch.parseStatus} />
+          <MetaCard label="Parse" value={batch.parseStatus} />
           <MetaCard label="Approval" value={batch.approvalStatus} />
           <MetaCard label="Total Rows" value={String(batch.rowCountTotal)} />
           <MetaCard label="Created" value={batch.createdAt ? new Date(batch.createdAt).toLocaleString() : "—"} />
         </div>
       </section>
 
-      <section style={{ marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          <CountBadge count={insertRows.length} label="Insert" bg={outcomeStyles.insert.bg} fg={outcomeStyles.insert.fg} />
-          <CountBadge count={updateRows.length} label="Update" bg={outcomeStyles.update.bg} fg={outcomeStyles.update.fg} />
-          <CountBadge count={blockedRows.length} label="Blocked" bg={outcomeStyles.blocked.bg} fg={outcomeStyles.blocked.fg} />
-          <CountBadge count={skipRows.length} label="Skip" bg={outcomeStyles.skip.bg} fg={outcomeStyles.skip.fg} />
-          <CountBadge count={pendingRows.length} label="Pending" bg={outcomeStyles.pending.bg} fg={outcomeStyles.pending.fg} />
-        </div>
-      </section>
+      {/* Summary bar */}
+      <SummaryBar counts={counts} finalizedInsert={finalizedInsert.length} finalizedSkip={finalizedSkip.length} />
 
-      {!hasBeenApplied && applyableCount > 0 && (
-        <section style={{
-          border: "1px solid #147a4d", borderRadius: "8px",
-          background: "#f0faf6", padding: "1rem", marginBottom: "1.5rem"
-        }}>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: "15px", color: "#0e5737" }}>
-            {applyableCount} of {batch.rowCountTotal} rows ready to apply.
-          </p>
-          <form method="post" action={`/api/admin/imports/${batch.id}`} style={{ marginTop: "0.75rem" }}>
-            <input type="hidden" name="csrf" value={csrfToken} />
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "14px", cursor: "pointer", marginBottom: "0.75rem" }}>
-              <input type="checkbox" name="confirm" value="1" required />
-              I confirm that I want to apply these {applyableCount} rows. Blocked rows will be skipped.
-            </label>
-            <button type="submit" style={{
-              border: "1px solid #147a4d", borderRadius: "7px",
-              background: "#147a4d", color: "#fff",
-              padding: "0.6rem 1.5rem", fontSize: "14px", fontWeight: 700, cursor: "pointer"
-            }}>
-              Apply safe rows &rarr;
-            </button>
-          </form>
-        </section>
-      )}
-
-      {hasBeenApplied && (
-        <section style={{
-          border: "1px solid #b8d9cf", borderRadius: "8px",
-          background: "#e8f4f1", padding: "1rem", marginBottom: "1.5rem"
-        }}>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: "15px", color: "#0e5737" }}>
-            This batch has been applied. {batch.rowCountApproved} rows were approved.
-          </p>
-        </section>
-      )}
-
-      <section style={{
-        border: "1px solid #e0b3a8", borderRadius: "8px",
-        background: "#fdf6f5", padding: "1rem", marginBottom: "1.5rem"
-      }}>
-        <p style={{ margin: "0 0 0.5rem", fontWeight: 600, fontSize: "14px", color: "#a53a2d" }}>
-          Danger zone
-        </p>
-        <p style={{ margin: "0 0 0.75rem", fontSize: "13px", color: "#6f7e7a" }}>
-          Delete this import batch. This action cannot be undone. If the batch has already been applied,
-          the fixtures will remain.
-        </p>
-        <form method="post" action={`/api/admin/imports/${batch.id}`} id="delete-batch-form">
-          <input type="hidden" name="csrf" value={csrfToken} />
-          <input type="hidden" name="_action" value="delete" />
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "14px", cursor: "pointer", marginBottom: "0.75rem" }}>
-            <input type="checkbox" name="confirm" value="1" required />
-            I understand this will permanently delete this batch.
-          </label>
-          <button type="submit" style={{
-            border: "1px solid #c0392b", borderRadius: "7px",
-            background: "#e74c3c", color: "#fff",
-            padding: "0.5rem 1.25rem", fontSize: "14px", fontWeight: 700, cursor: "pointer"
-          }}>
-            Delete batch
-          </button>
-        </form>
-        <script dangerouslySetInnerHTML={{
-          __html: `document.getElementById("delete-batch-form")?.addEventListener("submit",function(e){if(!confirm("Delete this import batch? This cannot be undone."))e.preventDefault()})`
-        }} />
-      </section>
-
+      {/* Needs resolution */}
       {blockedRows.length > 0 && (
-        <OutcomeGroup title="Blocked" rows={blockedRows} outcome="blocked" />
+        <section style={{ marginBottom: "1.5rem" }}>
+          <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.75rem", color: "#a53a2d" }}>
+            Needs resolution ({blockedRows.length})
+          </h2>
+          {blockedRows.map((row) => (
+            <FixtureCard
+              key={row.id}
+              row={row}
+              csrfToken={csrfToken}
+              batchId={batchId}
+              mode="blocked"
+              clubs={clubs}
+              venues={venues}
+              acknowledgedKeys={acknowledgedKeys}
+              acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
+            />
+          ))}
+        </section>
       )}
 
-      {insertRows.length > 0 && (
-        <OutcomeGroup title="Insert" rows={insertRows} outcome="insert" />
+      {/* Ready to import */}
+      {(insertRows.length > 0 || updateRows.length > 0) && (
+        <section style={{ marginBottom: "1.5rem" }}>
+          <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.75rem", color: "#0e5737" }}>
+            Ready to import ({insertRows.length + updateRows.length})
+          </h2>
+
+          {insertRows.length > 0 && (
+            <>
+              {insertRows.map((row) => (
+                <FixtureCard
+                  key={row.id}
+                  row={row}
+                  csrfToken={csrfToken}
+                  batchId={batchId}
+                  mode="ready"
+                  clubs={clubs}
+                  venues={venues}
+                  acknowledgedKeys={acknowledgedKeys}
+                  acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
+                />
+              ))}
+            </>
+          )}
+
+          {updateRows.map((row) => (
+            <FixtureCard
+              key={row.id}
+              row={row}
+              csrfToken={csrfToken}
+              batchId={batchId}
+              mode="ready"
+              clubs={clubs}
+              venues={venues}
+              acknowledgedKeys={acknowledgedKeys}
+              acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
+            />
+          ))}
+
+          {applyableCount > 0 && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <BulkApplyForm batchId={batchId} csrfToken={csrfToken} applyableCount={applyableCount} />
+            </div>
+          )}
+        </section>
       )}
 
-      {updateRows.length > 0 && (
-        <OutcomeGroup title="Update" rows={updateRows} outcome="update" />
+      {/* Pending */}
+      {pendingRows.length > 0 && (
+        <section style={{ marginBottom: "1.5rem" }}>
+          <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.75rem", color: "#8a5a00" }}>
+            Pending ({pendingRows.length})
+          </h2>
+          {pendingRows.map((row) => (
+            <FixtureCard
+              key={row.id}
+              row={row}
+              csrfToken={csrfToken}
+              batchId={batchId}
+              mode="pending"
+              clubs={clubs}
+              venues={venues}
+              acknowledgedKeys={acknowledgedKeys}
+              acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
+            />
+          ))}
+        </section>
       )}
 
-      {(skipRows.length > 0 || pendingRows.length > 0) && (
-        <OutcomeGroup
-          title={skipRows.length > 0 ? "Skipped" : "Pending"}
-          rows={[...skipRows, ...pendingRows]}
-          outcome="skip"
-        />
+      {/* Imported history */}
+      {finalizedInsert.length > 0 && (
+        <details style={{ marginBottom: "0.5rem" }}>
+          <summary style={{
+            cursor: "pointer", fontWeight: 600, fontSize: "14px",
+            padding: "0.5rem 0", color: "#0e5737"
+          }}>
+            Imported ({finalizedInsert.length})
+          </summary>
+          {finalizedInsert.map((row) => (
+            <FinalizedRow key={row.id} row={row} batchId={batchId} />
+          ))}
+        </details>
+      )}
+
+      {/* Skipped history */}
+      {finalizedSkip.length > 0 && (
+        <details style={{ marginBottom: "0.5rem" }}>
+          <summary style={{
+            cursor: "pointer", fontWeight: 600, fontSize: "14px",
+            padding: "0.5rem 0", color: "#6f7e7a"
+          }}>
+            Skipped ({finalizedSkip.length})
+          </summary>
+          {finalizedSkip.map((row) => (
+            <FinalizedRow key={row.id} row={row} batchId={batchId} />
+          ))}
+        </details>
+      )}
+
+      {/* Danger zone delete */}
+      {!hasBeenApplied && (
+        <DangerZone batchId={batchId} csrfToken={csrfToken} />
       )}
     </main>
   );
 }
+
+/* ── Components ── */
 
 function MetaCard({ label, value }: { label: string; value: string }) {
   return (
@@ -219,7 +272,35 @@ function MetaCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CountBadge({ count, label, bg, fg }: { count: number; label: string; bg: string; fg: string }) {
+function SummaryBar({ counts, finalizedInsert, finalizedSkip }: {
+  counts: { blocked: number; ready: number; pending: number };
+  finalizedInsert: number;
+  finalizedSkip: number;
+}) {
+  return (
+    <div style={{
+      display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1.5rem"
+    }}>
+      {counts.blocked > 0 && (
+        <SummaryBadge count={counts.blocked} label="Blocked" bg={sBlocked.bg} fg={sBlocked.fg} />
+      )}
+      {counts.ready > 0 && (
+        <SummaryBadge count={counts.ready} label="Ready" bg={sInsert.bg} fg={sInsert.fg} />
+      )}
+      {counts.pending > 0 && (
+        <SummaryBadge count={counts.pending} label="Pending" bg={sPending.bg} fg={sPending.fg} />
+      )}
+      {finalizedInsert > 0 && (
+        <SummaryBadge count={finalizedInsert} label="Imported" bg={sImported.bg} fg={sImported.fg} />
+      )}
+      {finalizedSkip > 0 && (
+        <SummaryBadge count={finalizedSkip} label="Skipped" bg={sSkip.bg} fg={sSkip.fg} />
+      )}
+    </div>
+  );
+}
+
+function SummaryBadge({ count, label, bg, fg }: { count: number; label: string; bg: string; fg: string }) {
   return (
     <div style={{
       border: `1px solid ${bg}`, borderRadius: "6px",
@@ -231,63 +312,524 @@ function CountBadge({ count, label, bg, fg }: { count: number; label: string; bg
   );
 }
 
-function OutcomeGroup({ title, rows, outcome }: { title: string; rows: ImportBatchRow[]; outcome: string }) {
-  const s = outcomeStyles[outcome] ?? outcomeStyles.pending;
-  const defaultOpen = outcome === "blocked";
+function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledgedKeys, acknowledgedRowKeys }: {
+  row: ImportBatchRow;
+  csrfToken: string;
+  batchId: number;
+  mode: "blocked" | "ready" | "pending";
+  clubs: { id: number; name: string }[];
+  venues: { id: number; name: string; postcode: string }[];
+  acknowledgedKeys: Set<string>;
+  acknowledgedRowKeys: Set<string>;
+}) {
+  const warnings = parseWarnings(row.warningsJson);
+  const blockers = warnings.filter((w) => w.severity === "blocker");
+  const nonBlockers = warnings.filter((w) => w.severity === "warning");
+
+  // Filter out acknowledged issues
+  const filteredBlockers = blockers.filter((w) => {
+    if (acknowledgedKeys.has(w.issueKey)) return false;
+    if (acknowledgedRowKeys.has(w.issueKey)) return false;
+    return true;
+  });
+  const filteredNonBlockers = nonBlockers.filter((w) => {
+    if (acknowledgedKeys.has(w.issueKey)) return false;
+    if (acknowledgedRowKeys.has(w.issueKey)) return false;
+    return true;
+  });
+
+  // Deduplicate blockers for display
+  const uniqueBlockers = dedupeIssues(filteredBlockers);
+  const uniqueWarnings = dedupeIssues(filteredNonBlockers);
+  const hasTicketWarning = uniqueWarnings.some((w) => w.code === "missing_ticket_info");
+  const otherWarnings = uniqueWarnings.filter((w) => w.code !== "missing_ticket_info");
+
   return (
-    <details open={defaultOpen} style={{
-      border: `1px solid ${s.border}`, borderRadius: "8px",
-      overflow: "hidden", marginBottom: "0.5rem"
+    <div id={`fixture-${row.id}`} style={{
+      border: `1px solid ${mode === "blocked" ? sBlocked.border : mode === "pending" ? sPending.border : sInsert.border}`,
+      borderRadius: "8px", overflow: "hidden", marginBottom: "0.5rem"
     }}>
-      <summary style={{
-        padding: "0.6rem 1rem", background: s.bg, cursor: "pointer",
-        display: "flex", alignItems: "center", gap: "0.6rem",
-        fontWeight: 600, fontSize: "14px", color: "#17221f", userSelect: "none"
+      {/* Card header */}
+      <div style={{
+        padding: "0.6rem 1rem",
+        background: mode === "blocked" ? sBlocked.bg : mode === "pending" ? sPending.bg : sInsert.bg,
+        display: "flex", alignItems: "center", gap: "0.6rem", fontSize: "14px", fontWeight: 600
       }}>
-        <span style={{
-          padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "11px", fontWeight: 600,
-          background: s.bg, color: s.fg, border: `1px solid ${s.border}`
-        }}>{s.label}</span>
-        <span>{title}</span>
-        <span style={{ color: s.fg, fontWeight: 700, marginLeft: "auto", fontSize: "13px" }}>{rows.length}</span>
-      </summary>
-      <div style={{ padding: "0.25rem 0" }}>
-        {rows.map((row: ImportBatchRow) => (
-          <div key={row.id} style={{
-            padding: "0.75rem 1rem",
-            borderBottom: "1px solid #eef1f1",
-            fontSize: "14px"
-          }}>
-            <div style={{ fontWeight: 600, color: "#17221f" }}>
-              {row.homeParticipantRaw ?? "?"} vs {row.awayParticipantRaw ?? "?"}
-            </div>
-            <div style={{ fontSize: "13px", color: "#6f7e7a", marginTop: "0.2rem", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-              {row.kickoffDate && <span>{row.kickoffDate}{row.kickoffTime ? ` ${row.kickoffTime}` : ""}</span>}
-              {row.competitionRaw && <span>{row.competitionRaw}</span>}
-              {row.venueRaw && <span>{row.venueRaw}</span>}
-              {row.finalFixtureId && <span>Fixture #{row.finalFixtureId}</span>}
-            </div>
-            {row.warningsJson && (
-              <div style={{ marginTop: "0.3rem", fontSize: "12px", color: outcome === "blocked" ? "#a53a2d" : "#8a5a00" }}>
-                {(() => {
-                  try {
-                    const parsed = JSON.parse(row.warningsJson);
-                    const msgs = parsed.messages ?? [];
-                    return (
-                      <ul style={{ margin: "0.25rem 0 0", paddingLeft: "1.25rem" }}>
-                        {msgs.map((m: string, i: number) => <li key={i}>{m}</li>)}
-                      </ul>
-                    );
-                  } catch { return null; }
-                })()}
-              </div>
-            )}
-            <div style={{ fontSize: "12px", color: "#6f7e7a", marginTop: "0.2rem" }}>
-              match_result: {row.matchResult ?? "pending"} {row.finalAction ? `· final_action: ${row.finalAction}` : ""}
-            </div>
-          </div>
-        ))}
+        <span>{row.homeParticipantRaw ?? "?"} vs {row.awayParticipantRaw ?? "?"}</span>
+        <span style={{ fontWeight: 400, color: "#6f7e7a", fontSize: "13px" }}>
+          {row.kickoffDate}{row.kickoffTime ? ` ${row.kickoffTime}` : ""}
+          {row.competitionRaw ? ` · ${row.competitionRaw}` : ""}
+        </span>
       </div>
+
+      {/* Issues */}
+      {uniqueBlockers.length > 0 && (
+        <div style={{ padding: "0.5rem 1rem", fontSize: "13px", color: "#a53a2d" }}>
+          {uniqueBlockers.map((w, i) => <div key={i}>&#9888; {w.message}</div>)}
+        </div>
+      )}
+
+      {/* Blocker repair forms */}
+      {mode === "blocked" && (
+        <div style={{ padding: "0.25rem 1rem 0.5rem" }}>
+          {uniqueBlockers.map((issue, i) => (
+            <IssueRepair
+              key={i}
+              issue={issue}
+              rowId={row.id}
+              batchId={batchId}
+              csrfToken={csrfToken}
+              homeResolvedId={row.homeParticipantResolvedId}
+              competitionResolvedCode={row.competitionResolvedCode}
+              clubs={clubs}
+              venues={venues}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Warnings */}
+      {otherWarnings.length > 0 && (
+        <div style={{ padding: "0.25rem 1rem", fontSize: "12px", color: "#8a5a00" }}>
+          {otherWarnings.map((w, i) => <div key={i}>&#9888; {w.message}</div>)}
+        </div>
+      )}
+
+      {/* Actions */}
+      {mode === "ready" && (
+        <div style={{
+          padding: "0.5rem 1rem", borderTop: "1px solid #eef1f1",
+          display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap"
+        }}>
+          <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "inline" }}>
+            <input type="hidden" name="csrf" value={csrfToken} />
+            <input type="hidden" name="_action" value="import_row" />
+            <input type="hidden" name="row_id" value={row.id} />
+            <button type="submit" style={{
+              border: "1px solid #147a4d", borderRadius: "6px",
+              background: "#147a4d", color: "#fff",
+              padding: "0.4rem 1rem", fontSize: "13px", fontWeight: 700, cursor: "pointer"
+            }}>Import this fixture</button>
+          </form>
+
+          <SkipForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} />
+
+          <details style={{ display: "inline-block" }}>
+            <summary style={{
+              cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
+            }}>Edit</summary>
+            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} />
+          </details>
+
+          {hasTicketWarning && (
+            <details style={{ display: "inline-block" }}>
+              <summary style={{
+                cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#8a5a00", padding: "0.25rem 0.5rem"
+              }}>No ticket info</summary>
+              <TicketRepairForm rowId={row.id} batchId={batchId} csrfToken={csrfToken}
+                homeResolvedId={row.homeParticipantResolvedId} />
+            </details>
+          )}
+        </div>
+      )}
+
+      {mode === "blocked" && (
+        <div style={{
+          padding: "0.5rem 1rem", borderTop: "1px solid #eef1f1",
+          display: "flex", gap: "0.5rem", alignItems: "center"
+        }}>
+          <SkipForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} />
+
+          <details style={{ display: "inline-block" }}>
+            <summary style={{
+              cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
+            }}>Edit</summary>
+            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} />
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function dedupeIssues(issues: WarningIssue[]): WarningIssue[] {
+  const seen = new Set<string>();
+  return issues.filter((i) => {
+    const key = i.issueKey;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function parseWarnings(json: string | null): WarningIssue[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json) as { issues?: WarningIssue[] };
+    return parsed.issues ?? [];
+  } catch { return []; }
+}
+
+/* ── Issue Repair Forms ── */
+
+function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competitionResolvedCode, clubs, venues }: {
+  issue: WarningIssue;
+  rowId: number;
+  batchId: number;
+  csrfToken: string;
+  homeResolvedId: number | null;
+  competitionResolvedCode: string | null;
+  clubs: { id: number; name: string }[];
+  venues: { id: number; name: string; postcode: string }[];
+}) {
+  switch (issue.code) {
+    case "unknown_competition":
+      return <CompetitionRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""} />;
+    case "unknown_club":
+      return <MatchClubForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
+        competitionCode={competitionResolvedCode} clubs={clubs} />;
+    case "missing_primary_venue":
+      return <VenueRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId}
+        clubId={homeResolvedId} venues={venues} />;
+    default:
+      return null;
+  }
+}
+
+function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue }: {
+  csrfToken: string; batchId: number; rowId: number; rawValue: string;
+}) {
+  const isFriendly = rawValue.toLowerCase().includes("friendly");
+  const code = isFriendly ? "FRIENDLY" : rawValue.replace(/[^a-z0-9]/gi, "_").toUpperCase();
+  return (
+    <details style={{ marginTop: "0.25rem" }}>
+      <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
+        Fix: Create competition
+      </summary>
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+        marginTop: "0.5rem", display: "grid", gap: "0.5rem",
+        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+        border: "1px solid #dce3e2", maxWidth: "400px"
+      }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="create_competition" />
+        <input type="hidden" name="redirect_row_id" value={rowId} />
+
+        <label style={labelStyle}>Code
+          <input name="code" defaultValue={code} style={inputStyle} />
+        </label>
+        <label style={labelStyle}>Name
+          <input name="name" defaultValue={rawValue} style={inputStyle} />
+        </label>
+        <label style={labelStyle}>Kind
+          <select name="kind" defaultValue={isFriendly ? "friendly" : "league"} style={inputStyle}>
+            <option value="league">League</option>
+            <option value="cup">Cup</option>
+            <option value="friendly">Friendly</option>
+          </select>
+        </label>
+        <label style={labelStyle}>Tier
+          <input name="tier" type="number" defaultValue={isFriendly ? "10" : "7"} style={inputStyle} />
+        </label>
+        <button type="submit" style={greenBtnStyle}>Create & revalidate batch</button>
+      </form>
     </details>
   );
 }
+
+function MatchClubForm({ csrfToken, batchId, rowId, rawValue, competitionCode, clubs }: {
+  csrfToken: string; batchId: number; rowId: number; rawValue: string;
+  competitionCode: string | null;
+  clubs: { id: number; name: string }[];
+}) {
+  return (
+    <details style={{ marginTop: "0.25rem" }}>
+      <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
+        Fix: Match club
+      </summary>
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+        marginTop: "0.5rem", display: "grid", gap: "0.5rem",
+        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+        border: "1px solid #dce3e2", maxWidth: "400px"
+      }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="match_existing_club" />
+        <input type="hidden" name="redirect_row_id" value={rowId} />
+
+        <label style={labelStyle}>Alias (raw name from import)
+          <input name="alias" defaultValue={rawValue} style={inputStyle} />
+        </label>
+        <label style={labelStyle}>Match to club
+          <select name="club_id" required style={inputStyle}>
+            <option value="">Select club...</option>
+            {clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label style={labelStyle}>Scope
+          <select name="competition_code" style={inputStyle}>
+            <option value="">Global (unscoped)</option>
+            {competitionCode && <option value={competitionCode}>{competitionCode}</option>}
+          </select>
+        </label>
+        <button type="submit" style={greenBtnStyle}>Add alias & revalidate</button>
+      </form>
+    </details>
+  );
+}
+
+function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
+  csrfToken: string; batchId: number; rowId: number; clubId: number | null;
+  venues: { id: number; name: string; postcode: string }[];
+}) {
+  return (
+    <details style={{ marginTop: "0.25rem" }}>
+      <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#a53a2d" }}>
+        Fix: Home club has no primary venue
+      </summary>
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+        marginTop: "0.5rem", display: "grid", gap: "0.5rem",
+        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+        border: "1px solid #dce3e2", maxWidth: "400px"
+      }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="assign_existing_venue" />
+        <input type="hidden" name="redirect_row_id" value={rowId} />
+        {clubId && <input type="hidden" name="club_id" value={clubId} />}
+
+        <label style={labelStyle}>Venue
+          <select name="venue_id" required style={inputStyle}>
+            <option value="">Select venue...</option>
+            {venues.map((v) => <option key={v.id} value={v.id}>{v.name}, {v.postcode}</option>)}
+          </select>
+        </label>
+        <label style={labelStyle}>Effective from
+          <input name="effective_from" type="date" style={inputStyle}
+            defaultValue={new Date(new Date().getFullYear(), 6, 1).toISOString().split("T")[0]} />
+        </label>
+        <button type="submit" style={greenBtnStyle}>Assign venue & revalidate</button>
+      </form>
+    </details>
+  );
+}
+
+function TicketRepairForm({ rowId, batchId, csrfToken, homeResolvedId }: {
+  rowId: number; batchId: number; csrfToken: string; homeResolvedId: number | null;
+}) {
+  return (
+    <div style={{
+      marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
+      border: "1px solid #dce3e2", maxWidth: "400px"
+    }}>
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "grid", gap: "0.5rem" }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="add_club_ticket_info" />
+        <input type="hidden" name="redirect_row_id" value={rowId} />
+        {homeResolvedId && <input type="hidden" name="club_id" value={homeResolvedId} />}
+
+        <label style={labelStyle}>Ticket URL (required)
+          <input name="generic_ticket_url" type="url" required style={inputStyle} />
+        </label>
+        <label style={labelStyle}>Sale mode
+          <select name="sale_mode" style={inputStyle}>
+            <option value="">Unknown</option>
+            <option value="all_ticket">All ticket</option>
+            <option value="pay_on_gate">Pay on gate</option>
+          </select>
+        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+          <label style={labelStyle}>Adult price (pence)
+            <input name="adult_price_pence" type="number" style={inputStyle} />
+          </label>
+          <label style={labelStyle}>Concession price (pence)
+            <input name="concession_price_pence" type="number" style={inputStyle} />
+          </label>
+        </div>
+        <button type="submit" style={greenBtnStyle}>Save ticket info</button>
+      </form>
+
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ marginTop: "0.5rem" }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="acknowledge_missing_ticket_info" />
+        <input type="hidden" name="issue_key" value="missing_ticket_info" />
+        <input type="hidden" name="row_id" value={rowId} />
+        <button type="submit" style={{ ...smallBtn, color: "#6f7e7a", border: "1px solid #dce3e2" }}>
+          Acknowledge (batch only)
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function SkipForm({ rowId, batchId, csrfToken }: {
+  rowId: number; batchId: number; csrfToken: string;
+}) {
+  return (
+    <details style={{ display: "inline-block" }}>
+      <summary style={{
+        cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#a53a2d", padding: "0.25rem 0.5rem"
+      }}>Skip</summary>
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+        marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
+        border: "1px solid #dce3e2", display: "grid", gap: "0.5rem", maxWidth: "300px"
+      }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="skip_row" />
+        <input type="hidden" name="row_id" value={rowId} />
+        <label style={labelStyle}>Reason
+          <select name="reason" required style={inputStyle}>
+            <option value="">Select...</option>
+            <option value="duplicate">Duplicate</option>
+            <option value="bad_source_row">Bad source row</option>
+            <option value="not_relevant">Not relevant</option>
+            <option value="needs_later_review">Needs later review</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label style={labelStyle}>Note
+          <input name="note" style={inputStyle} />
+        </label>
+        <button type="submit" style={{ ...smallBtn, color: "#a53a2d", border: "1px solid #f0beb7" }}>Skip fixture</button>
+      </form>
+    </details>
+  );
+}
+
+function RowEditForm({ rowId, batchId, csrfToken, row }: {
+  rowId: number; batchId: number; csrfToken: string; row: ImportBatchRow;
+}) {
+  return (
+    <div style={{
+      marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
+      border: "1px solid #dce3e2", maxWidth: "400px"
+    }}>
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "grid", gap: "0.35rem" }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="edit_row" />
+        <input type="hidden" name="row_id" value={rowId} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
+          <label style={labelStyle}>Home
+            <input name="homeParticipantRaw" defaultValue={row.homeParticipantRaw ?? ""} style={inputStyle} />
+          </label>
+          <label style={labelStyle}>Away
+            <input name="awayParticipantRaw" defaultValue={row.awayParticipantRaw ?? ""} style={inputStyle} />
+          </label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
+          <label style={labelStyle}>Competition
+            <input name="competitionRaw" defaultValue={row.competitionRaw ?? ""} style={inputStyle} />
+          </label>
+          <label style={labelStyle}>Venue
+            <input name="venueRaw" defaultValue={row.venueRaw ?? ""} style={inputStyle} />
+          </label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
+          <label style={labelStyle}>Date
+            <input name="kickoffDate" defaultValue={row.kickoffDate ?? ""} style={inputStyle} />
+          </label>
+          <label style={labelStyle}>Time
+            <input name="kickoffTime" defaultValue={row.kickoffTime ?? ""} style={inputStyle} />
+          </label>
+        </div>
+        <label style={labelStyle}>Ticket URL
+          <input name="ticketUrl" defaultValue={row.ticketUrl ?? ""} style={inputStyle} />
+        </label>
+        <button type="submit" style={greenBtnStyle}>Save & revalidate</button>
+      </form>
+    </div>
+  );
+}
+
+function BulkApplyForm({ batchId, csrfToken, applyableCount }: {
+  batchId: number; csrfToken: string; applyableCount: number;
+}) {
+  return (
+    <form method="post" action={`/api/admin/imports/${batchId}`} style={{
+      border: "1px solid #147a4d", borderRadius: "8px",
+      background: "#f0faf6", padding: "0.75rem 1rem"
+    }}>
+      <input type="hidden" name="csrf" value={csrfToken} />
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "13px", cursor: "pointer" }}>
+          <input type="checkbox" name="confirm" value="1" required />
+          Import all {applyableCount} ready fixtures
+        </label>
+        <button type="submit" style={{
+          border: "1px solid #147a4d", borderRadius: "6px",
+          background: "#147a4d", color: "#fff",
+          padding: "0.4rem 1rem", fontSize: "13px", fontWeight: 700, cursor: "pointer"
+        }}>Import all ready</button>
+      </div>
+    </form>
+  );
+}
+
+function FinalizedRow({ row }: { row: ImportBatchRow; batchId?: number }) {
+  const style = row.finalAction === "skip" ? sSkip : sImported;
+  return (
+    <div style={{
+      border: `1px solid ${style.border}`, borderRadius: "6px",
+      padding: "0.5rem 0.75rem", marginBottom: "0.25rem",
+      fontSize: "13px", display: "flex", gap: "0.5rem", alignItems: "center",
+      background: style.bg
+    }}>
+      <span style={{ fontWeight: 600 }}>{row.homeParticipantRaw ?? "?"} vs {row.awayParticipantRaw ?? "?"}</span>
+      {row.kickoffDate && <span style={{ color: "#6f7e7a" }}>{row.kickoffDate}</span>}
+      {row.finalFixtureId && <span style={{ color: style.fg }}>Fixture #{row.finalFixtureId}</span>}
+      {row.finalAction === "skip" && (
+        <span style={{ color: "#6f7e7a" }}>
+          Skipped{row.finalAction ? "" : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DangerZone({ batchId, csrfToken }: { batchId: number; csrfToken: string }) {
+  return (
+    <section style={{
+      border: "1px solid #e0b3a8", borderRadius: "8px",
+      background: "#fdf6f5", padding: "1rem", marginTop: "1.5rem"
+    }}>
+      <p style={{ margin: "0 0 0.5rem", fontWeight: 600, fontSize: "14px", color: "#a53a2d" }}>
+        Danger zone
+      </p>
+      <form method="post" action={`/api/admin/imports/${batchId}`} id="delete-batch-form">
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="delete" />
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "14px", cursor: "pointer", marginBottom: "0.75rem" }}>
+          <input type="checkbox" name="confirm" value="1" required />
+          I understand this will permanently delete this batch.
+        </label>
+        <button type="submit" style={{
+          border: "1px solid #c0392b", borderRadius: "7px",
+          background: "#e74c3c", color: "#fff",
+          padding: "0.5rem 1.25rem", fontSize: "14px", fontWeight: 700, cursor: "pointer"
+        }}>
+          Delete batch
+        </button>
+      </form>
+    </section>
+  );
+}
+
+/* ── Shared Styles ── */
+
+const labelStyle: React.CSSProperties = {
+  fontSize: "12px", fontWeight: 600, color: "#34413e", display: "grid", gap: "0.15rem"
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: "0.35rem 0.5rem", border: "1px solid #dce3e2", borderRadius: "4px",
+  fontSize: "13px", background: "#fff"
+};
+
+const greenBtnStyle: React.CSSProperties = {
+  justifySelf: "start", border: "1px solid #147a4d", borderRadius: "6px",
+  background: "#147a4d", color: "#fff", padding: "0.35rem 0.9rem",
+  fontSize: "13px", fontWeight: 700, cursor: "pointer"
+};
+
+const smallBtn: React.CSSProperties = {
+  borderRadius: "6px", padding: "0.3rem 0.7rem",
+  fontSize: "12px", fontWeight: 600, cursor: "pointer", background: "#fff"
+};

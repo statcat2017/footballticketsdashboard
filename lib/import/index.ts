@@ -5,3 +5,4 @@ export * from "./adapters/csv.ts";
 export * from "./adapters/htmlTable.ts";
 export * from "./validation.ts";
 export * from "./apply.ts";
+export * from "./resolution.ts";

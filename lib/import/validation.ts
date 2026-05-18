@@ -1,5 +1,5 @@
 import type { AppDatabase } from "../db/adapter.ts";
-import type { ImportBatchRow, MatchResult, FixtureStatus } from "./types.ts";
+import type { ImportBatchRow, MatchResult, FixtureStatus, WarningIssue, IssueCode } from "./types.ts";
 import {
   resolveFixtureParticipant,
   resolveCompetitionFromFixture,
@@ -11,6 +11,10 @@ import { parseDateField, parseTimeField } from "./adapters/csv.ts";
 export interface ValidationWarning {
   field?: string;
   message: string;
+  code?: IssueCode;
+  issueKey?: string;
+  severity?: "blocker" | "warning";
+  rawValue?: string;
 }
 
 export interface RowValidationResult {
@@ -60,11 +64,10 @@ export async function validateImportBatch(
 
     const validation = await validateRow(db, row, seasonLabel);
 
+    const payload = validation.warnings.length > 0 ? buildWarningsPayload(validation.warnings) : undefined;
     const outcomeUpdate: Parameters<typeof updateBatchRowOutcome>[2] = {
       matchResult: validation.matchResult,
-      warnings: validation.warnings.length > 0
-        ? { messages: validation.warnings.map((w) => w.message), fields: validation.warnings.filter((w) => w.field).map((w) => ({ [w.field!]: w.message })) }
-        : undefined,
+      warnings: payload,
       homeParticipantResolvedId: validation.homeParticipantResolvedId,
       awayParticipantResolvedId: validation.awayParticipantResolvedId,
       awayIsOneOff: validation.awayIsOneOff,
@@ -116,6 +119,40 @@ function getAssumedKickoffTime(dateStr: string): string {
   return isWeekend(dateStr) ? "15:00" : "19:45";
 }
 
+function makeIssue(
+  code: IssueCode,
+  message: string,
+  opts?: { field?: string; rawValue?: string; severity?: "blocker" | "warning" }
+): ValidationWarning {
+  const severity = opts?.severity ?? (code === "missing_ticket_info" ? "warning" : "blocker");
+  return {
+    code,
+    severity,
+    message,
+    field: opts?.field,
+    rawValue: opts?.rawValue,
+    issueKey: opts?.rawValue ? `${code}:${opts.rawValue.toLowerCase()}` : code,
+  };
+}
+
+export function buildWarningsPayload(warnings: ValidationWarning[]): { issues: WarningIssue[]; messages: string[] } {
+  const issues: WarningIssue[] = [];
+  for (const w of warnings) {
+    if (w.code && w.severity) {
+      issues.push({
+        code: w.code,
+        field: w.field,
+        rawValue: w.rawValue,
+        severity: w.severity as "blocker" | "warning",
+        message: w.message,
+        issueKey: w.issueKey ?? w.code,
+      });
+    }
+  }
+  const messages = warnings.map((w) => w.message);
+  return { issues, messages };
+}
+
 function isValidDateString(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
@@ -145,7 +182,7 @@ async function resolveParticipant(
 
   if (!name) {
     if (!isOneOff) {
-      return { clubId: null, warnings: [{ field, message: `Missing ${field ?? "participant"}` }], isBlocked: true };
+      return { clubId: null, warnings: [makeIssue("missing_participant", `Missing ${field ?? "participant"}`, { field })], isBlocked: true };
     }
     return { clubId: null, warnings, isBlocked: false };
   }
@@ -172,10 +209,7 @@ async function resolveParticipant(
       competitionCode ? [normalized, competitionCode] : [normalized]
     );
     const names = clubs.map((c) => c.name).join(", ");
-    warnings.push({
-      field,
-      message: `Ambiguous alias matches ${clubs.length} clubs: ${names}`,
-    });
+    warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field, rawValue: name }));
     return { clubId: null, warnings, isBlocked: true };
   }
 
@@ -184,10 +218,7 @@ async function resolveParticipant(
   });
 
   if (resolved.mappingType === "unknown" || resolved.mappingType === "ambiguous") {
-    warnings.push({
-      field,
-      message: `Unknown club: ${name}. Verify the club name or add an alias.`,
-    });
+    warnings.push(makeIssue("unknown_club", `Unknown club: ${name}. Verify the club name or add an alias.`, { field, rawValue: name }));
     return { clubId: null, warnings, isBlocked: true };
   }
 
@@ -224,11 +255,11 @@ async function resolveCompetition(
     }
   }
 
-  warnings.push({
-    message: competitionRaw
-      ? `Unknown competition: ${competitionRaw}. Publish the division first.`
-      : "No competition specified and could not infer from home club.",
-  });
+  if (competitionRaw) {
+    warnings.push(makeIssue("unknown_competition", `Unknown competition: ${competitionRaw}. Publish the division first.`, { rawValue: competitionRaw }));
+  } else {
+    warnings.push(makeIssue("missing_competition", "No competition specified and could not infer from home club."));
+  }
   return { code: null, warnings, isBlocked: true };
 }
 
@@ -253,7 +284,7 @@ async function resolveVenue(
     );
     if (venue) {
       if (venue.latitude === 0 && venue.longitude === 0) {
-        warnings.push({ message: `Venue "${venue.name}" has unusable coordinates. Fix venue coordinates.` });
+        warnings.push(makeIssue("venue_unusable_coords", `Venue "${venue.name}" has unusable coordinates. Fix venue coordinates.`, { rawValue: venue.name }));
       }
       return { venueId: venue.id, warnings, isBlocked: false };
     }
@@ -263,15 +294,15 @@ async function resolveVenue(
         [homeClubId]
       );
       if (club?.venue_id) {
-        warnings.push({ field: "venue", message: `Venue "${venueRaw}" not found. Using home club's primary venue.` });
+        warnings.push(makeIssue("venue_not_found", `Venue "${venueRaw}" not found. Using home club's primary venue.`, { field: "venue", rawValue: venueRaw }));
         return { venueId: club.venue_id, warnings, isBlocked: false };
       }
     }
-    return { venueId: null, warnings: [{ message: `Venue "${venueRaw}" not found and home club has no primary venue.` }], isBlocked: true };
+    return { venueId: null, warnings: [makeIssue("venue_not_found", `Venue "${venueRaw}" not found and home club has no primary venue.`, { rawValue: venueRaw })], isBlocked: true };
   }
 
   if (homeIsOneOff) {
-    return { venueId: null, warnings: [{ message: "One-off home participant needs an explicit venue." }], isBlocked: true };
+    return { venueId: null, warnings: [makeIssue("one_off_needs_venue", "One-off home participant needs an explicit venue.")], isBlocked: true };
   }
 
   if (homeClubId) {
@@ -284,7 +315,7 @@ async function resolveVenue(
     }
   }
 
-  return { venueId: null, warnings: [{ message: "Home club has no primary venue." }], isBlocked: true };
+  return { venueId: null, warnings: [makeIssue("missing_primary_venue", "Home club has no primary venue.")], isBlocked: true };
 }
 
 const VALID_FIXTURE_STATUSES: FixtureStatus[] = ["scheduled", "postponed", "cancelled", "finished", "unknown"];
@@ -349,7 +380,7 @@ export async function validateRow(
     const parsed = parseDateField(dateStr);
     if (!parsed) {
       if (!isValidDateString(dateStr)) {
-        warnings.push({ field: "date", message: `Invalid date: ${dateStr}` });
+        warnings.push(makeIssue("invalid_date", `Invalid date: ${dateStr}`, { field: "date", rawValue: dateStr }));
         hasBlocker = true;
       } else {
         normalizedDate = dateStr;
@@ -363,14 +394,14 @@ export async function validateRow(
       }
     }
   } else {
-    warnings.push({ field: "date", message: "Missing fixture date." });
+    warnings.push(makeIssue("missing_date", "Missing fixture date.", { field: "date" }));
     hasBlocker = true;
   }
 
   if (kickoffTime) {
     const parsedTime = parseTimeField(kickoffTime);
     if (!parsedTime) {
-      warnings.push({ field: "time", message: `Invalid kickoff time: ${kickoffTime}` });
+      warnings.push(makeIssue("invalid_time", `Invalid kickoff time: ${kickoffTime}`, { field: "time", rawValue: kickoffTime }));
       hasBlocker = true;
     } else {
       kickoffTime = parsedTime;
@@ -378,17 +409,18 @@ export async function validateRow(
     }
   } else if (dateStr && !hasBlocker) {
     kickoffTime = getAssumedKickoffTime(dateStr);
-    warnings.push({
-      message: isWeekend(dateStr)
+    warnings.push(makeIssue("assumed_time",
+      isWeekend(dateStr)
         ? "Kickoff time assumed 15:00 (weekend)."
         : "Kickoff time assumed 19:45 (midweek).",
-    });
+      { severity: "warning" }
+    ));
   }
 
   let normalizedStatus: FixtureStatus | null | undefined;
   if (row.status) {
     if (!VALID_FIXTURE_STATUSES.includes(row.status)) {
-      warnings.push({ field: "status", message: `Invalid status: ${row.status}. Allowed: ${VALID_FIXTURE_STATUSES.join(", ")}.` });
+      warnings.push(makeIssue("invalid_status", `Invalid status: ${row.status}. Allowed: ${VALID_FIXTURE_STATUSES.join(", ")}.`, { field: "status" }));
       hasBlocker = true;
     } else {
       normalizedStatus = row.status;
@@ -398,17 +430,17 @@ export async function validateRow(
   }
 
   if (!row.ticketUrl) {
-    warnings.push({ message: "No ticket information provided." });
+    warnings.push(makeIssue("missing_ticket_info", "No ticket information provided.", { severity: "warning" }));
   }
 
   if (row.sourceUrl) {
     try {
       const parsed = new URL(row.sourceUrl);
       if (!["http:", "https:"].includes(parsed.protocol)) {
-        warnings.push({ field: "sourceUrl", message: `Source URL uses unsupported protocol: ${parsed.protocol}` });
+        warnings.push(makeIssue("invalid_source_url", `Source URL uses unsupported protocol: ${parsed.protocol}`, { field: "sourceUrl" }));
       }
     } catch {
-      warnings.push({ field: "sourceUrl", message: `Source URL is not a valid URL: ${row.sourceUrl}` });
+      warnings.push(makeIssue("invalid_source_url", `Source URL is not a valid URL: ${row.sourceUrl}`, { field: "sourceUrl" }));
     }
   }
 

@@ -1,6 +1,6 @@
 import type { AppDatabase, SqlWrite } from "../db/adapter.ts";
 import type { ImportBatchRow } from "./types.ts";
-import { getBatch, getBatchRowsByMatchResult } from "./importBatch.ts";
+import { getBatch, getBatchRows } from "./importBatch.ts";
 import { buildAdminAuditLogWrite } from "../admin/audit.ts";
 
 async function getCurrentSeasonLabel(db: AppDatabase): Promise<string | undefined> {
@@ -26,7 +26,7 @@ function getAssumedKickoffTime(dateStr: string): string {
   return isWeekend(dateStr) ? "15:00" : "19:45";
 }
 
-function buildFixtureInsert(row: ImportBatchRow, seasonLabel: string | null): SqlWrite {
+export function buildFixtureInsert(row: ImportBatchRow, seasonLabel: string | null): SqlWrite {
   const source = "import_batch";
   const sourceId = `${row.batchId}-${row.id}`;
 
@@ -87,7 +87,7 @@ function buildFixtureInsert(row: ImportBatchRow, seasonLabel: string | null): Sq
   };
 }
 
-function buildFixtureUpdate(row: ImportBatchRow, fixtureId: number): SqlWrite {
+export function buildFixtureUpdate(row: ImportBatchRow, fixtureId: number): SqlWrite {
   const setClauses: string[] = [];
   const params: (string | number | null)[] = [];
 
@@ -170,7 +170,7 @@ interface ExistingFixture {
   before: Record<string, unknown>;
 }
 
-async function findExistingFixture(
+export async function findExistingFixture(
   db: AppDatabase,
   row: ImportBatchRow,
   seasonLabel: string | null,
@@ -241,11 +241,25 @@ export async function applyBatchRows(
   const batch = await getBatch(db, batchId);
   if (!batch) throw new Error(`Import batch ${batchId} not found.`);
 
-  if (batch.approvalStatus === "approved" || batch.approvalStatus === "partially_approved") {
-    throw new Error(`Import batch ${batchId} has already been applied.`);
+  if (batch.approvalStatus === "approved") {
+    throw new Error(`Import batch ${batchId} has already been approved.`);
   }
 
-  const grouped = await getBatchRowsByMatchResult(db, batchId);
+  const activeRows = await db.all<{ id: number }>(
+    `SELECT id FROM import_batch_rows WHERE batch_id = ? AND final_action IS NULL LIMIT 1`,
+    [batchId]
+  );
+  if (activeRows.length === 0) {
+    return { inserted: 0, updated: 0, skipped: 0, total: 0 };
+  }
+
+  const allRows = await getBatchRows(db, batchId);
+  const activeRows2 = allRows.filter((r) => !r.finalAction);
+  const grouped: Record<string, ImportBatchRow[]> = { insert: [], update: [], skip: [], blocked: [], pending: [] };
+  for (const r of activeRows2) {
+    const key = r.matchResult ?? "pending";
+    grouped[key].push(r);
+  }
   const applyRows: ImportBatchRow[] = [...(grouped.insert ?? []), ...(grouped.update ?? [])];
   const allBlocked = (grouped.blocked ?? []).length;
   const allPending = (grouped.pending ?? []).length;
@@ -281,14 +295,19 @@ export async function applyBatchRows(
   const rowUpdateStatements: SqlWrite[] = [];
   const auditStatements: SqlWrite[] = [];
 
-  // Write stale update markers before checking if there are fixture statements
+  // Write stale update markers — keep final_action NULL so rows stay recoverable
   for (const row of staleUpdateRows) {
     rowUpdateStatements.push({
-      sql: `UPDATE import_batch_rows SET match_result = 'blocked', final_action = 'blocked', warnings_json = ? WHERE id = ?`,
+      sql: `UPDATE import_batch_rows SET match_result = 'blocked', final_action = NULL, warnings_json = ? WHERE id = ?`,
       params: [
         JSON.stringify({
+          issues: [{
+            code: "venue_not_found",
+            severity: "blocker",
+            message: "Target fixture not found at apply time. The fixture may have been deleted.",
+            issueKey: "stale_update",
+          }],
           messages: ["Target fixture not found at apply time. The fixture may have been deleted."],
-          fields: [],
         }),
         row.id,
       ],
