@@ -51,12 +51,13 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
   const successMessage = typeof sp?.success === "string" ? sp.success : null;
   const errorMessage = typeof sp?.error === "string" ? sp.error : null;
 
-  const clubsByDivision = new Map<string, typeof clubs>();
+  const clubsByDivision = new Map<number, typeof clubs>();
   for (const club of clubs) {
-    let group = clubsByDivision.get(club.divisionName);
+    const key = club.divisionId;
+    let group = clubsByDivision.get(key);
     if (!group) {
       group = [];
-      clubsByDivision.set(club.divisionName, group);
+      clubsByDivision.set(key, group);
     }
     group.push(club);
   }
@@ -134,7 +135,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
       ) : (
         <div style={{ display: "grid", gap: "1.5rem" }}>
           {divisions.map((division) => {
-            const divisionClubs = clubsByDivision.get(division.name) ?? [];
+            const divisionClubs = clubsByDivision.get(division.id) ?? [];
 
             return (
               <section key={division.id} style={{
