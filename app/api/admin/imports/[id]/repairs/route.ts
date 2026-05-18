@@ -324,6 +324,12 @@ async function handleCreateClub(
   const newClubId = clubResult.lastInsertRowid;
   if (!newClubId) throw new Error("Failed to create club record.");
 
+  // Also insert into pyramid_clubs so the club appears in admin club pages
+  await db.run(
+    `INSERT OR IGNORE INTO pyramid_clubs (name, status) VALUES (?, 'partial')`,
+    [name]
+  );
+
   await db.writeBatch([
     buildAdminAuditLogWrite({
       action: "create",

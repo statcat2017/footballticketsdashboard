@@ -73,10 +73,12 @@ export async function getAdminVenueList(options?: { approximateOnly?: boolean })
   return db.all<AdminVenueListRow>(
     `SELECT
       ${venueSelectColumns},
-      COUNT(cva.id) AS current_club_count
+      COUNT(DISTINCT cva.id) + COUNT(DISTINCT c.id) AS current_club_count
     FROM venues v
     LEFT JOIN club_venue_assignments cva
       ON cva.venue_id = v.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+    LEFT JOIN clubs c
+      ON c.venue_id = v.id
     ${options?.approximateOnly ? "WHERE v.is_approximate = 1" : ""}
     GROUP BY v.id
     ORDER BY v.name`

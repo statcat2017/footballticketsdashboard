@@ -50,16 +50,45 @@ export async function POST(
       );
     }
 
-    const clubsUsing = await db.all<{ id: number }>(
-      `SELECT id FROM clubs WHERE venue_id = ? LIMIT 1`, [venueId]
+    // Check all FK references before deletion
+    const publicClubs = await db.all<{ id: number; name: string }>(
+      `SELECT id, name FROM clubs WHERE venue_id = ? LIMIT 1`, [venueId]
     );
-    if (clubsUsing.length > 0) {
+    if (publicClubs.length > 0) {
       return NextResponse.redirect(
-        new URL(`/admin/venues/${venueId}?error=Cannot delete: venue is assigned as primary ground for ${clubsUsing.length} club(s). Remove the assignment first.`, request.url),
+        new URL(`/admin/venues/${venueId}?error=Cannot delete: "${venue.name}" is the primary ground for public club "${publicClubs[0].name}". Reassign the club's venue first.`, request.url),
         { status: 303 },
       );
     }
 
+    const pyramidAssignments = await db.all<{ id: number }>(
+      `SELECT id FROM club_venue_assignments WHERE venue_id = ? AND is_primary = 1 AND effective_to IS NULL LIMIT 1`,
+      [venueId]
+    );
+    if (pyramidAssignments.length > 0) {
+      return NextResponse.redirect(
+        new URL(`/admin/venues/${venueId}?error=Cannot delete: venue is assigned as primary ground for a pyramid club. Remove the assignment first.`, request.url),
+        { status: 303 },
+      );
+    }
+
+    const fixtures = await db.all<{ id: number }>(
+      `SELECT id FROM fixtures WHERE venue_id = ? LIMIT 1`, [venueId]
+    );
+    if (fixtures.length > 0) {
+      return NextResponse.redirect(
+        new URL(`/admin/venues/${venueId}?error=Cannot delete: venue is used by ${fixtures.length} fixture(s). Reassign fixtures first.`, request.url),
+        { status: 303 },
+      );
+    }
+
+    // Null out batch row venue references (nullable FK)
+    await db.run(
+      `UPDATE import_batch_rows SET venue_resolved_id = NULL WHERE venue_resolved_id = ?`,
+      [venueId]
+    );
+
+    // CASCADE handles travel_cache and club_venue_assignments automatically
     await db.writeBatch([
       {
         sql: `DELETE FROM venues WHERE id = ?`,
