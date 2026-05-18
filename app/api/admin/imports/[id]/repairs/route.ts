@@ -360,6 +360,17 @@ async function handleAddClubTicketInfo(
     );
   }
 
+  // Acknowledge the missing_ticket_info issue for the affected row so the warning clears
+  if (redirectRowId) {
+    const rowId = parseInt(redirectRowId, 10);
+    if (!isNaN(rowId)) {
+      await acknowledgeBatchIssue(db, batchId, "missing_ticket_info", actor, {
+        issueCode: "missing_ticket_info",
+        rowId,
+      });
+    }
+  }
+
   await db.writeBatch([
     buildAdminAuditLogWrite({
       action: "update",
