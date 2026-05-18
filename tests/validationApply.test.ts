@@ -592,7 +592,7 @@ describe("applyBatchRows", () => {
     await validateImportBatch(db, batchId);
     await applyBatchRows(db, batchId, "test");
 
-    await expect(applyBatchRows(db, batchId, "test")).rejects.toThrow("already been applied");
+    await expect(applyBatchRows(db, batchId, "test")).rejects.toThrow("already been approved");
   });
 
   it("writes audit log entries for applied fixtures", async () => {

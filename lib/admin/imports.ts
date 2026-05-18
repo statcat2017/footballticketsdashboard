@@ -1,6 +1,6 @@
 import type { AppDatabase } from "../db/adapter.ts";
-import type { ImportBatch, ImportBatchRow, FixtureSource } from "../import/types.ts";
-import { getBatch, getBatchRowsByMatchResult, listBatches, listSources } from "../import/index.ts";
+import type { ImportBatch, ImportBatchRow, FixtureSource, WarningIssue } from "../import/types.ts";
+import { getBatch, getBatchRows, listBatches, listSources } from "../import/index.ts";
 
 export interface SeasonOption {
   label: string;
@@ -25,7 +25,23 @@ export interface BatchDetail {
   batch: ImportBatch;
   source: FixtureSource | undefined;
   grouped: Record<string, ImportBatchRow[]>;
+  activeGrouped: Record<string, ImportBatchRow[]>;
+  finalizedRows: ImportBatchRow[];
+  activeIssues: WarningIssue[];
   seasons: SeasonOption[];
+}
+
+export interface FixtureCardData {
+  row: ImportBatchRow;
+  issues: WarningIssue[];
+  actions: Array<{
+    id: number;
+    action: string;
+    reason: string | null;
+    note: string | null;
+    actor: string;
+    createdAt: string;
+  }>;
 }
 
 export async function getSeasons(db: AppDatabase): Promise<SeasonOption[]> {
@@ -65,10 +81,59 @@ export async function getBatchDetail(db: AppDatabase, batchId: number): Promise<
   const allSources = await listSources(db);
   const source = allSources.find((s) => s.id === batch.sourceId);
 
-  const grouped = await getBatchRowsByMatchResult(db, batchId);
+  const allRows = await getBatchRows(db, batchId);
+  const activeRows = allRows.filter((r) => !r.finalAction);
+  const finalizedRows = allRows.filter((r) => r.finalAction);
+  const activeGrouped: Record<string, ImportBatchRow[]> = { insert: [], update: [], skip: [], blocked: [], pending: [] };
+  for (const r of activeRows) {
+    const key = r.matchResult ?? "pending";
+    activeGrouped[key].push(r);
+  }
+
   const seasons = await getSeasons(db);
 
-  return { batch, source, grouped, seasons };
+  const { getActiveIssuesForBatch } = await import("../import/resolution.ts");
+  const activeIssues = await getActiveIssuesForBatch(db, batchId);
+
+  return { batch, source, grouped: activeGrouped, activeGrouped, finalizedRows, activeIssues, seasons };
+}
+
+export async function getFixtureCardsData(
+  db: AppDatabase,
+  batchId: number,
+  rowIds?: number[],
+): Promise<FixtureCardData[]> {
+  const allRows = await getBatchRows(db, batchId);
+  const rows = rowIds ? allRows.filter((r) => rowIds.includes(r.id)) : allRows;
+
+  const issuesMap = new Map<number, WarningIssue[]>();
+  for (const row of rows) {
+    const rowIssues: WarningIssue[] = [];
+    if (row.warningsJson) {
+      try {
+        const parsed = JSON.parse(row.warningsJson) as { issues?: WarningIssue[] };
+        if (parsed.issues) rowIssues.push(...parsed.issues);
+      } catch { /* skip */ }
+    }
+    issuesMap.set(row.id, rowIssues);
+  }
+
+  const actionRows = await db.all<{ id: number; row_id: number; action: string; reason: string | null; note: string | null; actor: string; created_at: string }>(
+    `SELECT id, row_id, action, reason, note, actor, created_at FROM import_batch_row_actions WHERE batch_id = ? ORDER BY created_at DESC`,
+    [batchId]
+  );
+  const actionsByRow = new Map<number, FixtureCardData["actions"]>();
+  for (const a of actionRows) {
+    const list = actionsByRow.get(a.row_id) ?? [];
+    list.push({ id: a.id, action: a.action, reason: a.reason, note: a.note, actor: a.actor, createdAt: a.created_at });
+    actionsByRow.set(a.row_id, list);
+  }
+
+  return rows.map((row) => ({
+    row,
+    issues: issuesMap.get(row.id) ?? [],
+    actions: actionsByRow.get(row.id) ?? [],
+  }));
 }
 
 export async function getSources(db: AppDatabase): Promise<FixtureSource[]> {
