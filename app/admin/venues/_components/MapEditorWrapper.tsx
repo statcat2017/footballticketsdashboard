@@ -15,6 +15,7 @@ interface MapEditorWrapperProps {
   precisionInputId: string;
   mode: "edit" | "create";
   venueId?: number;
+  postcodeName?: string;
 }
 
 export function MapEditorWrapper(props: MapEditorWrapperProps) {

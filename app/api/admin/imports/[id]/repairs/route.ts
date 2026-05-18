@@ -339,6 +339,14 @@ async function handleCreateClub(
     await addAlias(db, newClubId as number, alias.trim(), { source: "import_batch_repair" });
   }
 
+  // If we created a venue, update the row's venueRaw so the card shows it
+  if (redirectRowIdParsed && createVenueName) {
+    await db.run(
+      `UPDATE import_batch_rows SET venue_raw = ? WHERE id = ? AND venue_raw IS NULL`,
+      [createVenueName, redirectRowIdParsed]
+    );
+  }
+
   // Revalidate affected row
   if (redirectRowIdParsed) {
     await validateRowById(db, redirectRowIdParsed);
@@ -461,7 +469,6 @@ async function handleCreateVenueAndAssign(
   const postcode = readString(form.get("postcode"));
   const latitudeRaw = form.get("latitude");
   const longitudeRaw = form.get("longitude");
-  const clubIdStr = readString(form.get("club_id"));
   const redirectRowId = readString(form.get("redirect_row_id"));
 
   if (!name || !postcode) {
@@ -477,7 +484,7 @@ async function handleCreateVenueAndAssign(
   const isApproximate = form.get("is_approximate") === "1" ? 1 : 0;
   const coordinatePrecision = readString(form.get("coordinate_precision")) ?? "ground_approximate";
 
-  const venueId = await createAdminVenue({
+  await createAdminVenue({
     name,
     postcode,
     latitude: latNum,
@@ -486,11 +493,14 @@ async function handleCreateVenueAndAssign(
     coordinate_precision: coordinatePrecision,
   });
 
-  if (clubIdStr) {
-    const clubId = parseInt(clubIdStr, 10);
-    if (!isNaN(clubId) && clubId > 0) {
-      const effective = nextJuly1st();
-      await assignAdminVenue(clubId, venueId, effective);
+  // Update the row's venueRaw so the card displays it
+  if (redirectRowId) {
+    const rowId = parseInt(redirectRowId, 10);
+    if (!isNaN(rowId)) {
+      await db.run(
+        `UPDATE import_batch_rows SET venue_raw = ? WHERE id = ? AND venue_raw IS NULL`,
+        [name, rowId]
+      );
     }
   }
 

@@ -25,6 +25,7 @@ interface VenueMapEditorProps {
   precisionInputId: string;
   mode: "edit" | "create";
   venueId?: number;
+  postcodeName?: string;
 }
 
 function setInputValue(id: string, value: string) {
@@ -53,6 +54,7 @@ export function VenueMapEditor({
   precisionInputId,
   mode,
   venueId,
+  postcodeName,
 }: VenueMapEditorProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -238,6 +240,7 @@ export function VenueMapEditor({
         >
           <input
             type="text"
+            name={postcodeName}
             value={postcodeInput}
             onChange={(e) => setPostcodeInput(e.target.value)}
             placeholder="e.g. SW1A 1AA"

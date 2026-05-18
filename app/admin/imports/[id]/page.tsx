@@ -360,6 +360,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledge
         <span style={{ fontWeight: 400, color: "#6f7e7a", fontSize: "13px" }}>
           {row.kickoffDate}{row.kickoffTime ? ` ${row.kickoffTime}` : ""}
           {row.competitionRaw ? ` · ${row.competitionRaw}` : ""}
+          {row.venueResolvedId ? ` · Venue #${row.venueResolvedId}` : row.venueRaw ? ` · ${row.venueRaw}` : ""}
         </span>
       </div>
 
@@ -627,19 +628,16 @@ function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
 
         <fieldset style={{ border: "1px solid #dce3e2", borderRadius: "6px", padding: "0.5rem", margin: 0 }}>
           <legend style={{ fontSize: "12px", fontWeight: 600, color: "#34413e" }}>Venue</legend>
-          <label style={labelStyle}>Use existing venue
+            <label style={labelStyle}>Use existing venue
             <select name="venue_id" style={inputStyle}>
               <option value="">-- Create new venue below --</option>
-              {venues.map((v) => <option key={v.id} value={v.id}>{v.name}, {v.postcode}</option>)}
+              {venues.map((v) => <option key={v.id} value={v.id}>#{v.id} {v.name}, {v.postcode}</option>)}
             </select>
           </label>
 
           <div style={{ marginTop: "0.5rem", display: "grid", gap: "0.4rem" }}>
             <label style={labelStyle}>New venue name
               <input name={`${p}name`} style={inputStyle} />
-            </label>
-            <label style={labelStyle}>Postcode
-              <input name={`${p}postcode`} style={inputStyle} placeholder="e.g. SW1A 1AA" />
             </label>
 
             <MapEditorWrapper
@@ -649,6 +647,7 @@ function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
               approxInputId={approxId}
               precisionInputId={precId}
               mode="create"
+              postcodeName={`${p}postcode`}
             />
 
             <input id={latId} name={`${p}latitude`} type="number" step="any" style={{ ...inputStyle, display: "none" }} />
@@ -698,7 +697,7 @@ function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
           <label style={labelStyle}>Venue
             <select name="venue_id" required style={inputStyle}>
               <option value="">Select venue...</option>
-              {venues.map((v) => <option key={v.id} value={v.id}>{v.name}, {v.postcode}</option>)}
+              {venues.map((v) => <option key={v.id} value={v.id}>#{v.id} {v.name}, {v.postcode}</option>)}
             </select>
           </label>
           <label style={labelStyle}>Effective from
