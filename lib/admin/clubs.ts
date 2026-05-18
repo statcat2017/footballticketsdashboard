@@ -189,18 +189,18 @@ export async function getAdminClubList(): Promise<AdminClubListData> {
   // Also fetch clubs not assigned to any division (e.g. created from imports)
   const unassignedRows = await db.all<AdminClubRow>(
     `SELECT
-      pc.id AS club_id,
-      pc.name AS club_name,
-      pc.status AS club_status,
+      COALESCE(pc.id, c.id) AS club_id,
+      COALESCE(pc.name, c.name) AS club_name,
+      COALESCE(pc.status, 'partial') AS club_status,
       v.id AS venue_id,
       v.name AS venue_name,
       v.postcode AS venue_postcode
-    FROM pyramid_clubs pc
-    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = pc.id AND psm.season_id = ?
-    LEFT JOIN clubs c ON c.name = pc.name
-    LEFT JOIN venues v ON v.id = CASE WHEN c.id IS NOT NULL THEN c.venue_id ELSE NULL END
+    FROM clubs c
+    LEFT JOIN pyramid_clubs pc ON pc.name = c.name
+    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = COALESCE(pc.id, c.id) AND psm.season_id = ?
+    LEFT JOIN venues v ON v.id = c.venue_id
     WHERE psm.id IS NULL
-    ORDER BY pc.name`,
+    ORDER BY club_name`,
     [seasonId]
   );
 
