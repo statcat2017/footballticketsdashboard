@@ -153,6 +153,37 @@ export default async function AdminImportDetailPage({
         </section>
       )}
 
+      <section style={{
+        border: "1px solid #e0b3a8", borderRadius: "8px",
+        background: "#fdf6f5", padding: "1rem", marginBottom: "1.5rem"
+      }}>
+        <p style={{ margin: "0 0 0.5rem", fontWeight: 600, fontSize: "14px", color: "#a53a2d" }}>
+          Danger zone
+        </p>
+        <p style={{ margin: "0 0 0.75rem", fontSize: "13px", color: "#6f7e7a" }}>
+          Delete this import batch. This action cannot be undone. If the batch has already been applied,
+          the fixtures will remain.
+        </p>
+        <form method="post" action={`/api/admin/imports/${batch.id}`} id="delete-batch-form">
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <input type="hidden" name="_action" value="delete" />
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "14px", cursor: "pointer", marginBottom: "0.75rem" }}>
+            <input type="checkbox" name="confirm" value="1" required />
+            I understand this will permanently delete this batch.
+          </label>
+          <button type="submit" style={{
+            border: "1px solid #c0392b", borderRadius: "7px",
+            background: "#e74c3c", color: "#fff",
+            padding: "0.5rem 1.25rem", fontSize: "14px", fontWeight: 700, cursor: "pointer"
+          }}>
+            Delete batch
+          </button>
+        </form>
+        <script dangerouslySetInnerHTML={{
+          __html: `document.getElementById("delete-batch-form")?.addEventListener("submit",function(e){if(!confirm("Delete this import batch? This cannot be undone."))e.preventDefault()})`
+        }} />
+      </section>
+
       {blockedRows.length > 0 && (
         <OutcomeGroup title="Blocked" rows={blockedRows} outcome="blocked" />
       )}

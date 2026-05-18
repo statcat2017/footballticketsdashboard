@@ -393,3 +393,18 @@ export async function updateBatchRowOutcome(
     status: outcome.status,
   });
 }
+
+export async function deleteBatch(db: AppDatabase, batchId: number): Promise<void> {
+  const batch = await getBatch(db, batchId);
+  if (!batch) throw new Error(`Import batch ${batchId} not found.`);
+  await db.writeBatch([
+    {
+      sql: "DELETE FROM import_batch_rows WHERE batch_id = ?",
+      params: [batchId],
+    },
+    {
+      sql: "DELETE FROM import_batches WHERE id = ?",
+      params: [batchId],
+    },
+  ]);
+}
