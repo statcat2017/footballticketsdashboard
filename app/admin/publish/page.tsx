@@ -202,7 +202,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                         color: "#17221f"
                       }}
                     >
-                      {isSelected ? "&larr; All divisions" : "Manage clubs"}
+                      {isSelected ? "\u2190 All divisions" : "Manage clubs"}
                     </Link>
                   </div>
                 </div>
