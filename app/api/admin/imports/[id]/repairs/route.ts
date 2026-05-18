@@ -329,6 +329,18 @@ async function handleCreateClub(
     `INSERT OR IGNORE INTO pyramid_clubs (name, status) VALUES (?, 'partial')`,
     [name]
   );
+  // Get pyramid_clubs ID (either newly created or existing)
+  const pyramidClub = await db.get<{ id: number }>(
+    `SELECT id FROM pyramid_clubs WHERE name = ?`, [name]
+  );
+  if (pyramidClub) {
+    // Create a venue assignment matching clubs.venue_id
+    await db.run(
+      `INSERT OR IGNORE INTO club_venue_assignments (club_id, venue_id, effective_from, is_primary)
+       VALUES (?, ?, ?, 1)`,
+      [pyramidClub.id, venueId, nextJuly1st()]
+    );
+  }
 
   await db.writeBatch([
     buildAdminAuditLogWrite({
