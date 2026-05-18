@@ -23,6 +23,10 @@ export async function GET(
   try {
     const detail = await getBatchDetail(db, batchId);
 
+    if (!detail.batch) {
+      return NextResponse.json({ error: "Import batch not found." }, { status: 404 });
+    }
+
     const rows = Object.fromEntries(
       Object.entries(detail.grouped).map(([key, rows]) => [
         key,
@@ -73,6 +77,9 @@ export async function GET(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+    if (message.includes("not found")) {
+      return NextResponse.json({ error: "Import batch not found." }, { status: 404 });
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

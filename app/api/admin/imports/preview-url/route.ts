@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { fetchPage, extractTables } from "@/lib/import";
+import { getTrustedImportDomains } from "@/lib/admin/imports";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -25,7 +26,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const fetchResult = await fetchPage(url);
+    const fetchResult = await fetchPage(url, {
+      trustedDomains: getTrustedImportDomains(),
+    });
     if ("error" in fetchResult) {
       return NextResponse.json({ error: fetchResult.error }, { status: 400 });
     }

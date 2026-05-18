@@ -197,7 +197,7 @@ export default async function AdminNewImportPage({
             try {
               var formData = new URLSearchParams();
               formData.set("url", url);
-              formData.set("csrf", csrfToken);
+              formData.set("csrf", ${JSON.stringify(csrfToken)});
 
               var res = await fetch("/api/admin/imports/preview-url", {
                 method: "POST",
