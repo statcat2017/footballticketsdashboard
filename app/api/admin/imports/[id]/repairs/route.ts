@@ -361,14 +361,22 @@ async function handleAddClubTicketInfo(
   }
 
   // Acknowledge the missing_ticket_info issue for the affected row so the warning clears
+  let ackRowId: number | undefined;
   if (redirectRowId) {
-    const rowId = parseInt(redirectRowId, 10);
-    if (!isNaN(rowId)) {
-      await acknowledgeBatchIssue(db, batchId, "missing_ticket_info", actor, {
-        issueCode: "missing_ticket_info",
-        rowId,
-      });
+    const parsed = parseInt(redirectRowId, 10);
+    if (!isNaN(parsed)) {
+      const row = await getRowOrError(db, parsed, batchId);
+      if (!row) {
+        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+      }
+      ackRowId = parsed;
     }
+  }
+  if (ackRowId) {
+    await acknowledgeBatchIssue(db, batchId, "missing_ticket_info", actor, {
+      issueCode: "missing_ticket_info",
+      rowId: ackRowId,
+    });
   }
 
   await db.writeBatch([
@@ -381,7 +389,7 @@ async function handleAddClubTicketInfo(
     }),
   ]);
 
-  const anchor = redirectRowId ? `fixture-${redirectRowId}` : undefined;
+  const anchor = ackRowId ? `fixture-${ackRowId}` : undefined;
   return redirectTo(request, batchId, {
     success: "Ticket info saved.",
     ...(anchor ? { anchor } : {}),
