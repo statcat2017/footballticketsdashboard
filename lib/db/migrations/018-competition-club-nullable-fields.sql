@@ -17,7 +17,10 @@ CREATE TABLE competitions_new (
 );
 
 INSERT INTO competitions_new (id, code, name, tier, kind)
-  SELECT id, code, name, tier, kind FROM competitions;
+  SELECT id, code, name,
+    CASE WHEN kind IN ('cup', 'friendly') THEN NULL ELSE tier END,
+    kind
+  FROM competitions;
 
 DROP TABLE competitions;
 ALTER TABLE competitions_new RENAME TO competitions;

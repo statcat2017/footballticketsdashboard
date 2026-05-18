@@ -112,7 +112,7 @@ async function handleMarkFriendly(
   request: Request,
   db: import("@/lib/db/adapter").AppDatabase,
   batchId: number,
-  _form: FormData,
+  form: FormData,
   actor: string,
 ) {
   const existing = await db.get<{ code: string }>(
@@ -134,10 +134,30 @@ async function handleMarkFriendly(
     ]);
   }
 
+  // Update all unresolved rows' competition_raw to Non-League Friendlies
+  await db.run(
+    `UPDATE import_batch_rows
+     SET competition_raw = 'Non-League Friendlies',
+         competition_resolved_code = NULL,
+         match_result = NULL,
+         warnings_json = NULL
+     WHERE batch_id = ?
+       AND final_action IS NULL
+       AND competition_raw IS NOT NULL
+       AND competition_resolved_code IS NULL`,
+    [batchId]
+  );
+
   const { validateImportBatch } = await import("@/lib/import/validation");
   await validateImportBatch(db, batchId);
 
-  return redirectTo(request, batchId, { success: "Marked as friendly outside formal competition." });
+  // Update `form` param is used for row-specific redirect
+  const redirectRowId = readString(form.get("redirect_row_id"));
+  const anchor = redirectRowId ? `fixture-${redirectRowId}` : undefined;
+  return redirectTo(request, batchId, {
+    success: "Marked as friendly outside formal competition.",
+    ...(anchor ? { anchor } : {}),
+  });
 }
 
 async function handleCreateCompetition(
@@ -212,6 +232,18 @@ async function handleCreateClub(
     return redirectTo(request, batchId, { error: "Club name is required." });
   }
 
+  let redirectRowIdParsed: number | undefined;
+  if (redirectRowId) {
+    const parsed = parseInt(redirectRowId, 10);
+    if (!isNaN(parsed)) {
+      const row = await getRowOrError(db, parsed, batchId);
+      if (!row) {
+        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+      }
+      redirectRowIdParsed = parsed;
+    }
+  }
+
   let venueId: number | null = null;
 
   // Option A: select existing venue
@@ -274,12 +306,11 @@ async function handleCreateClub(
   }
 
   // Revalidate affected row
-  if (redirectRowId) {
-    const rowId = parseInt(redirectRowId, 10);
-    if (!isNaN(rowId)) await validateRowById(db, rowId);
+  if (redirectRowIdParsed) {
+    await validateRowById(db, redirectRowIdParsed);
   }
 
-  const anchor = redirectRowId ? `fixture-${redirectRowId}` : undefined;
+  const anchor = redirectRowIdParsed ? `fixture-${redirectRowIdParsed}` : undefined;
   return redirectTo(request, batchId, {
     success: `Club "${name}" created.`,
     ...(anchor ? { anchor } : {}),

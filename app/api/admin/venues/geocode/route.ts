@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { getCloudflareEnv } from "@/lib/runtime-env";
 
 export async function POST(request: Request) {
+  const session = await getAdminSessionFromRequest(request);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json().catch(() => null);
   if (!body || typeof body.postcode !== "string" || body.postcode.trim().length === 0) {
     return NextResponse.json({ error: "Postcode is required." }, { status: 400 });
