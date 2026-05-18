@@ -3,7 +3,8 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { divisionCodeFromName } from "@/lib/admin/clubs";
-import { writeAdminAuditLog } from "@/lib/admin/audit";
+
+const ADMIN_ACTOR = "admin";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
   }
 
   const divisionIdStr = form.get("division_id");
+  const redirectDivisionIdStr = form.get("redirect_division_id");
 
   if (typeof divisionIdStr !== "string" || !/^\d+$/.test(divisionIdStr)) {
     return NextResponse.redirect(
@@ -36,6 +38,20 @@ export async function POST(request: Request) {
   const divisionId = Number(divisionIdStr);
   const db = await getDatabase();
 
+  const validRedirectDivId =
+    typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)
+      ? redirectDivisionIdStr
+      : null;
+
+  function redirectWith(params: Record<string, string>) {
+    const url = new URL("/admin/publish", request.url);
+    if (validRedirectDivId) url.searchParams.set("division_id", validRedirectDivId);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(url, { status: 303 });
+  }
+
   try {
     const division = await db.get<{ id: number; name: string; level: number }>(
       `SELECT id, name, level FROM pyramid_divisions WHERE id = ?`,
@@ -43,10 +59,7 @@ export async function POST(request: Request) {
     );
 
     if (!division) {
-      return NextResponse.redirect(
-        new URL("/admin/publish?error=Division not found.", request.url),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Division not found." });
     }
 
     const existingMapping = await db.get<{ id: number }>(
@@ -55,76 +68,63 @@ export async function POST(request: Request) {
     );
 
     if (existingMapping) {
-      return NextResponse.redirect(
-        new URL("/admin/publish?error=Division already has a competition mapping.", request.url),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Division already has a competition mapping." });
     }
 
     const code = divisionCodeFromName(division.name);
 
-    // Check if the competition code already exists in the table
-    const existingCompetition = await db.get<{ code: string; id: number }>(
-      `SELECT code, id FROM competitions WHERE code = ?`,
+    const existingCompetition = await db.get<{ code: string }>(
+      `SELECT code FROM competitions WHERE code = ?`,
       [code]
     );
 
     if (existingCompetition) {
-      // Link to existing competition instead of creating a duplicate
-      await db.run(
-        `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
-        [divisionId, code]
-      );
+      const after = {
+        division_id: divisionId,
+        competition_code: code,
+        competition_name: division.name,
+        note: "mapped to existing competition"
+      };
 
-      await writeAdminAuditLog(db, {
-        action: "publish",
-        entityType: "division_competition_mapping",
-        entityId: divisionId,
-        after: {
-          division_id: divisionId,
-          competition_code: code,
-          competition_name: division.name,
-          note: "mapped to existing competition"
+      await db.writeBatch([
+        {
+          sql: `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
+          params: [divisionId, code]
+        },
+        {
+          sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
+          params: [ADMIN_ACTOR, "publish", "division_competition_mapping", String(divisionId), null, JSON.stringify(after)]
         }
-      });
+      ]);
 
-      return NextResponse.redirect(
-        new URL(`/admin/publish?success=Division "${division.name}" mapped to existing competition "${code}".`, request.url),
-        { status: 303 }
-      );
+      return redirectWith({ success: `Division "${division.name}" mapped to existing competition "${code}".` });
     }
 
-    const competitionResult = await db.run(
-      `INSERT INTO competitions (code, name, tier) VALUES (?, ?, ?)`,
-      [code, division.name, division.level]
-    );
+    const after = {
+      code,
+      name: division.name,
+      tier: division.level,
+      division_id: divisionId
+    };
 
-    await db.run(
-      `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
-      [divisionId, code]
-    );
-
-    await writeAdminAuditLog(db, {
-      action: "publish",
-      entityType: "competition",
-      entityId: competitionResult.lastInsertRowid,
-      after: {
-        code,
-        name: division.name,
-        tier: division.level,
-        division_id: divisionId
+    await db.writeBatch([
+      {
+        sql: `INSERT INTO competitions (code, name, tier) VALUES (?, ?, ?)`,
+        params: [code, division.name, division.level]
+      },
+      {
+        sql: `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
+        params: [divisionId, code]
+      },
+      {
+        sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
+        params: [ADMIN_ACTOR, "publish", "competition", code, null, JSON.stringify(after)]
       }
-    });
+    ]);
 
-    return NextResponse.redirect(
-      new URL(`/admin/publish?success=Competition "${division.name}" published as "${code}".`, request.url),
-      { status: 303 }
-    );
+    return redirectWith({ success: `Competition "${division.name}" published as "${code}".` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/publish?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return redirectWith({ error: message });
   }
 }
