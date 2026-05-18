@@ -1,7 +1,8 @@
 -- 015: Expand competition tier constraint from 4 to 10
 -- The pyramid now includes divisions beyond tier 4 (National League at level 5, etc.).
 -- SQLite cannot alter CHECK constraints, so we recreate the table.
--- D1 does not enforce foreign key constraints, so no PRAGMA needed.
+-- D1 enforces FK constraints and does not allow PRAGMA foreign_keys = OFF,
+-- so we use a two-step rename to keep a valid FK target at all times.
 
 CREATE TABLE IF NOT EXISTS competitions_new (
   id INTEGER PRIMARY KEY,
@@ -13,6 +14,8 @@ CREATE TABLE IF NOT EXISTS competitions_new (
 INSERT INTO competitions_new (id, code, name, tier)
   SELECT id, code, name, tier FROM competitions;
 
-DROP TABLE competitions;
+ALTER TABLE competitions RENAME TO competitions_old;
 
 ALTER TABLE competitions_new RENAME TO competitions;
+
+DROP TABLE competitions_old;
