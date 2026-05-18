@@ -1,6 +1,6 @@
 import type { AppDatabase } from "../../db/adapter.ts";
 import type { NormalizedFixtureRow, FixtureStatus } from "../types.ts";
-import { createBatch, addBatchRows, updateBatchCounts } from "../index.ts";
+import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../index.ts";
 
 export interface CsvParseError {
   rowIndex: number;
@@ -151,6 +151,7 @@ export async function createImportBatchFromCsv(
   }
 ): Promise<CreateBatchFromCsvResult> {
   const result = parseCsv(csvText);
+  const totalRows = result.rows.length + result.errors.length;
 
   const batch = await createBatch(db, {
     sourceId,
@@ -168,10 +169,18 @@ export async function createImportBatchFromCsv(
     await addBatchRows(db, batch.id, rowInputs);
   }
 
-  await updateBatchCounts(db, batch.id, {
-    rowCountTotal: result.rows.length,
-    rowCountFailed: result.errors.length,
-  });
+  try {
+    await updateBatchCounts(db, batch.id, {
+      rowCountTotal: totalRows,
+      rowCountFailed: result.errors.length,
+      parseErrorsJson: result.errors.length > 0
+        ? JSON.stringify(result.errors)
+        : null,
+    });
+  } catch (err) {
+    await updateBatchStatus(db, batch.id, { parseStatus: "failed" });
+    throw err;
+  }
 
   return {
     batchId: batch.id,
@@ -314,16 +323,24 @@ export function parseDateField(value: string): { date: string; time?: string } |
     }
   }
 
+  let year: number, month: number, day: number;
+
   const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(datePart);
   if (isoMatch) {
-    const [, y, m, d] = isoMatch;
-    return { date: `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`, time: timePart };
+    year = parseInt(isoMatch[1], 10);
+    month = parseInt(isoMatch[2], 10);
+    day = parseInt(isoMatch[3], 10);
+    if (!isValidDate(year, month, day)) return undefined;
+    return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
   }
 
   const ukMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(datePart);
   if (ukMatch) {
-    const [, d, m, y] = ukMatch;
-    return { date: `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`, time: timePart };
+    day = parseInt(ukMatch[1], 10);
+    month = parseInt(ukMatch[2], 10);
+    year = parseInt(ukMatch[3], 10);
+    if (!isValidDate(year, month, day)) return undefined;
+    return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
   }
 
   const months: Record<string, string> = {
@@ -333,17 +350,25 @@ export function parseDateField(value: string): { date: string; time?: string } |
 
   const longMatch = /^(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/i.exec(datePart);
   if (longMatch) {
-    const month = months[longMatch[2].toLowerCase().slice(0, 3)];
-    if (month) {
-      return { date: `${longMatch[3]}-${month}-${longMatch[1].padStart(2, "0")}`, time: timePart };
+    const monthStr = months[longMatch[2].toLowerCase().slice(0, 3)];
+    if (monthStr) {
+      day = parseInt(longMatch[1], 10);
+      month = parseInt(monthStr, 10);
+      year = parseInt(longMatch[3], 10);
+      if (!isValidDate(year, month, day)) return undefined;
+      return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
     }
   }
 
   const usMatch = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i.exec(datePart);
   if (usMatch) {
-    const month = months[usMatch[1].toLowerCase().slice(0, 3)];
-    if (month) {
-      return { date: `${usMatch[3]}-${month}-${usMatch[2].padStart(2, "0")}`, time: timePart };
+    const monthStr = months[usMatch[1].toLowerCase().slice(0, 3)];
+    if (monthStr) {
+      month = parseInt(monthStr, 10);
+      day = parseInt(usMatch[2], 10);
+      year = parseInt(usMatch[3], 10);
+      if (!isValidDate(year, month, day)) return undefined;
+      return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
     }
   }
 
@@ -356,27 +381,44 @@ export function parseTimeField(value: string): string | undefined {
   const hhmmMatch = /^(\d{1,2}):(\d{2})(?:\s*(AM|PM|am|pm))?$/.exec(trimmed);
   if (hhmmMatch) {
     let hours = parseInt(hhmmMatch[1], 10);
-    const minutes = hhmmMatch[2];
-    const suffix = hhmmMatch[3];
+    const minutes = parseInt(hhmmMatch[2], 10);
 
+    if (minutes < 0 || minutes > 59) return undefined;
+
+    const suffix = hhmmMatch[3];
     if (suffix) {
       const isPM = suffix.toUpperCase() === "PM";
+      if (hours === 0 || hours > 12) return undefined;
       if (isPM && hours < 12) hours += 12;
       if (!isPM && hours === 12) hours = 0;
+    } else {
+      if (hours < 0 || hours > 23) return undefined;
     }
 
-    return `${String(hours).padStart(2, "0")}:${minutes}`;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
   const hourOnly = /^(\d{1,2})\s*(AM|PM|am|pm)$/.exec(trimmed);
   if (hourOnly) {
     let hours = parseInt(hourOnly[1], 10);
+    if (hours === 0 || hours > 12) return undefined;
     if (hourOnly[2].toUpperCase() === "PM" && hours < 12) hours += 12;
     if (hourOnly[2].toUpperCase() === "AM" && hours === 12) hours = 0;
     return `${String(hours).padStart(2, "0")}:00`;
   }
 
   return undefined;
+}
+
+function isValidDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12) return false;
+  if (day < 1) return false;
+  const maxDay = new Date(year, month, 0).getDate();
+  return day <= maxDay;
+}
+
+function pad(n: number, width = 2): string {
+  return String(n).padStart(width, "0");
 }
 
 export function parseStatusField(value: string): FixtureStatus {

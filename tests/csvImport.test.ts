@@ -131,6 +131,44 @@ describe("parseCsv — date and time parsing", () => {
     const result = parseCsv(csv);
     expect(result.rows[0].kickoffDate).toBe("not-a-date");
   });
+
+  it("rejects impossible date 31/02/2026", () => {
+    // parseDateField returns undefined, raw value passes through
+    const csv = basicCsv("Home,Away,Date", "Team A,Team B,31/02/2026");
+    const result = parseCsv(csv);
+    // The date field will have the raw value since parseDateField fails
+    expect(result.rows[0].kickoffDate).toBe("31/02/2026");
+  });
+
+  it("rejects month 13 in UK format", () => {
+    const csv = basicCsv("Home,Away,Date", "Team A,Team B,01/13/2026");
+    const result = parseCsv(csv);
+    expect(result.rows[0].kickoffDate).toBe("01/13/2026");
+  });
+
+  it("rejects invalid 24-hour time 25:00", () => {
+    const csv = basicCsv("Home,Away,Time", "Team A,Team B,25:00");
+    const result = parseCsv(csv);
+    expect(result.rows[0].kickoffTime).toBe("25:00");
+  });
+
+  it("rejects invalid minutes 19:99", () => {
+    const csv = basicCsv("Home,Away,Time", "Team A,Team B,19:99");
+    const result = parseCsv(csv);
+    expect(result.rows[0].kickoffTime).toBe("19:99");
+  });
+
+  it("rejects 12-hour hour 0", () => {
+    const csv = basicCsv("Home,Away,Time", "Team A,Team B,0:00 AM");
+    const result = parseCsv(csv);
+    expect(result.rows[0].kickoffTime).toBe("0:00 AM");
+  });
+
+  it("rejects 12-hour hour 13", () => {
+    const csv = basicCsv("Home,Away,Time", "Team A,Team B,13:00 PM");
+    const result = parseCsv(csv);
+    expect(result.rows[0].kickoffTime).toBe("13:00 PM");
+  });
 });
 
 describe("parseCsv — price parsing", () => {
@@ -289,6 +327,34 @@ describe("createImportBatchFromCsv", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].homeParticipantRaw).toBe("Team A");
     expect(rows[0].competitionRaw).toBe("Premier League");
+  });
+
+  it("sets rowCountTotal to total input rows (valid + errors)", async () => {
+    const db = createAppDatabase();
+    const source = await createSource(db, {
+      sourceType: "csv_paste",
+      name: "Count Test",
+    });
+
+    const csv = basicCsv(
+      "Home,Away",
+      "Team A,Team B",
+      ",Team D",
+      "Team E,Team F",
+    );
+
+    const result = await createImportBatchFromCsv(db, csv, source.id, "test-admin");
+    const batch = await getBatch(db, result.batchId);
+
+    expect(result.rowCount).toBe(2);
+    expect(result.errors).toHaveLength(1);
+    expect(batch!.rowCountTotal).toBe(3);
+    expect(batch!.rowCountFailed).toBe(1);
+    expect(batch!.parseErrorsJson).toBeTruthy();
+
+    const parseErrors = JSON.parse(batch!.parseErrorsJson!);
+    expect(parseErrors).toHaveLength(1);
+    expect(parseErrors[0].message).toContain("Missing home team");
   });
 
   it("handles empty CSV gracefully", async () => {

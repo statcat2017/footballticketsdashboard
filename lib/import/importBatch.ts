@@ -157,13 +157,20 @@ export async function updateBatchStatus(
   return updated;
 }
 
+export interface BatchCountUpdate {
+  rowCountTotal?: number;
+  rowCountApproved?: number;
+  rowCountFailed?: number;
+  parseErrorsJson?: string | null;
+}
+
 export async function updateBatchCounts(
   db: AppDatabase,
   id: number,
-  counts: { rowCountTotal?: number; rowCountApproved?: number; rowCountFailed?: number }
+  counts: BatchCountUpdate
 ): Promise<void> {
   const fields: string[] = ["updated_at = CURRENT_TIMESTAMP"];
-  const params: (string | number)[] = [];
+  const params: (string | number | null)[] = [];
 
   if (counts.rowCountTotal !== undefined) {
     fields.push("row_count_total = ?");
@@ -176,6 +183,10 @@ export async function updateBatchCounts(
   if (counts.rowCountFailed !== undefined) {
     fields.push("row_count_failed = ?");
     params.push(counts.rowCountFailed);
+  }
+  if (counts.parseErrorsJson !== undefined) {
+    fields.push("parse_errors_json = ?");
+    params.push(counts.parseErrorsJson);
   }
 
   params.push(id);

@@ -1,6 +1,6 @@
 import type { AppDatabase } from "../../db/adapter.ts";
 import type { NormalizedFixtureRow } from "../types.ts";
-import { createBatch, addBatchRows, updateBatchCounts, getOrCreateSource } from "../index.ts";
+import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus, getOrCreateSource } from "../index.ts";
 import { HEADER_ALIASES, parseDateField, parseTimeField, parseStatusField, parsePriceField } from "./csv.ts";
 
 export interface DetectedTable {
@@ -11,6 +11,16 @@ export interface DetectedTable {
   rowCount: number;
   sampleCells: string[][];
   score: number;
+}
+
+interface HtmlRowParseError {
+  rowIndex: number;
+  message: string;
+}
+
+interface HtmlRowsResult {
+  rows: NormalizedFixtureRow[];
+  errors: HtmlRowParseError[];
 }
 
 export interface FetchPageError {
@@ -26,6 +36,8 @@ export interface HtmlImportResult {
 
 const PRIVATE_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/i;
 const PRIVATE_IPV6_RE = /^\[?(?:fe80|fc00|fd00|::1|f[cd])/i;
+
+const MAX_REDIRECTS = 5;
 
 export function validateFixtureUrl(url: string): string | null {
   try {
@@ -53,66 +65,87 @@ export async function fetchPage(
   url: string,
   options?: { timeout?: number; maxBytes?: number; fetcher?: typeof fetch }
 ): Promise<{ html: string } | FetchPageError> {
-  const validationError = validateFixtureUrl(url);
-  if (validationError) return { error: validationError };
-
   const timeoutMs = options?.timeout ?? 15000;
   const maxBytes = options?.maxBytes ?? 2_000_000;
   const doFetch = options?.fetcher ?? globalThis.fetch;
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let currentUrl = url;
 
-    let response: Response;
-    try {
-      response = await doFetch(url, { signal: controller.signal, redirect: "follow" });
-    } finally {
-      clearTimeout(timer);
-    }
+    for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+      const validation = validateFixtureUrl(currentUrl);
+      if (validation) return { error: validation };
 
-    const finalUrl = response.url || url;
-    const redirectValidation = validateFixtureUrl(finalUrl);
-    if (redirectValidation) return { error: `Redirect target ${redirectValidation}` };
-
-    if (!response.ok) {
-      return { error: `HTTP ${response.status}: ${response.statusText}` };
-    }
-
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html")) {
-      return { error: `Content type is ${contentType}, expected text/html` };
-    }
-
-    const contentLength = parseInt(response.headers.get("content-length") ?? "0", 10);
-    if (contentLength > maxBytes) {
-      return { error: `Response too large: ${contentLength} bytes (max ${maxBytes})` };
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) return { error: "Response body is not readable" };
-
-    const chunks: Uint8Array[] = [];
-    let totalBytes = 0;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.length;
-      if (totalBytes > maxBytes) {
-        reader.cancel();
-        return { error: `Response exceeded ${maxBytes} byte limit` };
+      let response: Response;
+      try {
+        response = await doFetch(currentUrl, {
+          signal: controller.signal,
+          redirect: "manual",
+        });
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return { error: `Request timed out after ${timeoutMs}ms` };
+        }
+        return { error: `Fetch failed: ${err instanceof Error ? err.message : String(err)}` };
       }
-      chunks.push(value);
+
+      const isRedirect = [301, 302, 303, 307, 308].includes(response.status);
+      if (isRedirect) {
+        if (redirects >= MAX_REDIRECTS) {
+          return { error: `Too many redirects (max ${MAX_REDIRECTS})` };
+        }
+        const location = response.headers.get("location");
+        if (!location) return { error: "Redirect missing Location header" };
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+
+      if (!response.ok) {
+        return { error: `HTTP ${response.status}: ${response.statusText}` };
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/html")) {
+        return { error: `Content type is ${contentType}, expected text/html` };
+      }
+
+      const contentLength = parseInt(response.headers.get("content-length") ?? "0", 10);
+      if (contentLength > maxBytes) {
+        return { error: `Response too large: ${contentLength} bytes (max ${maxBytes})` };
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) return { error: "Response body is not readable" };
+
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.length;
+        if (totalBytes > maxBytes) {
+          reader.cancel();
+          return { error: `Response exceeded ${maxBytes} byte limit` };
+        }
+        chunks.push(value);
+      }
+
+      const html = new TextDecoder().decode(concatUint8(chunks));
+      return { html };
     }
 
-    const html = new TextDecoder().decode(concatUint8(chunks));
-    return { html };
+    return { error: `Too many redirects (max ${MAX_REDIRECTS})` };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       return { error: `Request timed out after ${timeoutMs}ms` };
     }
     return { error: `Fetch failed: ${err instanceof Error ? err.message : String(err)}` };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -170,10 +203,11 @@ export function extractTables(html: string): DetectedTable[] {
 export function parseHtmlTableRows(
   table: DetectedTable,
   sourceUrl: string
-): NormalizedFixtureRow[] {
+): HtmlRowsResult {
   const mapping = buildHeaderMapping(table.headers);
   const hasMapping = Object.keys(mapping).length > 0;
   const rows: NormalizedFixtureRow[] = [];
+  const errors: HtmlRowParseError[] = [];
 
   for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
     const cells = table.rows[rowIndex];
@@ -194,6 +228,19 @@ export function parseHtmlTableRows(
       if (cells.length >= 5) fieldValues.venueRaw = cells[4];
     }
 
+    const rowErrors: string[] = [];
+    if (!fieldValues.homeParticipantRaw) {
+      rowErrors.push("Missing home team");
+    }
+    if (!fieldValues.awayParticipantRaw) {
+      rowErrors.push("Missing away team");
+    }
+
+    if (rowErrors.length > 0) {
+      errors.push({ rowIndex, message: rowErrors.join("; ") });
+      continue;
+    }
+
     const normalized: NormalizedFixtureRow = {
       homeParticipantRaw: fieldValues.homeParticipantRaw ?? "",
       awayParticipantRaw: fieldValues.awayParticipantRaw ?? "",
@@ -204,8 +251,6 @@ export function parseHtmlTableRows(
       if (parsed) {
         normalized.kickoffDate = parsed.date;
         if (parsed.time) normalized.kickoffTime = parsed.time;
-      } else {
-        normalized.kickoffDate = fieldValues.kickoffDate;
       }
     }
     if (fieldValues.kickoffTime) {
@@ -233,7 +278,7 @@ export function parseHtmlTableRows(
     rows.push(normalized);
   }
 
-  return rows;
+  return { rows, errors };
 }
 
 export async function createImportBatchFromHtmlUrl(
@@ -273,14 +318,15 @@ export async function createImportBatchFromHtmlUrl(
   });
 
   const allRows: NormalizedFixtureRow[] = [];
+  const allErrors: HtmlRowParseError[] = [];
+
   for (const table of selected) {
-    const tableRows = parseHtmlTableRows(table, url);
-    allRows.push(...tableRows);
+    const { rows, errors } = parseHtmlTableRows(table, url);
+    allRows.push(...rows);
+    allErrors.push(...errors);
   }
 
-  if (allRows.length === 0) {
-    return { batchId: 0, rowCount: 0, errors: ["No rows could be parsed from selected tables"], tables: allTables };
-  }
+  const totalRows = allRows.length + allErrors.length;
 
   const batch = await createBatch(db, {
     sourceId: source.id,
@@ -290,20 +336,31 @@ export async function createImportBatchFromHtmlUrl(
     seasonLabel: options?.seasonLabel,
   });
 
-  await addBatchRows(
-    db,
-    batch.id,
-    allRows.map((row, i) => ({ rowIndex: i, row }))
-  );
+  if (allRows.length > 0) {
+    await addBatchRows(
+      db,
+      batch.id,
+      allRows.map((row, i) => ({ rowIndex: i, row }))
+    );
+  }
 
-  await updateBatchCounts(db, batch.id, {
-    rowCountTotal: allRows.length,
-  });
+  try {
+    await updateBatchCounts(db, batch.id, {
+      rowCountTotal: totalRows,
+      rowCountFailed: allErrors.length,
+      parseErrorsJson: allErrors.length > 0
+        ? JSON.stringify(allErrors)
+        : null,
+    });
+  } catch (err) {
+    await updateBatchStatus(db, batch.id, { parseStatus: "failed" });
+    throw err;
+  }
 
   return {
     batchId: batch.id,
     rowCount: allRows.length,
-    errors: [],
+    errors: allErrors.map((e) => e.message),
     tables: allTables,
   };
 }

@@ -165,7 +165,7 @@ describe("extractTables", () => {
 describe("parseHtmlTableRows", () => {
   it("parses rows into NormalizedFixtureRow array", () => {
     const tables = extractTables(simpleFixtureTable());
-    const rows = parseHtmlTableRows(tables[0], "https://example.com");
+    const { rows } = parseHtmlTableRows(tables[0], "https://example.com");
     expect(rows).toHaveLength(2);
     expect(rows[0].homeParticipantRaw).toBe("Team A");
     expect(rows[0].awayParticipantRaw).toBe("Team B");
@@ -176,7 +176,7 @@ describe("parseHtmlTableRows", () => {
 
   it("includes evidence with source URL and table info", () => {
     const tables = extractTables(simpleFixtureTable());
-    const rows = parseHtmlTableRows(tables[0], "https://example.com/fixtures");
+    const { rows } = parseHtmlTableRows(tables[0], "https://example.com/fixtures");
     const evidence = rows[0].evidence as Record<string, unknown>;
     expect(evidence.source_url).toBe("https://example.com/fixtures");
     expect(evidence.table_index).toBe(0);
@@ -192,22 +192,36 @@ describe("parseHtmlTableRows", () => {
 </table>
 </body></html>`;
     const tables = extractTables(html);
-    const rows = parseHtmlTableRows(tables[0], "https://example.com");
+    const { rows } = parseHtmlTableRows(tables[0], "https://example.com");
     expect(rows).toHaveLength(2);
     expect(rows[0].homeParticipantRaw).toBe("Team A");
     expect(rows[0].awayParticipantRaw).toBe("Team B");
   });
 
+  it("rejects rows missing home team", () => {
+    const html = `<html><body>
+<table>
+  <tr><th>Home</th><th>Away</th></tr>
+  <tr><td></td><td>Team B</td></tr>
+  <tr><td>Team C</td><td>Team D</td></tr>
+</table>
+</body></html>`;
+    const tables = extractTables(html);
+    const { rows, errors } = parseHtmlTableRows(tables[0], "https://example.com");
+    expect(rows).toHaveLength(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain("Missing home team");
+  });
+
   it("produces same NormalizedFixtureRow structure as CSV adapter", () => {
     const tables = extractTables(simpleFixtureTable());
-    const rows = parseHtmlTableRows(tables[0], "https://example.com");
+    const { rows } = parseHtmlTableRows(tables[0], "https://example.com");
     const row = rows[0];
     expect(row.homeParticipantRaw).toBe("Team A");
     expect(row.awayParticipantRaw).toBe("Team B");
     expect(row.kickoffDate).toBe("2026-05-20");
     expect(row.competitionRaw).toBe("Premier League");
     expect(row.evidence).toBeDefined();
-    // Optional fields should be absent/undefined when source has no data
     expect(row.kickoffTime).toBeUndefined();
     expect(row.venueRaw).toBeUndefined();
     expect(row.status).toBeUndefined();
@@ -218,7 +232,14 @@ describe("parseHtmlTableRows", () => {
   });
 });
 
-describe("createImportBatchFromHtmlUrl", () => {
+describe("createImportBatchFromHtmlUrl — fetch safety", () => {
+  function mockRedirect(to: string, status = 302): typeof fetch {
+    return vi.fn().mockResolvedValue(new Response(null, {
+      status,
+      headers: { location: to },
+    }));
+  }
+
   function mockFetchHtml(html: string, contentType?: string): typeof fetch {
     return vi.fn().mockResolvedValue(
       new Response(html, {
@@ -234,14 +255,95 @@ describe("createImportBatchFromHtmlUrl", () => {
     );
   }
 
+  it("blocks redirect to private IP", async () => {
+    const db = createAppDatabase();
+    const fetcher = mockRedirect("http://127.0.0.1/latest");
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://evil.com/redirect", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("private or restricted");
+  });
+
+  it("blocks redirect to localhost", async () => {
+    const db = createAppDatabase();
+    const fetcher = mockRedirect("http://localhost:3000/");
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://evil.com/redirect", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("private or restricted");
+  });
+
+  it("blocks redirect to metadata IP", async () => {
+    const db = createAppDatabase();
+    const fetcher = mockRedirect("http://169.254.169.254/latest/meta-data/");
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://evil.com/redirect", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("private or restricted");
+  });
+
+  it("enforces redirect cap", async () => {
+    const db = createAppDatabase();
+    const fetcher = vi.fn().mockImplementation(() => {
+      return Promise.resolve(new Response(null, {
+        status: 302,
+        headers: { location: "https://example.com/next" },
+      }));
+    });
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://example.com/start", "test-admin", { fetcher }
+    );
+    expect(result.errors[0]).toContain("Too many redirects");
+  });
+
+  it("returns error on fetch failure", async () => {
+    const db = createAppDatabase();
+    const fetcher = mockFetchError(500, "Internal Server Error");
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://example.com/fixtures", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("500");
+  });
+
+  it("returns error for non-HTML content", async () => {
+    const db = createAppDatabase();
+    const fetcher = mockFetchHtml("{}", "application/json");
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://example.com/data", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("text/html");
+  });
+
+  it("returns error for blocked URL", async () => {
+    const db = createAppDatabase();
+    const result = await createImportBatchFromHtmlUrl(
+      db, "http://localhost:3000/fixtures", "test-admin"
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("private or restricted");
+  });
+});
+
+describe("createImportBatchFromHtmlUrl — batch creation", () => {
+  function mockFetchHtml(html: string): typeof fetch {
+    return vi.fn().mockResolvedValue(
+      new Response(html, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      })
+    );
+  }
+
   it("creates a batch from a fetched HTML page", async () => {
     const db = createAppDatabase();
     const fetcher = mockFetchHtml(simpleFixtureTable());
     const result = await createImportBatchFromHtmlUrl(
-      db,
-      "https://example.com/fixtures",
-      "test-admin",
-      { fetcher }
+      db, "https://example.com/fixtures", "test-admin", { fetcher }
     );
 
     expect(result.batchId).toBeGreaterThan(0);
@@ -255,62 +357,20 @@ describe("createImportBatchFromHtmlUrl", () => {
     const rows = await getBatchRows(db, result.batchId);
     expect(rows).toHaveLength(2);
     expect(rows[0].homeParticipantRaw).toBe("Team A");
-    expect(rows[0].competitiveRaw).toBeUndefined();
+    expect(rows[0].competitionRaw).toBe("Premier League");
   });
 
   it("selects only specified table indices", async () => {
     const db = createAppDatabase();
     const fetcher = mockFetchHtml(multiTableHtml());
     const result = await createImportBatchFromHtmlUrl(
-      db,
-      "https://example.com/fixtures",
-      "test-admin",
+      db, "https://example.com/fixtures", "test-admin",
       { fetcher, selectedTableIndices: [1] }
     );
 
     expect(result.rowCount).toBe(1);
     const rows = await getBatchRows(db, result.batchId);
     expect(rows[0].homeParticipantRaw).toBe("Team C");
-  });
-
-  it("returns error on fetch failure", async () => {
-    const db = createAppDatabase();
-    const fetcher = mockFetchError(500, "Internal Server Error");
-    const result = await createImportBatchFromHtmlUrl(
-      db,
-      "https://example.com/fixtures",
-      "test-admin",
-      { fetcher }
-    );
-
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain("500");
-  });
-
-  it("returns error for non-HTML content", async () => {
-    const db = createAppDatabase();
-    const fetcher = mockFetchHtml("{}", "application/json");
-    const result = await createImportBatchFromHtmlUrl(
-      db,
-      "https://example.com/data",
-      "test-admin",
-      { fetcher }
-    );
-
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain("text/html");
-  });
-
-  it("returns error for blocked URL", async () => {
-    const db = createAppDatabase();
-    const result = await createImportBatchFromHtmlUrl(
-      db,
-      "http://localhost:3000/fixtures",
-      "test-admin"
-    );
-
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain("private or restricted");
   });
 
   it("creates and reuses a fixture source by origin", async () => {
@@ -337,7 +397,6 @@ describe("createImportBatchFromHtmlUrl", () => {
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com/fixtures", "test-admin", { fetcher }
     );
-
     expect(result.tables).toHaveLength(2);
     expect(result.tables[0].rowCount).toBeGreaterThan(0);
   });
@@ -349,8 +408,32 @@ describe("createImportBatchFromHtmlUrl", () => {
       db, "https://example.com/fixtures", "test-admin",
       { fetcher, seasonLabel: "2025-26" }
     );
-
     const batch = await getBatch(db, result.batchId);
     expect(batch!.seasonLabel).toBe("2025-26");
+  });
+
+  it("persists parse_errors_json for rows missing home/away", async () => {
+    const db = createAppDatabase();
+    const html = `<html><body>
+<table>
+  <tr><th>Home</th><th>Away</th></tr>
+  <tr><td></td><td>Team B</td></tr>
+  <tr><td>Team C</td><td>Team D</td></tr>
+</table>
+</body></html>`;
+    const fetcher = mockFetchHtml(html);
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://example.com/fixtures", "test-admin", { fetcher }
+    );
+
+    expect(result.rowCount).toBe(1);
+    expect(result.errors).toHaveLength(1);
+
+    const batch = await getBatch(db, result.batchId);
+    expect(batch!.rowCountTotal).toBe(2);
+    expect(batch!.rowCountFailed).toBe(1);
+    const parseErrors = JSON.parse(batch!.parseErrorsJson ?? "[]");
+    expect(parseErrors).toHaveLength(1);
+    expect(parseErrors[0].message).toContain("Missing home team");
   });
 });
