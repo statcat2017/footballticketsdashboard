@@ -215,24 +215,45 @@ export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetai
   const db = await getDatabase();
   const seasonId = await getLatestSeasonId(db);
 
-  const clubRow = await db.get<ClubDetailRow>(
+  // Try pyramid_clubs first (includes season data), fall back to clubs (public only)
+  let clubRow = await db.get<ClubDetailRow>(
     `SELECT
-      pc.id, pc.name, pc.aliases, pc.status, pc.source_url, pc.verified_at,
+      pc.id, pc.name, COALESCE(c.aliases, pc.aliases) AS aliases,
+      pc.status, pc.source_url,
+      COALESCE(c.verified_at, pc.verified_at) AS verified_at,
       d.id AS division_id, d.name AS division_name, d.level AS division_level,
       ps.season_label,
-      v.id AS venue_id, v.name AS venue_name, v.postcode AS venue_postcode,
+      COALESCE(c.venue_id, cva.venue_id) AS venue_id,
+      v.name AS venue_name, v.postcode AS venue_postcode,
       v.latitude, v.longitude, v.is_approximate
     FROM pyramid_clubs pc
-    JOIN pyramid_season_memberships psm ON psm.club_id = pc.id
-    JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id AND psm.season_id = psd.season_id
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    JOIN pyramid_seasons ps ON ps.id = psm.season_id
+    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = pc.id AND psm.season_id = ?
+    LEFT JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id AND psm.season_id = psd.season_id
+    LEFT JOIN pyramid_divisions d ON d.id = psd.division_id
+    LEFT JOIN pyramid_seasons ps ON ps.id = psm.season_id
+    LEFT JOIN clubs c ON c.name = pc.name
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = pc.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-    LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE pc.id = ? AND psm.season_id = ?`,
-    [clubId, seasonId]
+    LEFT JOIN venues v ON v.id = COALESCE(c.venue_id, cva.venue_id)
+    WHERE pc.id = ?`,
+    [seasonId, clubId]
   );
+
+  // If not found in pyramid_clubs, try clubs table directly
+  if (!clubRow) {
+    clubRow = await db.get<ClubDetailRow>(
+      `SELECT
+        c.id, c.name, c.aliases, 'partial' AS status, NULL AS source_url, c.verified_at,
+        NULL AS division_id, NULL AS division_name, NULL AS division_level,
+        NULL AS season_label,
+        v.id AS venue_id, v.name AS venue_name, v.postcode AS venue_postcode,
+        v.latitude, v.longitude, v.is_approximate
+      FROM clubs c
+      LEFT JOIN venues v ON v.id = c.venue_id
+      WHERE c.id = ?`,
+      [clubId]
+    );
+  }
 
   if (!clubRow) {
     return null;
@@ -281,11 +302,16 @@ export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetai
       source_url: clubRow.source_url,
       verified_at: clubRow.verified_at
     },
-    season: {
+    season: clubRow.season_label ? {
       label: clubRow.season_label,
-      division_id: clubRow.division_id,
-      division_name: clubRow.division_name,
-      division_level: clubRow.division_level
+      division_id: clubRow.division_id!,
+      division_name: clubRow.division_name!,
+      division_level: clubRow.division_level!
+    } : {
+      label: "Unassigned",
+      division_id: 0,
+      division_name: "No division",
+      division_level: 0
     },
     primaryVenue: clubRow.venue_id
       ? {

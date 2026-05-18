@@ -96,7 +96,7 @@ describe("admin club browser", () => {
     expect(first!.clubs[0].club_name).toBe("Rovers FC");
   });
 
-  it("returns null for club not in latest season", async () => {
+  it("returns club with unassigned season for club not in latest season", async () => {
     const db = createMinimalDb();
 
     db.exec(`
@@ -109,7 +109,10 @@ describe("admin club browser", () => {
 
     const detail = await getAdminClubDetail(200);
 
-    expect(detail).toBeNull();
+    expect(detail).not.toBeNull();
+    expect(detail!.club.name).toBe("Old Club");
+    expect(detail!.season.label).toBe("Unassigned");
+    expect(detail!.season.division_name).toBe("No division");
   });
 
   it("returns club detail for latest season membership", async () => {
