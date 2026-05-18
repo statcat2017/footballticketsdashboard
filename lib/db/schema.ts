@@ -6,8 +6,12 @@ CREATE TABLE IF NOT EXISTS competitions (
   id INTEGER PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 10),
-  kind TEXT NOT NULL DEFAULT 'league' CHECK (kind IN ('league', 'cup', 'friendly'))
+  tier INTEGER CHECK (tier BETWEEN 1 AND 10),
+  kind TEXT NOT NULL DEFAULT 'league' CHECK (kind IN ('league', 'cup', 'friendly')),
+  CHECK (
+    (kind = 'league' AND tier IS NOT NULL) OR
+    (kind IN ('cup', 'friendly') AND tier IS NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS fixture_seasons (
@@ -134,7 +138,7 @@ CREATE TABLE IF NOT EXISTS clubs (
   football_data_team_id INTEGER UNIQUE,
   aliases TEXT,
   short_name TEXT,
-  competition_code TEXT NOT NULL REFERENCES competitions(code),
+  competition_code TEXT REFERENCES competitions(code),
   venue_id INTEGER NOT NULL REFERENCES venues(id),
   official_site_url TEXT,
   generic_ticket_url TEXT,

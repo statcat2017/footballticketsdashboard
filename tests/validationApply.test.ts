@@ -624,7 +624,7 @@ describe("applyBatchRows", () => {
 describe("validateImportBatch — friendly competition", () => {
   it("allows unknown away team as one-off for friendly competitions", async () => {
     const db = setupTestDb();
-    db.exec(`INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', 10, 'friendly');`);
+    db.exec(`INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', NULL, 'friendly');`);
 
     const sourceId = await createTestSource(db);
     const batchId = await createTestBatch(db, sourceId, [
