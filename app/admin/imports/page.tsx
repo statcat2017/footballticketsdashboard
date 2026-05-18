@@ -5,8 +5,13 @@ import { getDatabase } from "@/lib/db/client";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminImportsPage() {
+export default async function AdminImportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | undefined }>;
+}) {
   await requireAdminPageSession();
+  const sp = await searchParams;
 
   const db = await getDatabase();
   const batches = await getRecentBatches(db);
@@ -46,6 +51,16 @@ export default async function AdminImportsPage() {
           </Link>
         </div>
       </header>
+
+      {sp.deleted && (
+        <div style={{
+          border: "1px solid #b8d9cf", borderRadius: "8px",
+          background: "#e8f4f1", padding: "0.75rem 1rem",
+          marginBottom: "1rem", color: "#0e5737", fontSize: "14px", fontWeight: 600
+        }}>
+          Import batch deleted.
+        </div>
+      )}
 
       {batches.length === 0 ? (
         <div style={{

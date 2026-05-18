@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { getDatabase } from "@/lib/db/client";
 import { getBatchDetail } from "@/lib/admin/imports";
+import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 
 export async function GET(
   _request: Request,
@@ -108,6 +109,47 @@ export async function POST(
   const batchId = parseInt(id, 10);
   if (isNaN(batchId)) {
     return NextResponse.json({ error: "Invalid batch ID." }, { status: 400 });
+  }
+
+  const action = form.get("_action");
+
+  if (action === "delete") {
+    const confirm = form.get("confirm");
+    if (confirm !== "1") {
+      return NextResponse.redirect(
+        new URL(`/admin/imports/${batchId}?error=Please confirm the delete action.`, request.url),
+        { status: 303 }
+      );
+    }
+
+    const db = await getDatabase();
+    const { deleteBatch, getBatch } = await import("@/lib/import");
+
+    try {
+      const batch = await getBatch(db, batchId);
+      await deleteBatch(db, batchId);
+      await db.writeBatch([
+        buildAdminAuditLogWrite({
+          action: "delete",
+          entityType: "import_batch",
+          entityId: batchId,
+          actor: session.actor ?? "admin",
+          before: batch
+            ? { sourceId: batch.sourceId, rowCountTotal: batch.rowCountTotal, approvalStatus: batch.approvalStatus }
+            : undefined,
+        }),
+      ]);
+      return NextResponse.redirect(
+        new URL("/admin/imports?deleted=1", request.url),
+        { status: 303 }
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return NextResponse.redirect(
+        new URL(`/admin/imports/${batchId}?error=${encodeURIComponent(message)}`, request.url),
+        { status: 303 }
+      );
+    }
   }
 
   const confirm = form.get("confirm");
