@@ -1,6 +1,6 @@
 # TICKET-041: Admin Data Quality Dashboard V1
 
-Status: open
+Status: done
 Owner: Admin / Backend
 Priority: high
 Depends on: TICKET-037, TICKET-038, TICKET-039, TICKET-040

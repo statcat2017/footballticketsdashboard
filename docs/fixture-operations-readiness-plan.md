@@ -243,68 +243,69 @@ The following dependencies must be implemented before the site can operate real 
 
 | Dependency | Why It Is Needed | Ticket |
 | --- | --- | --- |
-| Fixture source registry | Required for trusted API and agent auto-approval rules | TICKET-036 |
-| Import batch storage | Required for audit, replay, preview, scrape failures, and row outcomes | TICKET-036 |
-| Public mapping layer | Existing fixtures reference `clubs`, while admin data uses `pyramid_clubs` | TICKET-037 |
-| Bulk publish/link flow | All populated divisions need public `clubs` and `competitions` before imports can resolve | TICKET-037 |
-| Fixture seasons | Duplicate/update identity depends on season | TICKET-038 |
-| Fixture participant model | One-off fixture teams need displayable participants without creating permanent clubs | TICKET-038 |
-| Fixture date/time provenance | Assumed kickoff times must be stored and displayed honestly | TICKET-038 |
-| Broader confidence model | Fixtures, prices, venues, and import rows need shared provenance language | TICKET-038 |
-| Structured scoped aliases | API/scrape names need deterministic matching without global nickname collisions | TICKET-039 |
-| Venue precision and geocoding completion | Public search needs usable coordinates and admin cleanup tools | TICKET-040 |
-| Live data-quality dashboard | Admins need a daily view of broken or caveated data | TICKET-041 |
-| Source-agnostic adapters | API, agent scrape, table scrape, upload, and paste must normalize into one pipeline | TICKET-042 |
-| Validation and auto-approval gates | Trusted sources need automation without silently publishing structurally broken rows | TICKET-043 |
-| Import review queue | Exceptions and scrape failures need a persistent operational surface | TICKET-044 |
-| Fixture admin CRUD and preview | Admins need to correct, verify, and preview public display | TICKET-045 |
-| Public display updates | Users need warnings, radius filtering, status labels, and no demo fallback | TICKET-046 |
-| General corrections flow | Users need to report more than price issues | TICKET-047 |
-| Travel cache visibility | Admins need to see where travel value is missing or stale | TICKET-048 |
-| Screenshot review harness | Launch readiness review needs repeatable rendered-page evidence | TICKET-049 |
-| Public pyramid polish | Existing pyramid explorer should support launch trust without blocking imports | TICKET-050 |
+| Fixture source registry (schema) | Required for trusted API and agent auto-approval rules | TICKET-036 (schema done) |
+| Import batch storage (schema) | Required for audit, replay, preview, scrape failures, and row outcomes | TICKET-036 (schema done) |
+| Public mapping layer | Existing fixtures reference `clubs`, while admin data uses `pyramid_clubs` | TICKET-037 (done) |
+| Bulk publish/link flow | All populated divisions need public `clubs` and `competitions` before imports can resolve | TICKET-037 (done) |
+| Fixture seasons | Duplicate/update identity depends on season | TICKET-038 (schema done) |
+| Fixture participant model | One-off fixture teams need displayable participants without creating permanent clubs | TICKET-038 (schema done) |
+| Fixture date/time provenance | Assumed kickoff times must be stored and displayed honestly | TICKET-038 (schema done) |
+| Broader confidence model | Fixtures, prices, venues, and import rows need shared provenance language | TICKET-038 (schema done) |
+| Structured scoped aliases | API/scrape names need deterministic matching without global nickname collisions | TICKET-039 (done) |
+| Venue precision and geocoding completion | Public search needs usable coordinates and admin cleanup tools | TICKET-040 (done) |
+| Live data-quality dashboard | Admins need a daily view of broken or caveated data | TICKET-041 (done) |
+| Import foundation service | Typed helpers for sources, batches, batch rows | TICKET-059 |
+| CSV paste adapter | CSV text → normalized import batch | TICKET-060 |
+| HTML URL adapter (multi-table) | Static HTML table → normalized import batch | TICKET-061 |
+| Validation, matching & manual apply | Row-level validation, club/venue/competition resolution, assumed-time logic | TICKET-062 |
+| Import admin UI | New-import page (paste CSV or URL), batch preview, apply action | TICKET-063 |
+| Public display updates | Users need warnings, radius filtering, status labels, and no demo fallback | TICKET-046 (deferred) |
+| General corrections flow | Users need to report more than price issues | TICKET-047 (deferred) |
+| Travel cache visibility | Admins need to see where travel value is missing or stale | TICKET-048 (deferred) |
 
 ## Milestones
 
-### Milestone 1: Data Model And Admin Foundations
+### Milestone 1: Data Model And Admin Foundations (Complete)
 
 Purpose: make the database and admin model capable of safe imports across all populated divisions.
 
 Tickets:
 
-- TICKET-036: Fixture Source Registry And Import Batch Model
-- TICKET-037: Public Club And Competition Mapping Publish Layer
-- TICKET-038: Fixture Season, Time, Provenance, And Confidence Schema
-- TICKET-039: Structured Scoped Club Alias Management
-- TICKET-040: Venue Geocoding, Coordinate Precision, And Travel Invalidation
-- TICKET-041: Admin Data Quality Dashboard V1
+- TICKET-036: Fixture Source Registry And Import Batch Model — schema complete (migration 012)
+- TICKET-037: Public Club And Competition Mapping Publish Layer — done
+- TICKET-038: Fixture Season, Time, Provenance, And Confidence Schema — schema complete (migrations 009, 010)
+- TICKET-039: Structured Scoped Club Alias Management — done
+- TICKET-040: Venue Geocoding, Coordinate Precision, And Travel Invalidation — done
+- TICKET-041: Admin Data Quality Dashboard V1 — done and enhanced at Sprint 1 close-out
 
-Exit criteria:
+Exit criteria — all met:
 
 - All populated divisions can be mapped or clearly identified as unmapped.
 - Public clubs and competitions can be created or linked without fixture import side effects.
 - Admins can fix venue coordinates and see coordinate precision.
 - Data-quality checks expose blockers and warnings before real imports run.
 
-### Milestone 2: Fixture Ingestion Pipeline
+### Milestone 2: Fixture Ingestion Pipeline (Sprint 2)
 
-Purpose: ingest fixtures from APIs, agentic scrapes, table scrapes, upload, and paste through the same preview/approval path.
+Purpose: implement CSV paste and static HTML table URL import so admins can preview, validate, and manually apply fixtures.
 
 Tickets:
 
-- TICKET-042: Source-Agnostic Fixture Ingestion Adapters
-- TICKET-043: Fixture Import Validation, Matching, And Auto-Approval Gates
-- TICKET-044: Import Review Queue
-- TICKET-045: Fixture Admin CRUD And Public Card Preview
+- TICKET-059: Fixture Import Foundation Service
+- TICKET-060: CSV Paste Import Adapter
+- TICKET-061: Static HTML Table URL Import Adapter
+- TICKET-062: Fixture Import Validation, Matching & Manual Apply
+- TICKET-063: Admin Import UI
 
 Exit criteria:
 
-- A trusted API source can auto-approve structurally safe rows.
-- A trusted agent source can auto-approve rows with sufficient evidence and passing validation.
-- Unsafe rows are blocked from auto-approval and routed to preview or import review.
+- Admin can paste CSV fixture rows → create import batch → preview grouped outcomes → apply safe rows.
+- Admin can enter a static HTML URL → detect tables → select one or more → create batch → preview → apply.
+- Club/competition/venue matching works correctly. Unmatched rows are blocked with clear reasons.
 - Fixture moves update existing fixtures by home, away, competition, and season.
 - Fixture identity supports mapped clubs and explicit one-off team participants without creating permanent clubs.
 - Blank import fields never erase existing data.
+- Multi-statement fixture writes use `writeBatch()`. No `db.transaction()` in production paths.
 
 ### Milestone 3: Public Readiness And Operational Visibility
 

@@ -1,6 +1,6 @@
 # TICKET-040: Venue Geocoding, Coordinate Precision, And Travel Invalidation
 
-Status: open
+Status: done
 Owner: Admin / Backend
 Priority: high
 Depends on: TICKET-037

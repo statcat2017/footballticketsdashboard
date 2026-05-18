@@ -1,6 +1,6 @@
 # TICKET-039: Structured Scoped Club Alias Management
 
-Status: open
+Status: done
 Owner: Backend / Admin
 Priority: high
 Depends on: TICKET-037
