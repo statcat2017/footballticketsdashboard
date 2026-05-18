@@ -1,5 +1,5 @@
 import { getDatabase } from "@/lib/db/client";
-import { writeAdminAuditLog } from "@/lib/admin/audit";
+import { writeAdminAuditLog, buildAdminAuditLogWrite } from "@/lib/admin/audit";
 import { distanceMiles } from "@/lib/distance";
 import type { SqlWrite } from "@/lib/db/adapter";
 
@@ -196,13 +196,12 @@ export async function updateAdminVenue(
       )
     : 0;
 
-  return db.writeBatch(buildUpdateStatements(venueId, input, current, now, coordsChanged, distanceMoved)).then((results) => {
-    let invalidatedTravelCount = 0;
-    if (coordsChanged && distanceMoved > 1) {
-      invalidatedTravelCount = results[0].changes;
-    }
-    return { invalidatedTravelCount };
-  });
+  const results = await db.writeBatch(buildUpdateStatements(venueId, input, current, now, coordsChanged, distanceMoved));
+  let invalidatedTravelCount = 0;
+  if (coordsChanged && distanceMoved > 1) {
+    invalidatedTravelCount = results[0].changes;
+  }
+  return { invalidatedTravelCount };
 }
 
 function buildUpdateStatements(
@@ -242,31 +241,27 @@ function buildUpdateStatements(
     ]
   });
 
-  statements.push({
-    sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-    params: [
-      "admin",
-      "update",
-      "venue",
-      String(venueId),
-      JSON.stringify({
-        name: current.name, postcode: current.postcode,
-        latitude: current.latitude, longitude: current.longitude,
-        is_approximate: current.is_approximate,
-        coordinate_precision: current.coordinate_precision,
-        coordinates_confidence: current.coordinates_confidence,
-        coordinates_notes: current.coordinates_notes
-      }),
-      JSON.stringify({
-        name: updatedName, postcode: updatedPostcode,
-        latitude: updatedLatitude, longitude: updatedLongitude,
-        is_approximate: updatedIsApproximate,
-        coordinate_precision: updatedCoordinatePrecision,
-        coordinates_confidence: updatedCoordinatesConfidence,
-        coordinates_notes: updatedCoordinatesNotes
-      })
-    ]
-  });
+  statements.push(buildAdminAuditLogWrite({
+    action: "update",
+    entityType: "venue",
+    entityId: venueId,
+    before: {
+      name: current.name, postcode: current.postcode,
+      latitude: current.latitude, longitude: current.longitude,
+      is_approximate: current.is_approximate,
+      coordinate_precision: current.coordinate_precision,
+      coordinates_confidence: current.coordinates_confidence,
+      coordinates_notes: current.coordinates_notes
+    },
+    after: {
+      name: updatedName, postcode: updatedPostcode,
+      latitude: updatedLatitude, longitude: updatedLongitude,
+      is_approximate: updatedIsApproximate,
+      coordinate_precision: updatedCoordinatePrecision,
+      coordinates_confidence: updatedCoordinatesConfidence,
+      coordinates_notes: updatedCoordinatesNotes
+    }
+  }));
 
   return statements;
 }

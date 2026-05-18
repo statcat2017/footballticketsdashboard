@@ -3,8 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getLatestSeasonId } from "@/lib/admin/clubs";
-
-const ADMIN_ACTOR = "admin";
+import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -139,10 +138,12 @@ export async function POST(request: Request) {
           sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
           params: [pyramidClubId, existingClub.id]
         },
-        {
-          sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-          params: [ADMIN_ACTOR, "publish", "club_mapping", String(existingClub.id), null, JSON.stringify(after)]
-        }
+        buildAdminAuditLogWrite({
+          action: "publish",
+          entityType: "club_mapping",
+          entityId: existingClub.id,
+          after
+        })
       ]);
 
       return redirectWith({ success: `Club "${pyramidClub.name}" mapped to existing public club.` });
@@ -171,10 +172,12 @@ export async function POST(request: Request) {
         sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
         params: [pyramidClubId, newClubId]
       },
-      {
-        sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-        params: [ADMIN_ACTOR, "publish", "club", String(newClubId), null, JSON.stringify(after)]
-      }
+      buildAdminAuditLogWrite({
+        action: "publish",
+        entityType: "club",
+        entityId: newClubId,
+        after
+      })
     ]);
 
     return redirectWith({ success: `Club "${pyramidClub.name}" published.` });
