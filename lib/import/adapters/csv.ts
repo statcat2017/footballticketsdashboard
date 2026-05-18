@@ -177,6 +177,10 @@ export async function createImportBatchFromCsv(
         ? JSON.stringify(result.errors)
         : null,
     });
+    await updateBatchStatus(db, batch.id, {
+      parseStatus: "parsed",
+      approvalStatus: "preview",
+    });
   } catch (err) {
     await updateBatchStatus(db, batch.id, { parseStatus: "failed" });
     throw err;

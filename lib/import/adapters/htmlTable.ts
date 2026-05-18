@@ -79,6 +79,10 @@ export async function fetchPage(
       const validation = validateFixtureUrl(currentUrl);
       if (validation) return { error: validation };
 
+      const parsedUrl = new URL(currentUrl);
+      const dnsError = await checkPrivateDNS(parsedUrl.hostname);
+      if (dnsError) return { error: dnsError };
+
       let response: Response;
       try {
         response = await doFetch(currentUrl, {
@@ -352,6 +356,10 @@ export async function createImportBatchFromHtmlUrl(
         ? JSON.stringify(allErrors)
         : null,
     });
+    await updateBatchStatus(db, batch.id, {
+      parseStatus: "parsed",
+      approvalStatus: "preview",
+    });
   } catch (err) {
     await updateBatchStatus(db, batch.id, { parseStatus: "failed" });
     throw err;
@@ -523,4 +531,32 @@ function buildHeaderMapping(headers: string[]): Record<number, string> {
     if (field) mapping[i] = field;
   }
   return mapping;
+}
+
+async function checkPrivateDNS(hostname: string): Promise<string | null> {
+  try {
+    const dnsModule = await import("node:dns");
+    const addresses = await dnsModule.promises.resolve4(hostname);
+    for (const ip of addresses) {
+      if (isPrivateIPv4(ip)) return `Host ${hostname} resolves to private IP: ${ip}`;
+    }
+  } catch {
+    // DNS resolution not available (e.g. Workers without nodejs_compat)
+    // or lookup failed — rely on regex-based URL validation as fallback
+  }
+  return null;
+}
+
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4) return false;
+  if (parts.some((p) => isNaN(p) || p < 0 || p > 255)) return false;
+  const [a, b] = parts;
+  if (a === 0) return true;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
 }

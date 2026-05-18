@@ -320,6 +320,8 @@ describe("createImportBatchFromCsv", () => {
     const batch = await getBatch(db, result.batchId);
     expect(batch).toBeDefined();
     expect(batch!.rowCountTotal).toBe(2);
+    expect(batch!.parseStatus).toBe("parsed");
+    expect(batch!.approvalStatus).toBe("preview");
     expect(batch!.adapterType).toBe("csv_paste");
     expect(batch!.rawPayload).toBe(csv);
 

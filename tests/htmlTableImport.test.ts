@@ -10,6 +10,15 @@ import {
   getBatch,
 } from "@/lib/import";
 
+vi.mock("node:dns", () => ({
+  promises: {
+    resolve4: vi.fn(),
+    resolve6: vi.fn().mockRejectedValue(new Error("no v6")),
+  },
+}));
+
+import { promises as dnsPromises } from "node:dns";
+
 function simpleFixtureTable(caption?: string): string {
   const cap = caption ? `  <caption>${caption}</caption>\n` : "";
   return `<html><body>
@@ -327,6 +336,30 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toContain("private or restricted");
   });
+
+  it("blocks hostname that resolves to a private IP", async () => {
+    (dnsPromises.resolve4 as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["10.0.0.1"]);
+
+    const db = createAppDatabase();
+    const fetcher = mockFetchHtml("<html></html>");
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://internal-resolver.example.com", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("private IP");
+  });
+
+  it("allows hostname that resolves to a public IP", async () => {
+    (dnsPromises.resolve4 as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["93.184.216.34"]);
+
+    const db = createAppDatabase();
+    const fetcher = mockFetchHtml(simpleFixtureTable());
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://example.com", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(0);
+    expect(result.rowCount).toBe(2);
+  });
 });
 
 describe("createImportBatchFromHtmlUrl — batch creation", () => {
@@ -353,6 +386,8 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
     const batch = await getBatch(db, result.batchId);
     expect(batch).toBeDefined();
     expect(batch!.rowCountTotal).toBe(2);
+    expect(batch!.parseStatus).toBe("parsed");
+    expect(batch!.approvalStatus).toBe("preview");
 
     const rows = await getBatchRows(db, result.batchId);
     expect(rows).toHaveLength(2);
