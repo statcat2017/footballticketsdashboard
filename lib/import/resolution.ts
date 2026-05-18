@@ -173,14 +173,20 @@ export async function importSingleRow(
         after: { import_batch_row_id: rowId, batch_id: row.batchId },
       }));
     } else {
-      // Stale update row — treat as blocked
+      // Stale update — mark blocked but keep final_action NULL so it stays recoverable
+      const warningsJson = JSON.stringify({
+        issues: [{
+          code: "venue_not_found" as const,
+          severity: "blocker" as const,
+          message: "Target fixture not found at apply time. The fixture may have been deleted.",
+          issueKey: "stale_update",
+        }],
+        messages: ["Target fixture not found at apply time. The fixture may have been deleted."],
+      });
       await db.writeBatch([
         {
-          sql: `UPDATE import_batch_rows SET match_result = 'blocked', final_action = 'blocked', warnings_json = ? WHERE id = ?`,
-          params: [
-            JSON.stringify({ issues: [], messages: ["Target fixture not found at apply time."] }),
-            rowId,
-          ],
+          sql: `UPDATE import_batch_rows SET match_result = 'blocked', final_action = NULL, warnings_json = ? WHERE id = ?`,
+          params: [warningsJson, rowId],
         },
       ]);
       const updated = await getBatchRow(db, rowId);

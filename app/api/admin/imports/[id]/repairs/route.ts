@@ -392,19 +392,38 @@ async function handleAcknowledgeMissingTicketInfo(
     return redirectTo(request, batchId, { error: "Issue key is required." });
   }
 
-  const rowId = rowIdStr ? parseInt(rowIdStr, 10) : undefined;
+  const rowIdParsed = rowIdStr ? parseInt(rowIdStr, 10) : undefined;
+  const finalRowId = rowIdParsed && !isNaN(rowIdParsed) ? rowIdParsed : undefined;
+
+  if (finalRowId) {
+    const rowCheck = await getRowOrError(db, finalRowId, batchId);
+    if (!rowCheck) {
+      return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+    }
+  }
 
   await acknowledgeBatchIssue(db, batchId, issueKey, actor, {
-    rowId: rowId && !isNaN(rowId) ? rowId : undefined,
+    rowId: finalRowId,
     note: note ?? undefined,
     issueCode: "missing_ticket_info",
   });
 
-  const anchor = rowId && !isNaN(rowId) ? `fixture-${rowId}` : undefined;
+  const anchor = finalRowId ? `fixture-${finalRowId}` : undefined;
   return redirectTo(request, batchId, {
     success: "Ticket info acknowledged for this batch.",
     ...(anchor ? { anchor } : {}),
   });
+}
+
+async function getRowOrError(
+  db: import("@/lib/db/adapter").AppDatabase,
+  rowId: number,
+  batchId: number,
+): Promise<import("@/lib/import/types").ImportBatchRow | null> {
+  const row = await import("@/lib/import/importBatch").then((m) => m.getBatchRow(db, rowId));
+  if (!row) return null;
+  if (row.batchId !== batchId) return null;
+  return row;
 }
 
 async function handleEditRow(
@@ -422,6 +441,11 @@ async function handleEditRow(
   const rowId = parseInt(rowIdStr, 10);
   if (isNaN(rowId)) {
     return redirectTo(request, batchId, { error: "Invalid row ID." });
+  }
+
+  const row = await getRowOrError(db, rowId, batchId);
+  if (!row) {
+    return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
   }
 
   const edits: Record<string, string | null | undefined> = {};
@@ -459,6 +483,11 @@ async function handleImportRow(
   const rowId = parseInt(rowIdStr, 10);
   if (isNaN(rowId)) {
     return redirectTo(request, batchId, { error: "Invalid row ID." });
+  }
+
+  const row = await getRowOrError(db, rowId, batchId);
+  if (!row) {
+    return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
   }
 
   const result = await importSingleRow(db, rowId, actor);
@@ -499,6 +528,11 @@ async function handleSkipRow(
   const rowId = parseInt(rowIdStr, 10);
   if (isNaN(rowId)) {
     return redirectTo(request, batchId, { error: "Invalid row ID." });
+  }
+
+  const row = await getRowOrError(db, rowId, batchId);
+  if (!row) {
+    return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
   }
 
   if (reason === "other" && !note) {

@@ -68,6 +68,23 @@ export default async function AdminImportDetailPage({
   const clubs = await db.all<{ id: number; name: string }>(`SELECT id, name FROM clubs ORDER BY name`);
   const venues = await db.all<{ id: number; name: string; postcode: string }>(`SELECT id, name, postcode FROM venues ORDER BY name`);
 
+  // Fetch acknowledged issue keys so ticket acknowledgement has visible effect
+  const resolutions = await db.all<{ issue_key: string; row_id: number | null }>(
+    `SELECT issue_key, row_id FROM import_batch_issue_resolutions WHERE batch_id = ?`,
+    [batchId]
+  );
+  const acknowledgedKeys = new Set<string>();
+  const acknowledgedRowKeys = new Map<number, Set<string>>();
+  for (const r of resolutions) {
+    if (r.row_id) {
+      const rowSet = acknowledgedRowKeys.get(r.row_id) ?? new Set();
+      rowSet.add(r.issue_key);
+      acknowledgedRowKeys.set(r.row_id, rowSet);
+    } else {
+      acknowledgedKeys.add(r.issue_key);
+    }
+  }
+
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
       <header style={{
@@ -127,6 +144,8 @@ export default async function AdminImportDetailPage({
               mode="blocked"
               clubs={clubs}
               venues={venues}
+              acknowledgedKeys={acknowledgedKeys}
+              acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
           ))}
         </section>
@@ -150,6 +169,8 @@ export default async function AdminImportDetailPage({
                   mode="ready"
                   clubs={clubs}
                   venues={venues}
+                  acknowledgedKeys={acknowledgedKeys}
+                  acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
                 />
               ))}
             </>
@@ -164,6 +185,8 @@ export default async function AdminImportDetailPage({
               mode="ready"
               clubs={clubs}
               venues={venues}
+              acknowledgedKeys={acknowledgedKeys}
+              acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
           ))}
 
@@ -190,6 +213,8 @@ export default async function AdminImportDetailPage({
               mode="pending"
               clubs={clubs}
               venues={venues}
+              acknowledgedKeys={acknowledgedKeys}
+              acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
           ))}
         </section>
@@ -287,21 +312,35 @@ function SummaryBadge({ count, label, bg, fg }: { count: number; label: string; 
   );
 }
 
-function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues }: {
+function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledgedKeys, acknowledgedRowKeys }: {
   row: ImportBatchRow;
   csrfToken: string;
   batchId: number;
   mode: "blocked" | "ready" | "pending";
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
+  acknowledgedKeys: Set<string>;
+  acknowledgedRowKeys: Set<string>;
 }) {
   const warnings = parseWarnings(row.warningsJson);
   const blockers = warnings.filter((w) => w.severity === "blocker");
   const nonBlockers = warnings.filter((w) => w.severity === "warning");
 
+  // Filter out acknowledged issues
+  const filteredBlockers = blockers.filter((w) => {
+    if (acknowledgedKeys.has(w.issueKey)) return false;
+    if (acknowledgedRowKeys.has(w.issueKey)) return false;
+    return true;
+  });
+  const filteredNonBlockers = nonBlockers.filter((w) => {
+    if (acknowledgedKeys.has(w.issueKey)) return false;
+    if (acknowledgedRowKeys.has(w.issueKey)) return false;
+    return true;
+  });
+
   // Deduplicate blockers for display
-  const uniqueBlockers = dedupeIssues(blockers);
-  const uniqueWarnings = dedupeIssues(nonBlockers);
+  const uniqueBlockers = dedupeIssues(filteredBlockers);
+  const uniqueWarnings = dedupeIssues(filteredNonBlockers);
   const hasTicketWarning = uniqueWarnings.some((w) => w.code === "missing_ticket_info");
   const otherWarnings = uniqueWarnings.filter((w) => w.code !== "missing_ticket_info");
 

@@ -295,14 +295,19 @@ export async function applyBatchRows(
   const rowUpdateStatements: SqlWrite[] = [];
   const auditStatements: SqlWrite[] = [];
 
-  // Write stale update markers before checking if there are fixture statements
+  // Write stale update markers — keep final_action NULL so rows stay recoverable
   for (const row of staleUpdateRows) {
     rowUpdateStatements.push({
-      sql: `UPDATE import_batch_rows SET match_result = 'blocked', final_action = 'blocked', warnings_json = ? WHERE id = ?`,
+      sql: `UPDATE import_batch_rows SET match_result = 'blocked', final_action = NULL, warnings_json = ? WHERE id = ?`,
       params: [
         JSON.stringify({
+          issues: [{
+            code: "venue_not_found",
+            severity: "blocker",
+            message: "Target fixture not found at apply time. The fixture may have been deleted.",
+            issueKey: "stale_update",
+          }],
           messages: ["Target fixture not found at apply time. The fixture may have been deleted."],
-          fields: [],
         }),
         row.id,
       ],
