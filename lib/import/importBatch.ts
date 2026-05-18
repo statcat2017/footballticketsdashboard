@@ -223,7 +223,7 @@ export async function addBatchRows(
       r.row.venueRaw ?? null,
       r.row.kickoffDate ?? null,
       r.row.kickoffTime ?? null,
-      r.row.status ?? "scheduled",
+      r.row.status ?? null,
       r.row.ticketUrl ?? null,
       r.row.adultPricePence ?? null,
       r.row.concessionPricePence ?? null,

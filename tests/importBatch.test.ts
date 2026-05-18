@@ -165,14 +165,14 @@ describe("addBatchRows", () => {
     });
   });
 
-  it("defaults status and confidence", async () => {
+  it("defaults status to null when not provided", async () => {
     const db = setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
 
     const row = (await getBatchRows(db, batch.id))[0];
-    expect(row.status).toBe("scheduled");
+    expect(row.status).toBeNull();
     expect(row.confidence).toBe("unknown");
   });
 
