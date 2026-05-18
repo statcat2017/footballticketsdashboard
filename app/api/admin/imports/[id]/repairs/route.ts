@@ -134,25 +134,46 @@ async function handleMarkFriendly(
     ]);
   }
 
-  // Update all unresolved rows' competition_raw to Non-League Friendlies
-  await db.run(
-    `UPDATE import_batch_rows
-     SET competition_raw = 'Non-League Friendlies',
-         competition_resolved_code = NULL,
-         match_result = NULL,
-         warnings_json = NULL
-     WHERE batch_id = ?
-       AND final_action IS NULL
-       AND competition_raw IS NOT NULL
-       AND competition_resolved_code IS NULL`,
-    [batchId]
-  );
-
-  const { validateImportBatch } = await import("@/lib/import/validation");
-  await validateImportBatch(db, batchId);
-
-  // Update `form` param is used for row-specific redirect
   const redirectRowId = readString(form.get("redirect_row_id"));
+  const rawValue = readString(form.get("raw_value"));
+
+  if (redirectRowId) {
+    // Row-scoped: validate ownership
+    const parsed = parseInt(redirectRowId, 10);
+    if (!isNaN(parsed)) {
+      const row = await getRowOrError(db, parsed, batchId);
+      if (!row) {
+        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+      }
+      // Update only this row's competition_raw
+      await db.run(
+        `UPDATE import_batch_rows
+         SET competition_raw = 'Non-League Friendlies',
+             competition_resolved_code = NULL,
+             match_result = NULL,
+             warnings_json = NULL
+         WHERE id = ? AND batch_id = ? AND final_action IS NULL`,
+        [parsed, batchId]
+      );
+      await validateRowById(db, parsed);
+    }
+  } else if (rawValue) {
+    // Raw-value scoped: update all rows with the exact same raw competition name
+    await db.run(
+      `UPDATE import_batch_rows
+       SET competition_raw = 'Non-League Friendlies',
+           competition_resolved_code = NULL,
+           match_result = NULL,
+           warnings_json = NULL
+       WHERE batch_id = ?
+         AND final_action IS NULL
+         AND competition_raw = ?`,
+      [batchId, rawValue]
+    );
+    const { validateImportBatch } = await import("@/lib/import/validation");
+    await validateImportBatch(db, batchId);
+  }
+
   const anchor = redirectRowId ? `fixture-${redirectRowId}` : undefined;
   return redirectTo(request, batchId, {
     success: "Marked as friendly outside formal competition.",

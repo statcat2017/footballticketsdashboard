@@ -514,6 +514,8 @@ function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue }: {
         <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ marginBottom: "0.5rem" }}>
           <input type="hidden" name="csrf" value={csrfToken} />
           <input type="hidden" name="_action" value="mark_friendly" />
+          <input type="hidden" name="redirect_row_id" value={rowId} />
+          <input type="hidden" name="raw_value" value={rawValue} />
           <button type="submit" style={greenBtnStyle}>Mark as friendly outside formal competition</button>
         </form>
       )}
