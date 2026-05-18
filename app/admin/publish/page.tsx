@@ -48,11 +48,19 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
   const sp = await props.searchParams;
   const successMessage = typeof sp?.success === "string" ? sp.success : null;
   const errorMessage = typeof sp?.error === "string" ? sp.error : null;
-  const selectedDivisionId = typeof sp?.division_id === "string" && /^\d+$/.test(sp.division_id)
-    ? Number(sp.division_id)
-    : undefined;
 
   const divisions = await getPublishableDivisions();
+
+  const selectedDivisionId = (() => {
+    const raw = typeof sp?.division_id === "string" && /^\d+$/.test(sp.division_id)
+      ? Number(sp.division_id)
+      : undefined;
+    if (raw !== undefined && !divisions.some((d) => d.id === raw)) {
+      return undefined;
+    }
+    return raw;
+  })();
+
   const clubs = selectedDivisionId !== undefined
     ? await getPublishableClubs(selectedDivisionId)
     : [];

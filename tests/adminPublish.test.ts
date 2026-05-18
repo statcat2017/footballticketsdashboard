@@ -111,7 +111,7 @@ describe("admin publish route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("success=Club");
 
     const club = await db.get<{ id: number; name: string; competition_code: string; venue_id: number }>(
@@ -147,7 +147,7 @@ describe("admin publish route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("mapped to existing public club");
 
     const clubs = await db.all<{ id: number }>(
@@ -184,7 +184,7 @@ describe("admin publish route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("error=");
     expect(location).toContain("competition");
   });
@@ -207,7 +207,7 @@ describe("admin publish route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("error=");
     expect(location).toContain("venue");
   });
@@ -227,7 +227,7 @@ describe("admin publish route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("error=");
     expect(location).toContain("already mapped");
   });
@@ -247,7 +247,7 @@ describe("admin publish route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("Publish the competition first");
   });
 
@@ -266,7 +266,7 @@ describe("admin publish route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("Create a venue first");
   });
 });
@@ -299,7 +299,7 @@ describe("D1 production compatibility (no transaction API)", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("success=Club");
 
     const mapping = await db.get<{ id: number }>(
@@ -323,7 +323,7 @@ describe("D1 production compatibility (no transaction API)", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("mapped to existing public club");
 
     const clubs = await db.all<{ id: number }>(
@@ -354,7 +354,7 @@ describe("admin publish redirect_division_id", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = response.headers.get("location") ?? "";
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("division_id=10");
     expect(location).toContain("success=Club");
   });
@@ -437,7 +437,7 @@ describe("admin publish competition route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("published as");
 
     const competition = await db.get<{ code: string; name: string; tier: number }>(
@@ -467,7 +467,7 @@ describe("admin publish competition route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("published as");
 
     const competition = await db.get<{ code: string; tier: number }>(
@@ -492,7 +492,7 @@ describe("admin publish competition route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("mapped to existing competition");
 
     const competitions = await db.all<{ code: string }>(
@@ -516,7 +516,7 @@ describe("admin publish competition route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("published as");
 
     const mapping = await db.get<{ id: number }>(
@@ -541,7 +541,7 @@ describe("admin publish competition route", () => {
     }));
 
     expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("division_id=10");
     expect(location).toContain("published as");
   });

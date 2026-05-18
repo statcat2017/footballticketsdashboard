@@ -38,17 +38,18 @@ export async function POST(request: Request) {
   const pyramidClubId = Number(pyramidClubIdStr);
   const db = await getDatabase();
 
-  function baseUrl(): string {
-    let path = "/admin/publish";
-    if (typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)) {
-      path += `?division_id=${redirectDivisionIdStr}`;
-    }
-    return path;
-  }
+  const validRedirectDivId =
+    typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)
+      ? redirectDivisionIdStr
+      : null;
 
-  function redirectTo(path: string, extraParams: string): URL {
-    const sep = path.includes("?") ? "&" : "?";
-    return new URL(`${path}${sep}${extraParams}`, request.url);
+  function redirectWith(params: Record<string, string>) {
+    const url = new URL("/admin/publish", request.url);
+    if (validRedirectDivId) url.searchParams.set("division_id", validRedirectDivId);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(url, { status: 303 });
   }
 
   try {
@@ -58,10 +59,7 @@ export async function POST(request: Request) {
     );
 
     if (!pyramidClub) {
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), "error=Pyramid club not found."),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Pyramid club not found." });
     }
 
     const existingMapping = await db.get<{ id: number }>(
@@ -70,10 +68,7 @@ export async function POST(request: Request) {
     );
 
     if (existingMapping) {
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), "error=Club already published."),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Club already published." });
     }
 
     const venue = await db.get<{ id: number; name: string; postcode: string }>(
@@ -85,10 +80,7 @@ export async function POST(request: Request) {
     );
 
     if (!venue) {
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), "error=Pyramid club has no primary venue. Create a venue first."),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Pyramid club has no primary venue. Create a venue first." });
     }
 
     const seasonId = await getLatestSeasonId(db);
@@ -103,10 +95,7 @@ export async function POST(request: Request) {
     );
 
     if (!divisionMapping) {
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), "error=Division has no competition mapping. Publish the competition first."),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Division has no competition mapping. Publish the competition first." });
     }
 
     const existingClub = await db.get<{ id: number; competition_code: string; venue_id: number }>(
@@ -121,24 +110,21 @@ export async function POST(request: Request) {
       );
 
       if (existingClubMapping) {
-        return NextResponse.redirect(
-          redirectTo(baseUrl(), `error=Public club "${pyramidClub.name}" is already mapped to pyramid club ID ${existingClubMapping.pyramid_club_id}.`),
-          { status: 303 }
-        );
+        return redirectWith({
+          error: `Public club "${pyramidClub.name}" is already mapped to pyramid club ID ${existingClubMapping.pyramid_club_id}.`
+        });
       }
 
       if (existingClub.competition_code !== divisionMapping.competition_code) {
-        return NextResponse.redirect(
-          redirectTo(baseUrl(), `error=Existing club "${pyramidClub.name}" has competition "${existingClub.competition_code}" but this division maps to "${divisionMapping.competition_code}".`),
-          { status: 303 }
-        );
+        return redirectWith({
+          error: `Existing club "${pyramidClub.name}" has competition "${existingClub.competition_code}" but this division maps to "${divisionMapping.competition_code}".`
+        });
       }
 
       if (existingClub.venue_id !== venue.id) {
-        return NextResponse.redirect(
-          redirectTo(baseUrl(), `error=Existing club "${pyramidClub.name}" has venue ID ${existingClub.venue_id} but "${pyramidClub.name}" uses venue ID ${venue.id} ("${venue.name}").`),
-          { status: 303 }
-        );
+        return redirectWith({
+          error: `Existing club "${pyramidClub.name}" has venue ID ${existingClub.venue_id} but "${pyramidClub.name}" uses venue ID ${venue.id} ("${venue.name}").`
+        });
       }
 
       const after = {
@@ -159,10 +145,7 @@ export async function POST(request: Request) {
         }
       ]);
 
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), `success=Club "${pyramidClub.name}" mapped to existing public club.`),
-        { status: 303 }
-      );
+      return redirectWith({ success: `Club "${pyramidClub.name}" mapped to existing public club.` });
     }
 
     // Publish new club
@@ -194,15 +177,9 @@ export async function POST(request: Request) {
       }
     ]);
 
-    return NextResponse.redirect(
-      redirectTo(baseUrl(), `success=Club "${pyramidClub.name}" published.`),
-      { status: 303 }
-    );
+    return redirectWith({ success: `Club "${pyramidClub.name}" published.` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      redirectTo(baseUrl(), `error=${encodeURIComponent(message)}`),
-      { status: 303 }
-    );
+    return redirectWith({ error: message });
   }
 }

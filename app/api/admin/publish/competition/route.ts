@@ -38,17 +38,18 @@ export async function POST(request: Request) {
   const divisionId = Number(divisionIdStr);
   const db = await getDatabase();
 
-  function baseUrl(): string {
-    let path = "/admin/publish";
-    if (typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)) {
-      path += `?division_id=${redirectDivisionIdStr}`;
-    }
-    return path;
-  }
+  const validRedirectDivId =
+    typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)
+      ? redirectDivisionIdStr
+      : null;
 
-  function redirectTo(path: string, extraParams: string): URL {
-    const sep = path.includes("?") ? "&" : "?";
-    return new URL(`${path}${sep}${extraParams}`, request.url);
+  function redirectWith(params: Record<string, string>) {
+    const url = new URL("/admin/publish", request.url);
+    if (validRedirectDivId) url.searchParams.set("division_id", validRedirectDivId);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(url, { status: 303 });
   }
 
   try {
@@ -58,10 +59,7 @@ export async function POST(request: Request) {
     );
 
     if (!division) {
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), "error=Division not found."),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Division not found." });
     }
 
     const existingMapping = await db.get<{ id: number }>(
@@ -70,16 +68,13 @@ export async function POST(request: Request) {
     );
 
     if (existingMapping) {
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), "error=Division already has a competition mapping."),
-        { status: 303 }
-      );
+      return redirectWith({ error: "Division already has a competition mapping." });
     }
 
     const code = divisionCodeFromName(division.name);
 
-    const existingCompetition = await db.get<{ code: string; id: number }>(
-      `SELECT code, id FROM competitions WHERE code = ?`,
+    const existingCompetition = await db.get<{ code: string }>(
+      `SELECT code FROM competitions WHERE code = ?`,
       [code]
     );
 
@@ -102,18 +97,8 @@ export async function POST(request: Request) {
         }
       ]);
 
-      return NextResponse.redirect(
-        redirectTo(baseUrl(), `success=Division "${division.name}" mapped to existing competition "${code}".`),
-        { status: 303 }
-      );
+      return redirectWith({ success: `Division "${division.name}" mapped to existing competition "${code}".` });
     }
-
-    const competitionResult = await db.run(
-      `INSERT INTO competitions (code, name, tier) VALUES (?, ?, ?)`,
-      [code, division.name, division.level]
-    );
-
-    const newCompetitionId = competitionResult.lastInsertRowid;
 
     const after = {
       code,
@@ -124,24 +109,22 @@ export async function POST(request: Request) {
 
     await db.writeBatch([
       {
+        sql: `INSERT INTO competitions (code, name, tier) VALUES (?, ?, ?)`,
+        params: [code, division.name, division.level]
+      },
+      {
         sql: `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
         params: [divisionId, code]
       },
       {
         sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-        params: [ADMIN_ACTOR, "publish", "competition", String(newCompetitionId), null, JSON.stringify(after)]
+        params: [ADMIN_ACTOR, "publish", "competition", code, null, JSON.stringify(after)]
       }
     ]);
 
-    return NextResponse.redirect(
-      redirectTo(baseUrl(), `success=Competition "${division.name}" published as "${code}".`),
-      { status: 303 }
-    );
+    return redirectWith({ success: `Competition "${division.name}" published as "${code}".` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      redirectTo(baseUrl(), `error=${encodeURIComponent(message)}`),
-      { status: 303 }
-    );
+    return redirectWith({ error: message });
   }
 }
