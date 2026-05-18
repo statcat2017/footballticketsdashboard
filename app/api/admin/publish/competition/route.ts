@@ -3,8 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { divisionCodeFromName } from "@/lib/admin/clubs";
-
-const ADMIN_ACTOR = "admin";
+import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -91,10 +90,12 @@ export async function POST(request: Request) {
           sql: `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
           params: [divisionId, code]
         },
-        {
-          sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-          params: [ADMIN_ACTOR, "publish", "division_competition_mapping", String(divisionId), null, JSON.stringify(after)]
-        }
+        buildAdminAuditLogWrite({
+          action: "publish",
+          entityType: "division_competition_mapping",
+          entityId: divisionId,
+          after
+        })
       ]);
 
       return redirectWith({ success: `Division "${division.name}" mapped to existing competition "${code}".` });
@@ -116,10 +117,12 @@ export async function POST(request: Request) {
         sql: `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
         params: [divisionId, code]
       },
-      {
-        sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-        params: [ADMIN_ACTOR, "publish", "competition", code, null, JSON.stringify(after)]
-      }
+      buildAdminAuditLogWrite({
+        action: "publish",
+        entityType: "competition",
+        entityId: code,
+        after
+      })
     ]);
 
     return redirectWith({ success: `Competition "${division.name}" published as "${code}".` });

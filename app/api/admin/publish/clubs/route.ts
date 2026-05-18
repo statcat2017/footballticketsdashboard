@@ -3,8 +3,8 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getLatestSeasonId } from "@/lib/admin/clubs";
-
-const ADMIN_ACTOR = "admin";
+import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import type { SqlWrite } from "@/lib/db/adapter";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
       return redirectWith({ error: msg });
     }
 
-    const statements: { sql: string; params: (string | number | null)[] }[] = [];
+    const statements: SqlWrite[] = [];
 
     for (const entry of eligible) {
       const club = entry.club;
@@ -179,10 +179,12 @@ export async function POST(request: Request) {
           params: [club.id, club.name]
         });
 
-        statements.push({
-          sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-          params: [ADMIN_ACTOR, "publish", "club", String(club.id), null, JSON.stringify(after)]
-        });
+        statements.push(buildAdminAuditLogWrite({
+          action: "publish",
+          entityType: "club",
+          entityId: club.id,
+          after
+        }));
       } else if (entry.action === "map_existing") {
         const after = {
           name: club.name,
@@ -196,10 +198,12 @@ export async function POST(request: Request) {
           params: [club.id, club.existing_club_id]
         });
 
-        statements.push({
-          sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
-          params: [ADMIN_ACTOR, "publish", "club_mapping", String(club.existing_club_id), null, JSON.stringify(after)]
-        });
+        statements.push(buildAdminAuditLogWrite({
+          action: "publish",
+          entityType: "club_mapping",
+          entityId: club.existing_club_id,
+          after
+        }));
       }
     }
 

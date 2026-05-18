@@ -1,4 +1,5 @@
 import type { AppDatabase } from "@/lib/db/adapter";
+import type { QueryParam, SqlWrite } from "@/lib/db/adapter";
 
 import { ADMIN_ACTOR } from "./auth.ts";
 
@@ -21,16 +22,23 @@ function serializeAuditValue(value: unknown): string | null {
   return JSON.stringify(value);
 }
 
-export async function writeAdminAuditLog(db: AppDatabase, input: AdminAuditInput): Promise<void> {
-  await db.run(`
-    INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `, [
+export function buildAdminAuditLogWrite(input: AdminAuditInput): SqlWrite {
+  const params: QueryParam[] = [
     input.actor ?? ADMIN_ACTOR,
     input.action,
     input.entityType,
     input.entityId === undefined || input.entityId === null ? null : String(input.entityId),
     serializeAuditValue(input.before),
     serializeAuditValue(input.after)
-  ]);
+  ];
+
+  return {
+    sql: "INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)",
+    params
+  };
+}
+
+export async function writeAdminAuditLog(db: AppDatabase, input: AdminAuditInput): Promise<void> {
+  const stmt = buildAdminAuditLogWrite(input);
+  await db.run(stmt.sql, stmt.params);
 }
