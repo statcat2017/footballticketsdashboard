@@ -94,22 +94,34 @@ export async function POST(request: Request) {
       );
     }
 
-    const existingClub = await db.get<{ id: number; competition_code: string | null; venue_id: number | null }>(
+    const existingClub = await db.get<{ id: number; competition_code: string; venue_id: number }>(
       `SELECT id, competition_code, venue_id FROM clubs WHERE name = ?`,
       [pyramidClub.name]
     );
 
     if (existingClub) {
-      if (!existingClub.competition_code) {
+      const existingClubMapping = await db.get<{ pyramid_club_id: number }>(
+        `SELECT pyramid_club_id FROM club_mappings WHERE club_id = ?`,
+        [existingClub.id]
+      );
+
+      if (existingClubMapping) {
         return NextResponse.redirect(
-          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" is missing a competition_code.`, request.url),
+          new URL(`/admin/publish?error=Public club "${pyramidClub.name}" is already mapped to pyramid club ID ${existingClubMapping.pyramid_club_id}.`, request.url),
           { status: 303 }
         );
       }
 
-      if (!existingClub.venue_id) {
+      if (existingClub.competition_code !== divisionMapping.competition_code) {
         return NextResponse.redirect(
-          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" is missing a venue_id.`, request.url),
+          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" has competition "${existingClub.competition_code}" but this division maps to "${divisionMapping.competition_code}".`, request.url),
+          { status: 303 }
+        );
+      }
+
+      if (existingClub.venue_id !== venue.id) {
+        return NextResponse.redirect(
+          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" has venue ID ${existingClub.venue_id} but "${pyramidClub.name}" uses venue ID ${venue.id} ("${venue.name}").`, request.url),
           { status: 303 }
         );
       }

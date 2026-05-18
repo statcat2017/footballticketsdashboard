@@ -61,9 +61,9 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
     group.push(club);
   }
 
-  const divisionPublishedByName = new Map<string, boolean>();
+  const divisionPublishedById = new Map<number, boolean>();
   for (const d of divisions) {
-    divisionPublishedByName.set(d.name, d.isPublished);
+    divisionPublishedById.set(d.id, d.isPublished);
   }
 
   return (
@@ -236,7 +236,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                               <StatusBadge published={club.isPublished} />
                             </td>
                             <td style={{ padding: "0.6rem 1rem" }}>
-                              {!club.isPublished && club.venueName && divisionPublishedByName.get(club.divisionName) && (
+                              {!club.isPublished && club.venueName && divisionPublishedById.get(club.divisionId) && (
                                 <form method="post" action="/api/admin/publish/club">
                                   <input type="hidden" name="csrf" value={csrfToken} />
                                   <input type="hidden" name="pyramid_club_id" value={club.id} />
@@ -263,7 +263,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                                   Create venue first
                                 </span>
                               )}
-                              {!club.isPublished && club.venueName && !divisionPublishedByName.get(club.divisionName) && (
+                              {!club.isPublished && club.venueName && !divisionPublishedById.get(club.divisionId) && (
                                 <span style={{
                                   fontSize: "12px",
                                   color: "#a53a2d",

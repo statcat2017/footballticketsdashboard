@@ -34,6 +34,9 @@ vi.mock("@/lib/db/client", async () => {
 
 function createPublishTestDb(opts?: {
   publishExistingClub?: boolean;
+  existingClubWrongCompetition?: boolean;
+  existingClubWrongVenue?: boolean;
+  existingClubAlreadyMapped?: boolean;
   noDivisionMapping?: boolean;
   noVenue?: boolean;
 }): AppDatabase {
@@ -55,6 +58,7 @@ function createPublishTestDb(opts?: {
   if (!opts?.noVenue) {
     db.exec(`
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Test Park', 'TE1 1ST', 51.5, -0.1);
+      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (51, 'Other Ground', 'OT1 1AB', 52.0, -0.2);
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
     `);
   }
@@ -63,9 +67,24 @@ function createPublishTestDb(opts?: {
     db.exec(`INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');`);
   }
 
+  if (opts?.existingClubWrongCompetition) {
+    db.exec(`INSERT INTO competitions (code, name, tier) VALUES ('ELC', 'Championship', 2);`);
+  }
+
   if (opts?.publishExistingClub) {
+    const compCode = opts.existingClubWrongCompetition ? "'ELC'" : "'PL'";
+    const vId = opts.existingClubWrongVenue ? "51" : "50";
     db.exec(
-      `INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Test Town United', 'PL', 50);`
+      `INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Test Town United', ${compCode}, ${vId});`
+    );
+  }
+
+  if (opts?.existingClubAlreadyMapped) {
+    db.exec(
+      `INSERT INTO pyramid_clubs (id, name, status) VALUES (99, 'Other FC', 'known');
+       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (200, 1, 1, 10, 99);
+       INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Test Town United', 'PL', 50);
+       INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (99, 200);`
     );
   }
 
@@ -145,6 +164,72 @@ describe("admin publish route", () => {
       "SELECT action, entity_type FROM admin_audit_log WHERE entity_type = 'club_mapping' AND action = 'publish'"
     );
     expect(audit).toBeDefined();
+  });
+
+  it("blocks when existing public club has wrong competition_code", async () => {
+    const db = createPublishTestDb({
+      publishExistingClub: true,
+      existingClubWrongCompetition: true
+    });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("pyramid_club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    expect(location).toContain("error=");
+    expect(location).toContain("competition");
+  });
+
+  it("blocks when existing public club has wrong venue_id", async () => {
+    const db = createPublishTestDb({
+      publishExistingClub: true,
+      existingClubWrongVenue: true
+    });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("pyramid_club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    expect(location).toContain("error=");
+    expect(location).toContain("venue");
+  });
+
+  it("blocks when existing public club is already mapped to another pyramid club", async () => {
+    const db = createPublishTestDb({ existingClubAlreadyMapped: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("pyramid_club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    expect(location).toContain("error=");
+    expect(location).toContain("already mapped");
   });
 
   it("blocks when division has no competition mapping", async () => {
