@@ -541,18 +541,12 @@ function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue }: {
             <input name="name" defaultValue={rawValue} style={inputStyle} />
           </label>
           <label style={labelStyle}>Kind
-            <select name="kind" defaultValue="cup" style={inputStyle} onChange={(e) => {
-              const tierRow = e.target.closest("form")?.querySelector("[name='tier']") as HTMLInputElement | null;
-              if (tierRow) {
-                const container = tierRow.parentElement!;
-                container.style.display = e.target.value === "league" ? "" : "none";
-              }
-            }}>
+            <select name="kind" defaultValue="cup" style={inputStyle}>
               <option value="cup">Cup</option>
               <option value="league">League</option>
             </select>
           </label>
-          <label style={{ ...labelStyle, display: "none" }} id={`tier-row-${rowId}`}>Tier
+          <label style={labelStyle}>Tier <span style={{ fontWeight: 400, color: "#6f7e7a" }}>(only used for league)</span>
             <input name="tier" type="number" min="1" max="10" defaultValue={code.startsWith("T") ? code.slice(1) : "7"} style={inputStyle} />
           </label>
           <button type="submit" style={greenBtnStyle}>Create & revalidate batch</button>
