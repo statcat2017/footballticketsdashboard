@@ -18,6 +18,12 @@
   "vars": {
     "POSTCODES_IO_BASE_URL": "https://api.postcodes.io"
   },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
   "d1_databases": [
     {
       "binding": "DB",

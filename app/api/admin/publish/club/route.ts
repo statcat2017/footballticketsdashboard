@@ -3,7 +3,8 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getLatestSeasonId } from "@/lib/admin/clubs";
-import { writeAdminAuditLog } from "@/lib/admin/audit";
+
+const ADMIN_ACTOR = "admin";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -126,24 +127,23 @@ export async function POST(request: Request) {
         );
       }
 
-      await db.transaction(async (txDb) => {
-        await txDb.run(
-          `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
-          [pyramidClubId, existingClub.id]
-        );
+      const after = {
+        name: pyramidClub.name,
+        pyramid_club_id: pyramidClubId,
+        club_id: existingClub.id,
+        note: "mapped to existing public club"
+      };
 
-        await writeAdminAuditLog(txDb, {
-          action: "publish",
-          entityType: "club_mapping",
-          entityId: existingClub.id,
-          after: {
-            name: pyramidClub.name,
-            pyramid_club_id: pyramidClubId,
-            club_id: existingClub.id,
-            note: "mapped to existing public club"
-          }
-        });
-      });
+      await db.writeBatch([
+        {
+          sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
+          params: [pyramidClubId, existingClub.id]
+        },
+        {
+          sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
+          params: [ADMIN_ACTOR, "publish", "club_mapping", String(existingClub.id), null, JSON.stringify(after)]
+        }
+      ]);
 
       return NextResponse.redirect(
         new URL(`/admin/publish?success=Club "${pyramidClub.name}" mapped to existing public club.`, request.url),
@@ -152,34 +152,33 @@ export async function POST(request: Request) {
     }
 
     // Publish new club
-    await db.transaction(async (txDb) => {
-      const clubResult = await txDb.run(
-        `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
-        [pyramidClub.name, pyramidClub.aliases, divisionMapping.competition_code, venue.id]
-      );
+    const clubResult = await db.run(
+      `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
+      [pyramidClub.name, pyramidClub.aliases, divisionMapping.competition_code, venue.id]
+    );
 
-      const newClubId = clubResult.lastInsertRowid;
-      if (!newClubId) throw new Error("Failed to create club record.");
+    const newClubId = clubResult.lastInsertRowid;
+    if (!newClubId) throw new Error("Failed to create club record.");
 
-      await txDb.run(
-        `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
-        [pyramidClubId, newClubId]
-      );
+    const after = {
+      name: pyramidClub.name,
+      aliases: pyramidClub.aliases,
+      competition_code: divisionMapping.competition_code,
+      venue_id: venue.id,
+      venue_name: venue.name,
+      pyramid_club_id: pyramidClubId
+    };
 
-      await writeAdminAuditLog(txDb, {
-        action: "publish",
-        entityType: "club",
-        entityId: newClubId,
-        after: {
-          name: pyramidClub.name,
-          aliases: pyramidClub.aliases,
-          competition_code: divisionMapping.competition_code,
-          venue_id: venue.id,
-          venue_name: venue.name,
-          pyramid_club_id: pyramidClubId
-        }
-      });
-    });
+    await db.writeBatch([
+      {
+        sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
+        params: [pyramidClubId, newClubId]
+      },
+      {
+        sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
+        params: [ADMIN_ACTOR, "publish", "club", String(newClubId), null, JSON.stringify(after)]
+      }
+    ]);
 
     return NextResponse.redirect(
       new URL(`/admin/publish?success=Club "${pyramidClub.name}" published.`, request.url),
