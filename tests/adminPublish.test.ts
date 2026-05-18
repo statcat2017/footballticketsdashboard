@@ -616,3 +616,223 @@ describe("getPublishableClubs with division filter", () => {
     expect(filteredClubs.length).toBeLessThan(allClubs.length);
   });
 });
+
+describe("admin publish clubs bulk route", () => {
+  afterEach(() => {
+    getDatabase.mockReset();
+  });
+
+  function createBulkTestDb(opts?: {
+    withExistingClub?: boolean;
+    noCompetitionMapping?: boolean;
+    noVenueForOne?: boolean;
+    oneAlreadyPublished?: boolean;
+    noTransaction?: boolean;
+  }): AppDatabase {
+    const sqlite = new Database(":memory:");
+    sqlite.pragma("foreign_keys = ON");
+    applySchema(sqlite);
+    const db = createSqliteAppDatabase(sqlite);
+
+    db.exec(`
+      INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
+      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
+      INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
+      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
+      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Alpha Town', 'known');
+      INSERT INTO pyramid_clubs (id, name, status) VALUES (101, 'Beta City', 'known');
+      INSERT INTO pyramid_clubs (id, name, status) VALUES (102, 'Gamma United', 'known');
+      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
+      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (101, 1, 1, 10, 101);
+      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (102, 1, 1, 10, 102);
+      INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
+    `);
+
+    if (!opts?.noCompetitionMapping) {
+      db.exec(`INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');`);
+    }
+
+    // All three clubs get a primary venue by default
+    db.exec(`
+      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Alpha Park', 'TE1 1ST', 51.5, -0.1);
+      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (51, 'Beta Ground', 'TE2 2ND', 52.0, -0.2);
+      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (52, 'Gamma Stadium', 'TE3 3RD', 53.0, -0.3);
+      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
+      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (101, 101, 51, '2025-08-01', NULL, 1);
+      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (102, 102, 52, '2025-08-01', NULL, 1);
+    `);
+
+    if (opts?.noVenueForOne) {
+      db.exec(`UPDATE club_venue_assignments SET effective_to = '2026-01-01' WHERE club_id = 102;`);
+    }
+
+    if (opts?.existingClub) {
+      db.exec(`INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Beta City', 'PL', 51);`);
+    }
+
+    if (opts?.oneAlreadyPublished) {
+      db.exec(`INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (201, 'Alpha Town', 'PL', 50);`);
+      db.exec(`INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (100, 201);`);
+    }
+
+    if (opts?.noTransaction) {
+      return {
+        ...db,
+        transaction: vi.fn().mockRejectedValue(
+          new Error("D1 transaction API is not available in this context.")
+        )
+      };
+    }
+
+    return db;
+  }
+
+  it("publishes multiple new clubs in one batch", async () => {
+    const db = createBulkTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Published 3 clubs");
+
+    const clubsCount = await db.get<{ c: number }>("SELECT COUNT(*) as c FROM clubs");
+    expect(clubsCount!.c).toBe(3);
+
+    const mappings = await db.all<{ id: number }>("SELECT id FROM club_mappings");
+    expect(mappings).toHaveLength(3);
+
+    const audit = await db.all<{ id: number }>("SELECT id FROM admin_audit_log");
+    expect(audit).toHaveLength(3);
+  });
+
+  it("maps existing public clubs when eligible", async () => {
+    const db = createBulkTestDb({ existingClub: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Published 3 clubs");
+
+    // Only 1 new club added (the existing club was not re-created)
+    const clubsCount = await db.get<{ c: number }>("SELECT COUNT(*) as c FROM clubs");
+    expect(clubsCount!.c).toBe(3);
+  });
+
+  it("skips clubs already published", async () => {
+    const db = createBulkTestDb({ oneAlreadyPublished: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Published 2 clubs");
+    expect(location).toContain("Already published");
+  });
+
+  it("skips clubs with no primary venue", async () => {
+    const db = createBulkTestDb({ noVenueForOne: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Published 2 clubs");
+    expect(location).toContain("No primary venue");
+  });
+
+  it("rejects when division has no competition mapping", async () => {
+    const db = createBulkTestDb({ noCompetitionMapping: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Publish the competition first");
+  });
+
+  it("redirect preserves division_id", async () => {
+    const db = createBulkTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    formData.append("redirect_division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("division_id=10");
+  });
+
+  it("publishes via writeBatch when transaction is unavailable", async () => {
+    const db = createBulkTestDb({ noTransaction: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Published");
+  });
+});

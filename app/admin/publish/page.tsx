@@ -188,6 +188,26 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                       </form>
                     )}
 
+                    {isSelected && division.isPublished && (
+                      <form method="post" action="/api/admin/publish/clubs" style={{ display: "inline" }}>
+                        <input type="hidden" name="csrf" value={csrfToken} />
+                        <input type="hidden" name="division_id" value={division.id} />
+                        <input type="hidden" name="redirect_division_id" value={division.id} />
+                        <button type="submit" style={{
+                          border: "1px solid #147a4d",
+                          borderRadius: "7px",
+                          background: "#147a4d",
+                          color: "#fff",
+                          padding: "0.4rem 0.8rem",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}>
+                          Publish all ready clubs
+                        </button>
+                      </form>
+                    )}
+
                     <Link
                       href={isSelected ? "/admin/publish" : `/admin/publish?division_id=${division.id}`}
                       style={{
