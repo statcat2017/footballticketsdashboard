@@ -486,8 +486,14 @@ function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competi
     case "unknown_competition":
       return <CompetitionRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""} />;
     case "unknown_club":
-      return <MatchClubForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
-        competitionCode={competitionResolvedCode} clubs={clubs} />;
+      return (
+        <div>
+          <MatchClubForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
+            competitionCode={competitionResolvedCode} clubs={clubs} />
+          <CreateClubForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
+            venues={venues} />
+        </div>
+      );
     case "missing_primary_venue":
       return <VenueRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId}
         clubId={homeResolvedId} venues={venues} />;
@@ -500,40 +506,59 @@ function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue }: {
   csrfToken: string; batchId: number; rowId: number; rawValue: string;
 }) {
   const isFriendly = rawValue.toLowerCase().includes("friendly");
-  const code = isFriendly ? "FRIENDLY" : rawValue.replace(/[^a-z0-9]/gi, "_").toUpperCase();
+  const code = rawValue.replace(/[^a-z0-9]/gi, "_").toUpperCase();
   return (
-    <details style={{ marginTop: "0.25rem" }}>
-      <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
-        Fix: Create competition
-      </summary>
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-        marginTop: "0.5rem", display: "grid", gap: "0.5rem",
-        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-        border: "1px solid #dce3e2", maxWidth: "400px"
-      }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="create_competition" />
-        <input type="hidden" name="redirect_row_id" value={rowId} />
+    <div style={{ marginTop: "0.25rem" }}>
+      {/* Quick mark as friendly */}
+      {isFriendly && (
+        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ marginBottom: "0.5rem" }}>
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <input type="hidden" name="_action" value="mark_friendly" />
+          <input type="hidden" name="redirect_row_id" value={rowId} />
+          <input type="hidden" name="raw_value" value={rawValue} />
+          <button type="submit" style={greenBtnStyle}>Mark as friendly outside formal competition</button>
+        </form>
+      )}
 
-        <label style={labelStyle}>Code
-          <input name="code" defaultValue={code} style={inputStyle} />
-        </label>
-        <label style={labelStyle}>Name
-          <input name="name" defaultValue={rawValue} style={inputStyle} />
-        </label>
-        <label style={labelStyle}>Kind
-          <select name="kind" defaultValue={isFriendly ? "friendly" : "league"} style={inputStyle}>
-            <option value="league">League</option>
-            <option value="cup">Cup</option>
-            <option value="friendly">Friendly</option>
-          </select>
-        </label>
-        <label style={labelStyle}>Tier
-          <input name="tier" type="number" defaultValue={isFriendly ? "10" : "7"} style={inputStyle} />
-        </label>
-        <button type="submit" style={greenBtnStyle}>Create & revalidate batch</button>
-      </form>
-    </details>
+      {/* Create formal competition */}
+      <details>
+        <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
+          {isFriendly ? "Create formal competition instead" : "Fix: Create competition"}
+        </summary>
+        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
+          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+          border: "1px solid #dce3e2", maxWidth: "400px"
+        }}>
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <input type="hidden" name="_action" value="create_competition" />
+          <input type="hidden" name="redirect_row_id" value={rowId} />
+
+          <label style={labelStyle}>Code
+            <input name="code" defaultValue={code} style={inputStyle} />
+          </label>
+          <label style={labelStyle}>Name
+            <input name="name" defaultValue={rawValue} style={inputStyle} />
+          </label>
+          <label style={labelStyle}>Kind
+            <select name="kind" defaultValue="cup" style={inputStyle} onChange={(e) => {
+              const tierRow = e.target.closest("form")?.querySelector("[name='tier']") as HTMLInputElement | null;
+              if (tierRow) {
+                const container = tierRow.parentElement!;
+                container.style.display = e.target.value === "league" ? "" : "none";
+              }
+            }}>
+              <option value="cup">Cup</option>
+              <option value="league">League</option>
+            </select>
+          </label>
+          <label style={{ ...labelStyle, display: "none" }} id={`tier-row-${rowId}`}>Tier
+            <input name="tier" type="number" min="1" max="10" defaultValue={code.startsWith("T") ? code.slice(1) : "7"} style={inputStyle} />
+          </label>
+          <button type="submit" style={greenBtnStyle}>Create & revalidate batch</button>
+        </form>
+      </details>
+    </div>
   );
 }
 
@@ -577,38 +602,142 @@ function MatchClubForm({ csrfToken, batchId, rowId, rawValue, competitionCode, c
   );
 }
 
-function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
-  csrfToken: string; batchId: number; rowId: number; clubId: number | null;
+function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
+  csrfToken: string; batchId: number; rowId: number; rawValue: string;
   venues: { id: number; name: string; postcode: string }[];
 }) {
   return (
     <details style={{ marginTop: "0.25rem" }}>
       <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#a53a2d" }}>
-        Fix: Home club has no primary venue
+        Fix: Create new club
       </summary>
       <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
         marginTop: "0.5rem", display: "grid", gap: "0.5rem",
         padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-        border: "1px solid #dce3e2", maxWidth: "400px"
+        border: "1px solid #dce3e2", maxWidth: "450px"
       }}>
         <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="assign_existing_venue" />
+        <input type="hidden" name="_action" value="create_club" />
         <input type="hidden" name="redirect_row_id" value={rowId} />
-        {clubId && <input type="hidden" name="club_id" value={clubId} />}
+        <input type="hidden" name="alias" value={rawValue} />
 
-        <label style={labelStyle}>Venue
-          <select name="venue_id" required style={inputStyle}>
-            <option value="">Select venue...</option>
-            {venues.map((v) => <option key={v.id} value={v.id}>{v.name}, {v.postcode}</option>)}
-          </select>
+        <label style={labelStyle}>Club name
+          <input name="name" defaultValue={rawValue} required style={inputStyle} />
         </label>
-        <label style={labelStyle}>Effective from
-          <input name="effective_from" type="date" style={inputStyle}
-            defaultValue={new Date(new Date().getFullYear(), 6, 1).toISOString().split("T")[0]} />
-        </label>
-        <button type="submit" style={greenBtnStyle}>Assign venue & revalidate</button>
+
+        <fieldset style={{ border: "1px solid #dce3e2", borderRadius: "6px", padding: "0.5rem", margin: 0 }}>
+          <legend style={{ fontSize: "12px", fontWeight: 600, color: "#34413e" }}>Venue</legend>
+          <label style={labelStyle}>Use existing venue
+            <select name="venue_id" style={inputStyle}>
+              <option value="">-- Create new venue below --</option>
+              {venues.map((v) => <option key={v.id} value={v.id}>{v.name}, {v.postcode}</option>)}
+            </select>
+          </label>
+          <VenueCreateFields prefix="create_venue_" />
+        </fieldset>
+
+        <button type="submit" style={greenBtnStyle}>Create club & revalidate</button>
       </form>
     </details>
+  );
+}
+
+function VenueCreateFields({ prefix }: { prefix: string }) {
+  const inputId = (field: string) => `${prefix}${field}`;
+  return (
+    <div style={{ marginTop: "0.5rem", display: "grid", gap: "0.5rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+        <label style={labelStyle}>New venue name
+          <input name={inputId("name")} style={inputStyle} />
+        </label>
+        <label style={labelStyle}>Postcode
+          <input name={inputId("postcode")} style={inputStyle} />
+        </label>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+        <label style={labelStyle}>Latitude
+          <input name={inputId("latitude")} type="number" step="any" style={inputStyle} />
+        </label>
+        <label style={labelStyle}>Longitude
+          <input name={inputId("longitude")} type="number" step="any" style={inputStyle} />
+        </label>
+      </div>
+      <label style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <input name={inputId("is_approximate")} type="checkbox" value="1" defaultChecked />
+        Coordinates are approximate
+      </label>
+      <label style={labelStyle}>Coordinate precision
+        <select name={inputId("coordinate_precision")} style={inputStyle} defaultValue="ground_approximate">
+          <option value="exact">Exact — surveyed or official source</option>
+          <option value="postcode">Postcode — from postcode lookup</option>
+          <option value="ground_approximate">Ground located — manually placed</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </label>
+      <label style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <input name={inputId("set_primary")} type="checkbox" value="1" defaultChecked />
+        Set as home club&apos;s primary venue
+      </label>
+    </div>
+  );
+}
+
+function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
+  csrfToken: string; batchId: number; rowId: number; clubId: number | null;
+  venues: { id: number; name: string; postcode: string }[];
+}) {
+  return (
+    <div style={{ marginTop: "0.25rem" }}>
+      <details>
+        <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
+          Fix: Assign existing venue
+        </summary>
+        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
+          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+          border: "1px solid #dce3e2", maxWidth: "400px"
+        }}>
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <input type="hidden" name="_action" value="assign_existing_venue" />
+          <input type="hidden" name="redirect_row_id" value={rowId} />
+          {clubId && <input type="hidden" name="club_id" value={clubId} />}
+
+          <label style={labelStyle}>Venue
+            <select name="venue_id" required style={inputStyle}>
+              <option value="">Select venue...</option>
+              {venues.map((v) => <option key={v.id} value={v.id}>{v.name}, {v.postcode}</option>)}
+            </select>
+          </label>
+          <label style={labelStyle}>Effective from
+            <input name="effective_from" type="date" style={inputStyle}
+              defaultValue={new Date(new Date().getFullYear(), 6, 1).toISOString().split("T")[0]} />
+          </label>
+          <button type="submit" style={greenBtnStyle}>Assign venue & revalidate</button>
+        </form>
+      </details>
+      <details>
+        <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#a53a2d" }}>
+          Fix: Create venue and assign to home club
+        </summary>
+        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
+          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+          border: "1px solid #dce3e2", maxWidth: "450px"
+        }}>
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <input type="hidden" name="_action" value="create_venue_and_assign" />
+          <input type="hidden" name="redirect_row_id" value={rowId} />
+          {clubId && <input type="hidden" name="club_id" value={clubId} />}
+
+          <VenueCreateFields prefix="" />
+          <label style={labelStyle}>Effective from
+            <input name="effective_from" type="date" style={inputStyle}
+              defaultValue={new Date(new Date().getFullYear(), 6, 1).toISOString().split("T")[0]} />
+          </label>
+          <button type="submit" style={greenBtnStyle}>Create venue, assign & revalidate</button>
+        </form>
+      </details>
+    </div>
   );
 }
 

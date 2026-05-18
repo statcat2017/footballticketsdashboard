@@ -87,7 +87,9 @@ export async function POST(
 
   try {
     switch (action) {
+      case "mark_friendly": return handleMarkFriendly(request, db, batchId, form, actor);
       case "create_competition": return handleCreateCompetition(request, db, batchId, form, actor);
+      case "create_club": return handleCreateClub(request, db, batchId, form, actor);
       case "match_existing_club": return handleMatchExistingClub(request, db, batchId, form, actor);
       case "publish_pyramid_club": return handlePublishPyramidClub(request, db, batchId);
       case "assign_existing_venue": return handleAssignExistingVenue(request, db, batchId, form);
@@ -106,6 +108,79 @@ export async function POST(
   }
 }
 
+async function handleMarkFriendly(
+  request: Request,
+  db: import("@/lib/db/adapter").AppDatabase,
+  batchId: number,
+  form: FormData,
+  actor: string,
+) {
+  const existing = await db.get<{ code: string }>(
+    `SELECT code FROM competitions WHERE code = 'FRIENDLY'`
+  );
+  if (!existing) {
+    await db.writeBatch([
+      {
+        sql: `INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', NULL, 'friendly')`,
+        params: [] as import("@/lib/db/adapter").QueryParam[],
+      },
+      buildAdminAuditLogWrite({
+        action: "create",
+        entityType: "competition",
+        entityId: "FRIENDLY",
+        actor,
+        after: { code: "FRIENDLY", name: "Non-League Friendlies", kind: "friendly", import_batch_id: batchId },
+      }),
+    ]);
+  }
+
+  const redirectRowId = readString(form.get("redirect_row_id"));
+  const rawValue = readString(form.get("raw_value"));
+
+  if (redirectRowId) {
+    // Row-scoped: validate ownership
+    const parsed = parseInt(redirectRowId, 10);
+    if (!isNaN(parsed)) {
+      const row = await getRowOrError(db, parsed, batchId);
+      if (!row) {
+        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+      }
+      // Update only this row's competition_raw
+      await db.run(
+        `UPDATE import_batch_rows
+         SET competition_raw = 'Non-League Friendlies',
+             competition_resolved_code = NULL,
+             match_result = NULL,
+             warnings_json = NULL
+         WHERE id = ? AND batch_id = ? AND final_action IS NULL`,
+        [parsed, batchId]
+      );
+      await validateRowById(db, parsed);
+    }
+  } else if (rawValue) {
+    // Raw-value scoped: update all rows with the exact same raw competition name
+    await db.run(
+      `UPDATE import_batch_rows
+       SET competition_raw = 'Non-League Friendlies',
+           competition_resolved_code = NULL,
+           match_result = NULL,
+           warnings_json = NULL
+       WHERE batch_id = ?
+         AND final_action IS NULL
+         AND competition_raw = ?`,
+      [batchId, rawValue]
+    );
+    const { validateImportBatch } = await import("@/lib/import/validation");
+    await validateImportBatch(db, batchId);
+  }
+
+  const anchor = redirectRowId ? `fixture-${redirectRowId}` : undefined;
+  return redirectTo(request, batchId, {
+    success: "Marked as friendly outside formal competition.",
+    ...(anchor ? { anchor } : {}),
+  });
+}
+
 async function handleCreateCompetition(
   request: Request,
   db: import("@/lib/db/adapter").AppDatabase,
@@ -119,12 +194,18 @@ async function handleCreateCompetition(
     return redirectTo(request, batchId, { error: "Competition code and name are required." });
   }
 
-  const kind = readString(form.get("kind")) ?? "friendly";
-  const tierStr = readString(form.get("tier"));
-  const tier = tierStr ? parseInt(tierStr, 10) : 10;
+  const kind = readString(form.get("kind"));
+  if (!kind || !["league", "cup"].includes(kind)) {
+    return redirectTo(request, batchId, { error: "Kind must be league or cup." });
+  }
 
-  if (!["league", "cup", "friendly"].includes(kind)) {
-    return redirectTo(request, batchId, { error: "Invalid competition kind." });
+  let tier: number | null = null;
+  if (kind === "league") {
+    const tierStr = readString(form.get("tier"));
+    tier = tierStr ? parseInt(tierStr, 10) : null;
+    if (tier === null || tier < 1 || tier > 10) {
+      return redirectTo(request, batchId, { error: "League competitions require a tier between 1 and 10." });
+    }
   }
 
   const existing = await db.get<{ code: string }>(
@@ -153,6 +234,108 @@ async function handleCreateCompetition(
   await validateImportBatch(db, batchId);
 
   return redirectTo(request, batchId, { success: `Competition "${name}" created.` });
+}
+
+async function handleCreateClub(
+  request: Request,
+  db: import("@/lib/db/adapter").AppDatabase,
+  batchId: number,
+  form: FormData,
+  actor: string,
+) {
+  const name = readString(form.get("name"));
+  const redirectRowId = readString(form.get("redirect_row_id"));
+  const venueIdStr = readString(form.get("venue_id"));
+  const createVenueName = readString(form.get("create_venue_name"));
+  const alias = readNullableString(form.get("alias"));
+
+  if (!name) {
+    return redirectTo(request, batchId, { error: "Club name is required." });
+  }
+
+  let redirectRowIdParsed: number | undefined;
+  if (redirectRowId) {
+    const parsed = parseInt(redirectRowId, 10);
+    if (!isNaN(parsed)) {
+      const row = await getRowOrError(db, parsed, batchId);
+      if (!row) {
+        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+      }
+      redirectRowIdParsed = parsed;
+    }
+  }
+
+  let venueId: number | null = null;
+
+  // Option A: select existing venue
+  if (venueIdStr) {
+    venueId = parseInt(venueIdStr, 10);
+    if (isNaN(venueId) || venueId <= 0) venueId = null;
+  }
+
+  // Option B: create new venue inline
+  if (!venueId && createVenueName) {
+    const postcode = readString(form.get("create_venue_postcode"));
+    const latitudeRaw = form.get("create_venue_latitude");
+    const longitudeRaw = form.get("create_venue_longitude");
+    if (!postcode || !latitudeRaw || !longitudeRaw) {
+      return redirectTo(request, batchId, { error: "Venue requires postcode, latitude, and longitude." });
+    }
+    const latNum = Number(latitudeRaw);
+    const lngNum = Number(longitudeRaw);
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      return redirectTo(request, batchId, { error: "Valid venue coordinates are required." });
+    }
+    const isApproximate = form.get("create_venue_is_approximate") === "1" ? 1 : 0;
+    const coordinatePrecision = readString(form.get("create_venue_coordinate_precision")) ?? "ground_approximate";
+
+    venueId = await createAdminVenue({
+      name: createVenueName,
+      postcode,
+      latitude: latNum,
+      longitude: lngNum,
+      is_approximate: isApproximate,
+      coordinate_precision: coordinatePrecision,
+    });
+  }
+
+  if (!venueId) {
+    return redirectTo(request, batchId, { error: "Select an existing venue or provide venue details to create one." });
+  }
+
+  // Create club with venue_id set directly (clubs.venue_id IS the primary venue)
+  const clubResult = await db.run(
+    `INSERT INTO clubs (name, venue_id) VALUES (?, ?)`,
+    [name, venueId]
+  );
+  const newClubId = clubResult.lastInsertRowid;
+  if (!newClubId) throw new Error("Failed to create club record.");
+
+  await db.writeBatch([
+    buildAdminAuditLogWrite({
+      action: "create",
+      entityType: "club",
+      entityId: newClubId as number,
+      actor,
+      after: { name, venue_id: venueId, import_batch_id: batchId },
+    }),
+  ]);
+
+  // Add alias if different from name
+  if (alias && alias.trim() && alias.trim() !== name) {
+    await addAlias(db, newClubId as number, alias.trim(), { source: "import_batch_repair" });
+  }
+
+  // Revalidate affected row
+  if (redirectRowIdParsed) {
+    await validateRowById(db, redirectRowIdParsed);
+  }
+
+  const anchor = redirectRowIdParsed ? `fixture-${redirectRowIdParsed}` : undefined;
+  return redirectTo(request, batchId, {
+    success: `Club "${name}" created.`,
+    ...(anchor ? { anchor } : {}),
+  });
 }
 
 async function handleMatchExistingClub(
