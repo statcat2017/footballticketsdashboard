@@ -12,7 +12,7 @@ import {
 
 vi.mock("node:dns", () => ({
   promises: {
-    resolve4: vi.fn(),
+    resolve4: vi.fn().mockResolvedValue([]),
     resolve6: vi.fn().mockRejectedValue(new Error("no v6")),
   },
 }));

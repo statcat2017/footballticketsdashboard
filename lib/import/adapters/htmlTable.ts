@@ -63,7 +63,12 @@ export function validateFixtureUrl(url: string): string | null {
 
 export async function fetchPage(
   url: string,
-  options?: { timeout?: number; maxBytes?: number; fetcher?: typeof fetch }
+  options?: {
+    timeout?: number;
+    maxBytes?: number;
+    fetcher?: typeof fetch;
+    trustedDomains?: string[];
+  }
 ): Promise<{ html: string } | FetchPageError> {
   const timeoutMs = options?.timeout ?? 15000;
   const maxBytes = options?.maxBytes ?? 2_000_000;
@@ -80,8 +85,20 @@ export async function fetchPage(
       if (validation) return { error: validation };
 
       const parsedUrl = new URL(currentUrl);
-      const dnsError = await checkPrivateDNS(parsedUrl.hostname);
+      const hostname = parsedUrl.hostname;
+
+      const { error: dnsError, dnsAvailable } = await checkPrivateDNS(hostname);
       if (dnsError) return { error: dnsError };
+
+      if (!dnsAvailable) {
+        const trusted = options?.trustedDomains;
+        if (!trusted || !trusted.some((d) => hostname === d || hostname.endsWith("." + d))) {
+          return {
+            error: `Host ${hostname} could not be validated via DNS and is not in the trusted domain list. ` +
+              `Configure trustedDomains to import from this URL.`,
+          };
+        }
+      }
 
       let response: Response;
       try {
@@ -292,10 +309,14 @@ export async function createImportBatchFromHtmlUrl(
   options?: {
     seasonLabel?: string;
     selectedTableIndices?: number[];
+    trustedDomains?: string[];
     fetcher?: typeof fetch;
   }
 ): Promise<HtmlImportResult> {
-  const fetchResult = await fetchPage(url, { fetcher: options?.fetcher });
+  const fetchResult = await fetchPage(url, {
+    fetcher: options?.fetcher,
+    trustedDomains: options?.trustedDomains,
+  });
   if ("error" in fetchResult) {
     return { batchId: 0, rowCount: 0, errors: [fetchResult.error], tables: [] };
   }
@@ -533,18 +554,26 @@ function buildHeaderMapping(headers: string[]): Record<number, string> {
   return mapping;
 }
 
-async function checkPrivateDNS(hostname: string): Promise<string | null> {
+async function checkPrivateDNS(
+  hostname: string
+): Promise<{ error?: string; dnsAvailable: boolean }> {
   try {
     const dnsModule = await import("node:dns");
-    const addresses = await dnsModule.promises.resolve4(hostname);
-    for (const ip of addresses) {
-      if (isPrivateIPv4(ip)) return `Host ${hostname} resolves to private IP: ${ip}`;
+    try {
+      const addresses = await dnsModule.promises.resolve4(hostname);
+      for (const ip of addresses) {
+        if (isPrivateIPv4(ip)) {
+          return { error: `Host ${hostname} resolves to private IP: ${ip}`, dnsAvailable: true };
+        }
+      }
+    } catch {
+      // DNS lookup failed for this hostname — not necessarily an issue
     }
+    return { dnsAvailable: true };
   } catch {
-    // DNS resolution not available (e.g. Workers without nodejs_compat)
-    // or lookup failed — rely on regex-based URL validation as fallback
+    // DNS module unavailable (e.g. Workers without nodejs_compat)
+    return { dnsAvailable: false };
   }
-  return null;
 }
 
 function isPrivateIPv4(ip: string): boolean {
