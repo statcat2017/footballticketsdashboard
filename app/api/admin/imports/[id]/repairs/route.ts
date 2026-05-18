@@ -306,7 +306,17 @@ async function handleCreateClub(
     return redirectTo(request, batchId, { error: "Select an existing venue or provide venue details to create one." });
   }
 
-  // Create club; clubs.competition_code is NOT NULL, so use FRIENDLY as default
+  // Ensure FRIENDLY competition exists for the club FK
+  const friendlyExists = await db.get<{ code: string }>(
+    `SELECT code FROM competitions WHERE code = 'FRIENDLY'`
+  );
+  if (!friendlyExists) {
+    await db.run(
+      `INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', 10, 'friendly')`
+    );
+  }
+
+  // Create club with FRIENDLY as default competition
   const clubResult = await db.run(
     `INSERT INTO clubs (name, venue_id, competition_code) VALUES (?, ?, 'FRIENDLY')`,
     [name, venueId]
