@@ -74,3 +74,10 @@ export async function getBatchDetail(db: AppDatabase, batchId: number): Promise<
 export async function getSources(db: AppDatabase): Promise<FixtureSource[]> {
   return listSources(db);
 }
+
+export function getTrustedImportDomains(): string[] {
+  return (process.env.IMPORT_TRUSTED_DOMAINS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}

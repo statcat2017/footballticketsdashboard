@@ -4,6 +4,7 @@ import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { createImportBatchFromHtmlUrl } from "@/lib/import";
 import { validateImportBatch } from "@/lib/import/validation";
+import { getTrustedImportDomains } from "@/lib/admin/imports";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -35,6 +36,13 @@ export async function POST(request: Request) {
     selectedTableIndices = selectedTablesRaw.split(",").map(Number).filter((n) => !isNaN(n));
   }
 
+  if (selectedTableIndices !== undefined && selectedTableIndices.length === 0) {
+    return NextResponse.redirect(
+      new URL("/admin/imports/new?error=Select at least one table to import.", request.url),
+      { status: 303 }
+    );
+  }
+
   const seasonLabel = form.get("season_label");
 
   const db = await getDatabase();
@@ -44,6 +52,7 @@ export async function POST(request: Request) {
     const result = await createImportBatchFromHtmlUrl(db, url, actor, {
       seasonLabel: typeof seasonLabel === "string" && seasonLabel.length > 0 ? seasonLabel : undefined,
       selectedTableIndices,
+      trustedDomains: getTrustedImportDomains(),
     });
 
     if (result.batchId === 0 && result.errors.length > 0) {
