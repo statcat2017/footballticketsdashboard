@@ -26,6 +26,7 @@ export async function POST(request: Request) {
   }
 
   const pyramidClubIdStr = form.get("pyramid_club_id");
+  const redirectDivisionIdStr = form.get("redirect_division_id");
 
   if (typeof pyramidClubIdStr !== "string" || !/^\d+$/.test(pyramidClubIdStr)) {
     return NextResponse.redirect(
@@ -37,6 +38,19 @@ export async function POST(request: Request) {
   const pyramidClubId = Number(pyramidClubIdStr);
   const db = await getDatabase();
 
+  function baseUrl(): string {
+    let path = "/admin/publish";
+    if (typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)) {
+      path += `?division_id=${redirectDivisionIdStr}`;
+    }
+    return path;
+  }
+
+  function redirectTo(path: string, extraParams: string): URL {
+    const sep = path.includes("?") ? "&" : "?";
+    return new URL(`${path}${sep}${extraParams}`, request.url);
+  }
+
   try {
     const pyramidClub = await db.get<{ id: number; name: string; aliases: string | null }>(
       `SELECT id, name, aliases FROM pyramid_clubs WHERE id = ?`,
@@ -45,7 +59,7 @@ export async function POST(request: Request) {
 
     if (!pyramidClub) {
       return NextResponse.redirect(
-        new URL("/admin/publish?error=Pyramid club not found.", request.url),
+        redirectTo(baseUrl(), "error=Pyramid club not found."),
         { status: 303 }
       );
     }
@@ -57,7 +71,7 @@ export async function POST(request: Request) {
 
     if (existingMapping) {
       return NextResponse.redirect(
-        new URL("/admin/publish?error=Club already published.", request.url),
+        redirectTo(baseUrl(), "error=Club already published."),
         { status: 303 }
       );
     }
@@ -72,7 +86,7 @@ export async function POST(request: Request) {
 
     if (!venue) {
       return NextResponse.redirect(
-        new URL("/admin/publish?error=Pyramid club has no primary venue. Create a venue first.", request.url),
+        redirectTo(baseUrl(), "error=Pyramid club has no primary venue. Create a venue first."),
         { status: 303 }
       );
     }
@@ -90,7 +104,7 @@ export async function POST(request: Request) {
 
     if (!divisionMapping) {
       return NextResponse.redirect(
-        new URL("/admin/publish?error=Division has no competition mapping. Publish the competition first.", request.url),
+        redirectTo(baseUrl(), "error=Division has no competition mapping. Publish the competition first."),
         { status: 303 }
       );
     }
@@ -108,21 +122,21 @@ export async function POST(request: Request) {
 
       if (existingClubMapping) {
         return NextResponse.redirect(
-          new URL(`/admin/publish?error=Public club "${pyramidClub.name}" is already mapped to pyramid club ID ${existingClubMapping.pyramid_club_id}.`, request.url),
+          redirectTo(baseUrl(), `error=Public club "${pyramidClub.name}" is already mapped to pyramid club ID ${existingClubMapping.pyramid_club_id}.`),
           { status: 303 }
         );
       }
 
       if (existingClub.competition_code !== divisionMapping.competition_code) {
         return NextResponse.redirect(
-          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" has competition "${existingClub.competition_code}" but this division maps to "${divisionMapping.competition_code}".`, request.url),
+          redirectTo(baseUrl(), `error=Existing club "${pyramidClub.name}" has competition "${existingClub.competition_code}" but this division maps to "${divisionMapping.competition_code}".`),
           { status: 303 }
         );
       }
 
       if (existingClub.venue_id !== venue.id) {
         return NextResponse.redirect(
-          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" has venue ID ${existingClub.venue_id} but "${pyramidClub.name}" uses venue ID ${venue.id} ("${venue.name}").`, request.url),
+          redirectTo(baseUrl(), `error=Existing club "${pyramidClub.name}" has venue ID ${existingClub.venue_id} but "${pyramidClub.name}" uses venue ID ${venue.id} ("${venue.name}").`),
           { status: 303 }
         );
       }
@@ -146,7 +160,7 @@ export async function POST(request: Request) {
       ]);
 
       return NextResponse.redirect(
-        new URL(`/admin/publish?success=Club "${pyramidClub.name}" mapped to existing public club.`, request.url),
+        redirectTo(baseUrl(), `success=Club "${pyramidClub.name}" mapped to existing public club.`),
         { status: 303 }
       );
     }
@@ -181,13 +195,13 @@ export async function POST(request: Request) {
     ]);
 
     return NextResponse.redirect(
-      new URL(`/admin/publish?success=Club "${pyramidClub.name}" published.`, request.url),
+      redirectTo(baseUrl(), `success=Club "${pyramidClub.name}" published.`),
       { status: 303 }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.redirect(
-      new URL(`/admin/publish?error=${encodeURIComponent(message)}`, request.url),
+      redirectTo(baseUrl(), `error=${encodeURIComponent(message)}`),
       { status: 303 }
     );
   }

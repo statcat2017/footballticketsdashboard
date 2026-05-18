@@ -422,19 +422,11 @@ export async function getPublishableDivisions(): Promise<PublishableDivision[]> 
   }));
 }
 
-export async function getPublishableClubs(): Promise<PublishableClub[]> {
+export async function getPublishableClubs(divisionId?: number): Promise<PublishableClub[]> {
   const db = await getDatabase();
   const seasonId = await getLatestSeasonId(db);
 
-  const rows = await db.all<{
-    id: number;
-    name: string;
-    division_id: number;
-    division_name: string;
-    venue_name: string | null;
-    club_mapping_id: number | null;
-  }>(
-    `SELECT
+  let sql = `SELECT
       pc.id, pc.name,
       d.id AS division_id,
       d.name AS division_name,
@@ -448,10 +440,25 @@ export async function getPublishableClubs(): Promise<PublishableClub[]> {
       ON cva.club_id = pc.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
     LEFT JOIN club_mappings cm ON cm.pyramid_club_id = pc.id
-    WHERE psm.season_id = ?
-    ORDER BY d.level, d.name, pc.name`,
-    [seasonId]
-  );
+    WHERE psm.season_id = ?`;
+
+  const params: (string | number)[] = [seasonId];
+
+  if (divisionId !== undefined) {
+    sql += ` AND d.id = ?`;
+    params.push(divisionId);
+  }
+
+  sql += ` ORDER BY d.level, d.name, pc.name`;
+
+  const rows = await db.all<{
+    id: number;
+    name: string;
+    division_id: number;
+    division_name: string;
+    venue_name: string | null;
+    club_mapping_id: number | null;
+  }>(sql, params);
 
   return rows.map((row) => ({
     id: row.id,

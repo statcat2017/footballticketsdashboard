@@ -3,7 +3,8 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { divisionCodeFromName } from "@/lib/admin/clubs";
-import { writeAdminAuditLog } from "@/lib/admin/audit";
+
+const ADMIN_ACTOR = "admin";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
   }
 
   const divisionIdStr = form.get("division_id");
+  const redirectDivisionIdStr = form.get("redirect_division_id");
 
   if (typeof divisionIdStr !== "string" || !/^\d+$/.test(divisionIdStr)) {
     return NextResponse.redirect(
@@ -36,6 +38,19 @@ export async function POST(request: Request) {
   const divisionId = Number(divisionIdStr);
   const db = await getDatabase();
 
+  function baseUrl(): string {
+    let path = "/admin/publish";
+    if (typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)) {
+      path += `?division_id=${redirectDivisionIdStr}`;
+    }
+    return path;
+  }
+
+  function redirectTo(path: string, extraParams: string): URL {
+    const sep = path.includes("?") ? "&" : "?";
+    return new URL(`${path}${sep}${extraParams}`, request.url);
+  }
+
   try {
     const division = await db.get<{ id: number; name: string; level: number }>(
       `SELECT id, name, level FROM pyramid_divisions WHERE id = ?`,
@@ -44,7 +59,7 @@ export async function POST(request: Request) {
 
     if (!division) {
       return NextResponse.redirect(
-        new URL("/admin/publish?error=Division not found.", request.url),
+        redirectTo(baseUrl(), "error=Division not found."),
         { status: 303 }
       );
     }
@@ -56,40 +71,39 @@ export async function POST(request: Request) {
 
     if (existingMapping) {
       return NextResponse.redirect(
-        new URL("/admin/publish?error=Division already has a competition mapping.", request.url),
+        redirectTo(baseUrl(), "error=Division already has a competition mapping."),
         { status: 303 }
       );
     }
 
     const code = divisionCodeFromName(division.name);
 
-    // Check if the competition code already exists in the table
     const existingCompetition = await db.get<{ code: string; id: number }>(
       `SELECT code, id FROM competitions WHERE code = ?`,
       [code]
     );
 
     if (existingCompetition) {
-      // Link to existing competition instead of creating a duplicate
-      await db.run(
-        `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
-        [divisionId, code]
-      );
+      const after = {
+        division_id: divisionId,
+        competition_code: code,
+        competition_name: division.name,
+        note: "mapped to existing competition"
+      };
 
-      await writeAdminAuditLog(db, {
-        action: "publish",
-        entityType: "division_competition_mapping",
-        entityId: divisionId,
-        after: {
-          division_id: divisionId,
-          competition_code: code,
-          competition_name: division.name,
-          note: "mapped to existing competition"
+      await db.writeBatch([
+        {
+          sql: `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
+          params: [divisionId, code]
+        },
+        {
+          sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
+          params: [ADMIN_ACTOR, "publish", "division_competition_mapping", String(divisionId), null, JSON.stringify(after)]
         }
-      });
+      ]);
 
       return NextResponse.redirect(
-        new URL(`/admin/publish?success=Division "${division.name}" mapped to existing competition "${code}".`, request.url),
+        redirectTo(baseUrl(), `success=Division "${division.name}" mapped to existing competition "${code}".`),
         { status: 303 }
       );
     }
@@ -99,31 +113,34 @@ export async function POST(request: Request) {
       [code, division.name, division.level]
     );
 
-    await db.run(
-      `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
-      [divisionId, code]
-    );
+    const newCompetitionId = competitionResult.lastInsertRowid;
 
-    await writeAdminAuditLog(db, {
-      action: "publish",
-      entityType: "competition",
-      entityId: competitionResult.lastInsertRowid,
-      after: {
-        code,
-        name: division.name,
-        tier: division.level,
-        division_id: divisionId
+    const after = {
+      code,
+      name: division.name,
+      tier: division.level,
+      division_id: divisionId
+    };
+
+    await db.writeBatch([
+      {
+        sql: `INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?)`,
+        params: [divisionId, code]
+      },
+      {
+        sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
+        params: [ADMIN_ACTOR, "publish", "competition", String(newCompetitionId), null, JSON.stringify(after)]
       }
-    });
+    ]);
 
     return NextResponse.redirect(
-      new URL(`/admin/publish?success=Competition "${division.name}" published as "${code}".`, request.url),
+      redirectTo(baseUrl(), `success=Competition "${division.name}" published as "${code}".`),
       { status: 303 }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.redirect(
-      new URL(`/admin/publish?error=${encodeURIComponent(message)}`, request.url),
+      redirectTo(baseUrl(), `error=${encodeURIComponent(message)}`),
       { status: 303 }
     );
   }
