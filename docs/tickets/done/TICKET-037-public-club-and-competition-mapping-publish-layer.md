@@ -1,6 +1,6 @@
 # TICKET-037: Public Club And Competition Mapping Publish Layer
 
-Status: open
+Status: done
 Owner: Backend / Admin
 Priority: high
 Depends on: TICKET-036
