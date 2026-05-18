@@ -121,7 +121,7 @@ async function handleMarkFriendly(
   if (!existing) {
     await db.writeBatch([
       {
-        sql: `INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', NULL, 'friendly')`,
+        sql: `INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', 10, 'friendly')`,
         params: [] as import("@/lib/db/adapter").QueryParam[],
       },
       buildAdminAuditLogWrite({
@@ -199,13 +199,16 @@ async function handleCreateCompetition(
     return redirectTo(request, batchId, { error: "Kind must be league or cup." });
   }
 
-  let tier: number | null = null;
+  let tier: number;
   if (kind === "league") {
     const tierStr = readString(form.get("tier"));
-    tier = tierStr ? parseInt(tierStr, 10) : null;
-    if (tier === null || tier < 1 || tier > 10) {
+    tier = tierStr ? parseInt(tierStr, 10) : 0;
+    if (tier < 1 || tier > 10) {
       return redirectTo(request, batchId, { error: "League competitions require a tier between 1 and 10." });
     }
+  } else {
+    // Cup/friendly use tier=10 internally
+    tier = 10;
   }
 
   const existing = await db.get<{ code: string }>(
@@ -303,9 +306,9 @@ async function handleCreateClub(
     return redirectTo(request, batchId, { error: "Select an existing venue or provide venue details to create one." });
   }
 
-  // Create club with venue_id set directly (clubs.venue_id IS the primary venue)
+  // Create club; clubs.competition_code is NOT NULL, so use FRIENDLY as default
   const clubResult = await db.run(
-    `INSERT INTO clubs (name, venue_id) VALUES (?, ?)`,
+    `INSERT INTO clubs (name, venue_id, competition_code) VALUES (?, ?, 'FRIENDLY')`,
     [name, venueId]
   );
   const newClubId = clubResult.lastInsertRowid;

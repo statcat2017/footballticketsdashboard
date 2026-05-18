@@ -16,7 +16,7 @@ import {
 } from "./pyramid.ts";
 
 export interface SeedData {
-  competitions: Array<{ code: string; name: string; tier: number | null; kind?: string }>;
+  competitions: Array<{ code: string; name: string; tier: number; kind?: string }>;
   venues: Array<{ id: number; name: string; postcode: string; latitude: number; longitude: number; is_approximate: number }>;
   clubs: Array<{ id: number; name: string; football_data_team_id: number; aliases: string; short_name: string; competition_code: string; venue_id: number; official_site_url: string; generic_ticket_url: string; price_source_url: string; verified_at: string }>;
   club_ticket_prices: Array<{ club_id: number; sale_mode: string; adult_price_pence: number; concession_price_pence: number; source_url: string; verified_at: string; confidence: string }>;
@@ -46,7 +46,7 @@ export const SEED_DATA: SeedData = {
   competitions: [
     { code: "PL", name: "Premier League", tier: 1 },
     { code: "ELC", name: "Championship", tier: 2 },
-    { code: "FRIENDLY", name: "Non-League Friendlies", tier: null, kind: "friendly" }
+    { code: "FRIENDLY", name: "Non-League Friendlies", tier: 10, kind: "friendly" }
   ],
   venues: [
     { id: 1, name: "Stamford Bridge", postcode: "SW6 1HS", latitude: 51.4817, longitude: -0.191, is_approximate: 0 },
