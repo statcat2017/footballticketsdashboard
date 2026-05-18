@@ -1,6 +1,5 @@
 import { getDatabase } from "@/lib/db/client";
 import { writeAdminAuditLog } from "@/lib/admin/audit";
-import { invalidateTravelCacheForVenue } from "@/lib/travel/cache";
 import { distanceMiles } from "@/lib/distance";
 import type { SqlWrite } from "@/lib/db/adapter";
 
@@ -184,14 +183,8 @@ export async function updateAdminVenue(
     }
   }
 
-  const updatedName = input.name ?? current.name;
-  const updatedPostcode = input.postcode ?? current.postcode;
   const updatedLatitude = input.latitude ?? current.latitude;
   const updatedLongitude = input.longitude ?? current.longitude;
-  const updatedIsApproximate = input.is_approximate ?? current.is_approximate;
-  const updatedCoordinatePrecision = input.coordinate_precision ?? current.coordinate_precision;
-  const updatedCoordinatesConfidence = input.coordinates_confidence ?? current.coordinates_confidence;
-  const updatedCoordinatesNotes = input.coordinates_notes ?? current.coordinates_notes;
 
   const coordsChanged =
     updatedLatitude !== current.latitude ||
@@ -203,47 +196,79 @@ export async function updateAdminVenue(
       )
     : 0;
 
-  return db.transaction<AdminVenueUpdateResult>(async (txDb) => {
+  return db.writeBatch(buildUpdateStatements(venueId, input, current, now, coordsChanged, distanceMoved)).then((results) => {
     let invalidatedTravelCount = 0;
     if (coordsChanged && distanceMoved > 1) {
-      invalidatedTravelCount = await invalidateTravelCacheForVenue(txDb, venueId);
+      invalidatedTravelCount = results[0].changes;
     }
+    return { invalidatedTravelCount };
+  });
+}
 
-    await txDb.run(
-      `UPDATE venues
-       SET name = ?, postcode = ?, latitude = ?, longitude = ?, is_approximate = ?,
-           admin_updated_at = ?, coordinate_precision = ?, coordinates_confidence = ?, coordinates_notes = ?
-       WHERE id = ?`,
-      [
-        updatedName, updatedPostcode, updatedLatitude, updatedLongitude, updatedIsApproximate,
-        now, updatedCoordinatePrecision, updatedCoordinatesConfidence, updatedCoordinatesNotes, venueId
-      ]
-    );
+function buildUpdateStatements(
+  venueId: number,
+  input: AdminVenueUpdateInput,
+  current: AdminVenueRow,
+  now: string,
+  coordsChanged: boolean,
+  distanceMoved: number
+): SqlWrite[] {
+  const statements: SqlWrite[] = [];
 
-    await writeAdminAuditLog(txDb, {
-      action: "update",
-      entityType: "venue",
-      entityId: venueId,
-      before: {
+  if (coordsChanged && distanceMoved > 1) {
+    statements.push({
+      sql: "DELETE FROM travel_cache WHERE venue_id = ?",
+      params: [venueId]
+    });
+  }
+
+  const updatedName = input.name ?? current.name;
+  const updatedPostcode = input.postcode ?? current.postcode;
+  const updatedLatitude = input.latitude ?? current.latitude;
+  const updatedLongitude = input.longitude ?? current.longitude;
+  const updatedIsApproximate = input.is_approximate ?? current.is_approximate;
+  const updatedCoordinatePrecision = input.coordinate_precision ?? current.coordinate_precision;
+  const updatedCoordinatesConfidence = input.coordinates_confidence ?? current.coordinates_confidence;
+  const updatedCoordinatesNotes = input.coordinates_notes ?? current.coordinates_notes;
+
+  statements.push({
+    sql: `UPDATE venues
+          SET name = ?, postcode = ?, latitude = ?, longitude = ?, is_approximate = ?,
+              admin_updated_at = ?, coordinate_precision = ?, coordinates_confidence = ?, coordinates_notes = ?
+          WHERE id = ?`,
+    params: [
+      updatedName, updatedPostcode, updatedLatitude, updatedLongitude, updatedIsApproximate,
+      now, updatedCoordinatePrecision, updatedCoordinatesConfidence, updatedCoordinatesNotes, venueId
+    ]
+  });
+
+  statements.push({
+    sql: `INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)`,
+    params: [
+      "admin",
+      "update",
+      "venue",
+      String(venueId),
+      JSON.stringify({
         name: current.name, postcode: current.postcode,
         latitude: current.latitude, longitude: current.longitude,
         is_approximate: current.is_approximate,
         coordinate_precision: current.coordinate_precision,
         coordinates_confidence: current.coordinates_confidence,
         coordinates_notes: current.coordinates_notes
-      },
-      after: {
+      }),
+      JSON.stringify({
         name: updatedName, postcode: updatedPostcode,
         latitude: updatedLatitude, longitude: updatedLongitude,
         is_approximate: updatedIsApproximate,
         coordinate_precision: updatedCoordinatePrecision,
         coordinates_confidence: updatedCoordinatesConfidence,
         coordinates_notes: updatedCoordinatesNotes
-      }
-    });
-
-    return { invalidatedTravelCount };
+      })
+    ]
   });
+
+  return statements;
 }
 
 export async function assignAdminVenue(
