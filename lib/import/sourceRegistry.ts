@@ -116,6 +116,27 @@ export async function recordSuccess(db: AppDatabase, id: number): Promise<void> 
   );
 }
 
+export async function getOrCreateSource(
+  db: AppDatabase,
+  input: FixtureSourceInput
+): Promise<FixtureSource> {
+  if (input.baseUrl) {
+    const row = await db.get<Record<string, unknown>>(
+      `SELECT * FROM fixture_sources WHERE source_type = ? AND base_url = ? ORDER BY id LIMIT 1`,
+      [input.sourceType, input.baseUrl]
+    );
+    if (row) return mapSourceRow(row);
+  } else {
+    const row = await db.get<Record<string, unknown>>(
+      `SELECT * FROM fixture_sources WHERE source_type = ? AND name = ? ORDER BY id LIMIT 1`,
+      [input.sourceType, input.name]
+    );
+    if (row) return mapSourceRow(row);
+  }
+
+  return createSource(db, input);
+}
+
 export async function recordFailure(db: AppDatabase, id: number): Promise<void> {
   await db.run(
     `UPDATE fixture_sources SET failure_count = failure_count + 1 WHERE id = ?`,
