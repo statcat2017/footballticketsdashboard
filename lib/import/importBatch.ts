@@ -290,6 +290,10 @@ export async function updateBatchRow(
     fields.push("away_is_one_off = ?");
     params.push(updates.awayIsOneOff ? 1 : 0);
   }
+  if (updates.homeIsOneOff !== undefined) {
+    fields.push("home_is_one_off = ?");
+    params.push(updates.homeIsOneOff ? 1 : 0);
+  }
   if (updates.competitionResolvedCode !== undefined) {
     fields.push("competition_resolved_code = ?");
     params.push(updates.competitionResolvedCode);
@@ -384,6 +388,8 @@ export async function updateBatchRowOutcome(
     finalFixtureId: outcome.finalFixtureId,
     homeParticipantResolvedId: outcome.homeParticipantResolvedId,
     awayParticipantResolvedId: outcome.awayParticipantResolvedId,
+    homeIsOneOff: outcome.homeIsOneOff,
+    awayIsOneOff: outcome.awayIsOneOff,
     competitionResolvedCode: outcome.competitionResolvedCode,
     venueResolvedId: outcome.venueResolvedId,
     kickoffDate: outcome.kickoffDate,

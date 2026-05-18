@@ -76,8 +76,8 @@ async function upsertClubRowAsync(db: AppDatabase, row: ClubCsvRow): Promise<voi
   const clubId = (await existingClubIdAsync(db, row)) ?? stableClubId(row.competition, row.club_name);
 
   await db.run(`
-    INSERT INTO competitions (code, name, tier)
-    VALUES (?, ?, ?)
+    INSERT INTO competitions (code, name, tier, kind)
+    VALUES (?, ?, ?, 'league')
     ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier
   `, [row.competition, competitionName(row.competition), competitionTier(row.competition)]);
 

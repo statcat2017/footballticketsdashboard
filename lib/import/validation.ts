@@ -23,6 +23,8 @@ export interface RowValidationResult {
   normalizedDate?: string | null;
   normalizedTime?: string | null;
   normalizedStatus?: FixtureStatus | null;
+  awayIsOneOff?: boolean;
+  awayParticipantRaw?: string | null;
 }
 
 export interface BatchValidationResult {
@@ -65,6 +67,7 @@ export async function validateImportBatch(
         : undefined,
       homeParticipantResolvedId: validation.homeParticipantResolvedId,
       awayParticipantResolvedId: validation.awayParticipantResolvedId,
+      awayIsOneOff: validation.awayIsOneOff,
       competitionResolvedCode: validation.competitionResolvedCode,
       venueResolvedId: validation.venueResolvedId,
     };
@@ -295,6 +298,7 @@ export async function validateRow(
   let hasBlocker = false;
 
   let competitionCode: string | null = null;
+  let competitionKind: string | null = null;
 
   const compPass1 = await resolveCompetition(db, row.competitionRaw, null);
   if (!compPass1.isBlocked) competitionCode = compPass1.code;
@@ -304,10 +308,6 @@ export async function validateRow(
   warnings.push(...home.warnings);
   if (home.isBlocked) hasBlocker = true;
 
-  const away = await resolveParticipant(db, row.awayParticipantRaw, row.awayIsOneOff, competitionCode ?? undefined, "away");
-  warnings.push(...away.warnings);
-  if (away.isBlocked) hasBlocker = true;
-
   if (!competitionCode && home.clubId && !home.isBlocked) {
     const inferred = await resolveCompetitionFromFixture(db, home.clubId, row.competitionRaw ?? "");
     if (inferred) {
@@ -315,9 +315,28 @@ export async function validateRow(
     }
   }
 
+  if (competitionCode) {
+    const comp = await db.get<{ kind: string }>(
+      `SELECT kind FROM competitions WHERE code = ?`,
+      [competitionCode]
+    );
+    competitionKind = comp?.kind ?? null;
+  }
+
   if (!competitionCode) {
     hasBlocker = true;
   }
+
+  let resolvedAwayIsOneOff = row.awayIsOneOff;
+  const away = await resolveParticipant(db, row.awayParticipantRaw, row.awayIsOneOff, competitionCode ?? undefined, "away");
+  if (competitionKind === "friendly" && row.awayParticipantRaw && away.isBlocked) {
+    away.clubId = null;
+    away.isBlocked = false;
+    away.warnings = [];
+    resolvedAwayIsOneOff = true;
+  }
+  warnings.push(...away.warnings);
+  if (away.isBlocked) hasBlocker = true;
 
   const venue = await resolveVenue(db, row.venueRaw, home.clubId, row.homeIsOneOff);
   warnings.push(...venue.warnings);
@@ -406,6 +425,8 @@ export async function validateRow(
       normalizedDate,
       normalizedTime,
       normalizedStatus,
+      awayIsOneOff: resolvedAwayIsOneOff,
+      awayParticipantRaw: row.awayParticipantRaw,
     };
   }
 
@@ -416,6 +437,7 @@ export async function validateRow(
     competitionResolvedCode: competitionCode,
     venueResolvedId: venue.venueId,
     kickoffDate: normalizedDate ?? row.kickoffDate,
+    awayIsOneOff: resolvedAwayIsOneOff,
   } as ImportBatchRow, seasonLabel);
 
   return {
@@ -428,6 +450,8 @@ export async function validateRow(
     normalizedDate,
     normalizedTime,
     normalizedStatus,
+    awayIsOneOff: resolvedAwayIsOneOff,
+    awayParticipantRaw: row.awayParticipantRaw,
   };
 }
 

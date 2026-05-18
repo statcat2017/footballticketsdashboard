@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS competitions (
   id INTEGER PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 10)
+  tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 10),
+  kind TEXT NOT NULL DEFAULT 'league' CHECK (kind IN ('league', 'cup', 'friendly'))
 );
 
 CREATE TABLE IF NOT EXISTS fixture_seasons (

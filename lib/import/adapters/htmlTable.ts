@@ -202,15 +202,21 @@ export function extractTables(html: string): DetectedTable[] {
       continue;
     }
 
-    const score = scoreTable(headers, dataRows);
+    const fixtureRows = dataRows.filter((cells) => !isStructuralRow(cells));
+    if (fixtureRows.length === 0) {
+      searchFrom = tableStart + fullHtml.length;
+      continue;
+    }
+
+    const score = scoreTable(headers, fixtureRows);
 
     tables.push({
       tableIndex,
       caption,
       headers,
-      rows: dataRows,
-      rowCount: dataRows.length,
-      sampleCells: dataRows.slice(0, 3),
+      rows: fixtureRows,
+      rowCount: fixtureRows.length,
+      sampleCells: fixtureRows.slice(0, 3),
       score,
     });
 
@@ -242,11 +248,18 @@ export function parseHtmlTableRows(
         }
       }
     } else {
-      fieldValues.homeParticipantRaw = cells[0];
-      fieldValues.awayParticipantRaw = cells[1];
-      if (cells.length >= 3) fieldValues.competitionRaw = cells[2];
-      if (cells.length >= 4) fieldValues.kickoffDate = cells[3];
-      if (cells.length >= 5) fieldValues.venueRaw = cells[4];
+      if (cells.length >= 5 && cells[3].trim() === "v") {
+        fieldValues.homeParticipantRaw = cells[2];
+        fieldValues.awayParticipantRaw = cells[4];
+        if (cells[0]) fieldValues.kickoffDate = cells[0];
+        if (cells[1]) fieldValues.kickoffTime = cells[1];
+      } else {
+        fieldValues.homeParticipantRaw = cells[0];
+        fieldValues.awayParticipantRaw = cells[1];
+        if (cells.length >= 3) fieldValues.competitionRaw = cells[2];
+        if (cells.length >= 4) fieldValues.kickoffDate = cells[3];
+        if (cells.length >= 5) fieldValues.venueRaw = cells[4];
+      }
     }
 
     const rowErrors: string[] = [];
@@ -279,7 +292,14 @@ export function parseHtmlTableRows(
     }
     if (fieldValues.competitionRaw) normalized.competitionRaw = fieldValues.competitionRaw;
     if (fieldValues.venueRaw) normalized.venueRaw = fieldValues.venueRaw;
-    if (fieldValues.status) normalized.status = parseStatusField(fieldValues.status);
+    if (fieldValues.status) {
+      const maybeTime = parseTimeField(fieldValues.status);
+      if (maybeTime) {
+        normalized.kickoffTime = maybeTime;
+      } else {
+        normalized.status = parseStatusField(fieldValues.status);
+      }
+    }
     if (fieldValues.ticketUrl) normalized.ticketUrl = fieldValues.ticketUrl;
     if (fieldValues.sourceUrl) normalized.sourceUrl = fieldValues.sourceUrl;
     if (fieldValues.adultPricePence) normalized.adultPricePence = parsePriceField(fieldValues.adultPricePence);
@@ -351,6 +371,15 @@ export async function createImportBatchFromHtmlUrl(
     allErrors.push(...errors);
   }
 
+  if (isFriendlyFixturesUrl(url)) {
+    for (const row of allRows) {
+      if (!row.competitionRaw) {
+        row.competitionRaw = "Non-League Friendlies";
+      }
+      row.awayIsOneOff = true;
+    }
+  }
+
   const totalRows = allRows.length + allErrors.length;
 
   const batch = await createBatch(db, {
@@ -392,6 +421,11 @@ export async function createImportBatchFromHtmlUrl(
     errors: allErrors.map((e) => e.message),
     tables: allTables,
   };
+}
+
+function isFriendlyFixturesUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.includes("friendly") || lower.includes("friendlies") || lower.includes("non-league");
 }
 
 function concatUint8(chunks: Uint8Array[]): Uint8Array {
@@ -500,6 +534,16 @@ function extractRowCells(rowHtml: string): string[] {
     cells.push(stripHtml(match[1]));
   }
   return cells;
+}
+
+function isStructuralRow(cells: string[]): boolean {
+  if (cells.length === 0) return true;
+  if (cells.length === 1 && (!cells[0] || !cells[0].trim())) return true;
+  if (cells.length === 1) {
+    const text = cells[0].trim();
+    if (/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+/i.test(text)) return true;
+  }
+  return false;
 }
 
 function detectHeaders(rawRows: string[]): { headers: string[]; dataRows: string[][] } {

@@ -16,7 +16,8 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "POSTCODES_IO_BASE_URL": "https://api.postcodes.io"
+    "POSTCODES_IO_BASE_URL": "https://api.postcodes.io",
+    "IMPORT_TRUSTED_DOMAINS": "footballwebpages.co.uk"
   },
   "observability": {
     "logs": {
