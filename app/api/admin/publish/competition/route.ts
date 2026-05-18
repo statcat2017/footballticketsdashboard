@@ -110,7 +110,7 @@ export async function POST(request: Request) {
 
     await db.writeBatch([
       {
-        sql: `INSERT INTO competitions (code, name, tier) VALUES (?, ?, ?)`,
+        sql: `INSERT INTO competitions (code, name, tier, kind) VALUES (?, ?, ?, 'league')`,
         params: [code, division.name, division.level]
       },
       {

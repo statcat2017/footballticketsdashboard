@@ -115,6 +115,8 @@ export interface BatchRowOutcomeUpdate {
   finalFixtureId?: number | null;
   homeParticipantResolvedId?: number | null;
   awayParticipantResolvedId?: number | null;
+  homeIsOneOff?: boolean;
+  awayIsOneOff?: boolean;
   competitionResolvedCode?: string | null;
   venueResolvedId?: number | null;
   kickoffDate?: string | null;

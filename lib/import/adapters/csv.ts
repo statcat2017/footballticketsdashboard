@@ -402,6 +402,26 @@ export function parseTimeField(value: string): string | undefined {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
+  const dottedMatch = /^(\d{1,2})\.(\d{2})(?:\s*(AM|PM|am|pm))?$/.exec(trimmed);
+  if (dottedMatch) {
+    let hours = parseInt(dottedMatch[1], 10);
+    const minutes = parseInt(dottedMatch[2], 10);
+
+    if (minutes < 0 || minutes > 59) return undefined;
+
+    const suffix = dottedMatch[3];
+    if (suffix) {
+      const isPM = suffix.toUpperCase() === "PM";
+      if (hours === 0 || hours > 12) return undefined;
+      if (isPM && hours < 12) hours += 12;
+      if (!isPM && hours === 12) hours = 0;
+    } else {
+      if (hours < 0 || hours > 23) return undefined;
+    }
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
   const hourOnly = /^(\d{1,2})\s*(AM|PM|am|pm)$/.exec(trimmed);
   if (hourOnly) {
     let hours = parseInt(hourOnly[1], 10);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createAppDatabase } from "@/lib/db/client";
-import { parseCsv, createImportBatchFromCsv } from "@/lib/import";
+import { parseCsv, createImportBatchFromCsv, parseTimeField } from "@/lib/import";
 import { createSource, getBatchRows, getBatch } from "@/lib/import";
 
 const CSV_HEADERS = "Home,Away,Date,Time,Competition,Venue,Price,Status,Ticket URL,Source";
@@ -401,5 +401,28 @@ describe("createImportBatchFromCsv", () => {
 
     const batch = await getBatch(db, result.batchId);
     expect(batch!.seasonLabel).toBe("2025-26");
+  });
+});
+
+describe("parseTimeField — dotted time", () => {
+  it("parses 7.45pm as 19:45", () => {
+    expect(parseTimeField("7.45pm")).toBe("19:45");
+  });
+
+  it("parses 7.30pm as 19:30", () => {
+    expect(parseTimeField("7.30pm")).toBe("19:30");
+  });
+
+  it("parses 3pm as 15:00", () => {
+    expect(parseTimeField("3pm")).toBe("15:00");
+  });
+
+  it("parses 7.45 am as 07:45", () => {
+    expect(parseTimeField("7.45 am")).toBe("07:45");
+  });
+
+  it("still parses colon format HH:MM", () => {
+    expect(parseTimeField("19:45")).toBe("19:45");
+    expect(parseTimeField("15:00")).toBe("15:00");
   });
 });

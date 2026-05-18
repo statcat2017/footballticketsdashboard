@@ -187,12 +187,12 @@ export function seedDatabase(db: SqliteDatabase): void {
     }
 
     const insertCompetition = db.prepare(`
-      INSERT INTO competitions (code, name, tier)
-      VALUES (?, ?, ?)
-      ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier
+      INSERT INTO competitions (code, name, tier, kind)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier, kind = excluded.kind
     `);
     for (const c of SEED_DATA.competitions) {
-      insertCompetition.run(c.code, c.name, c.tier);
+      insertCompetition.run(c.code, c.name, c.tier, c.kind ?? "league");
     }
 
     const insertAppVenue = db.prepare(`

@@ -619,3 +619,29 @@ describe("applyBatchRows", () => {
     expect(audit[0].action).toBe("create");
   });
 });
+
+describe("validateImportBatch — friendly competition", () => {
+  it("allows unknown away team as one-off for friendly competitions", async () => {
+    const db = setupTestDb();
+    db.exec(`INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', 10, 'friendly');`);
+
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Chelsea",
+        awayParticipantRaw: "Unknown Town United",
+        competitionRaw: "Non-League Friendlies",
+        kickoffDate: "2026-07-11",
+        kickoffTime: "15:00",
+      },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].matchResult).toBe("insert");
+    expect(rows[0].awayIsOneOff).toBe(true);
+    expect(rows[0].awayParticipantResolvedId).toBeNull();
+  });
+});

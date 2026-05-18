@@ -21,8 +21,8 @@ for (const row of rows) {
   const clubId = findExistingClubId(databaseName, row) ?? stableId(`${row.competition}:club:${row.club_name}`);
 
   execute(databaseName, `
-INSERT INTO competitions (code, name, tier)
-VALUES ('${escapeSql(row.competition)}', '${escapeSql(competitionName(row.competition))}', ${competitionTier(row.competition)})
+INSERT INTO competitions (code, name, tier, kind)
+VALUES ('${escapeSql(row.competition)}', '${escapeSql(competitionName(row.competition))}', ${competitionTier(row.competition)}, 'league')
 ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier;
 
 INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate)

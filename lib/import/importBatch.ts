@@ -384,6 +384,8 @@ export async function updateBatchRowOutcome(
     finalFixtureId: outcome.finalFixtureId,
     homeParticipantResolvedId: outcome.homeParticipantResolvedId,
     awayParticipantResolvedId: outcome.awayParticipantResolvedId,
+    homeIsOneOff: outcome.homeIsOneOff,
+    awayIsOneOff: outcome.awayIsOneOff,
     competitionResolvedCode: outcome.competitionResolvedCode,
     venueResolvedId: outcome.venueResolvedId,
     kickoffDate: outcome.kickoffDate,

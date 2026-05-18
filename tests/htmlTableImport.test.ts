@@ -472,3 +472,80 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
     expect(parseErrors[0].message).toContain("Missing home team");
   });
 });
+
+describe("FWP-style table parsing", () => {
+  function fwpHtml(): string {
+    return `<html><body>
+<h2>Non-League Friendlies</h2>
+<p>Summer friendlies listing</p>
+<table class="fixtures-results">
+<thead>
+<tr class="d-none export-only"><th>Date</th><th>Status</th><th>Home</th><th></th><th>Away</th></tr>
+</thead>
+<tbody>
+<tr class="no-export no-hover title"><th colspan="5">Wednesday 1st July 2026</th></tr>
+<tr class="first" data-href="/match/1">
+<td class="d-none export-only">1/7/2026</td><td class="status">7.45pm</td>
+<td class="team home-team"><a href="/club/a">Punjab United</a></td><td class="versus">v</td>
+<td class="team away-team"><a href="/club/b">Ebbsfleet United</a></td>
+</tr>
+<tr class="no-export no-hover spacer"><td colspan="5">&nbsp;</td></tr>
+<tr class="no-export no-hover title"><th colspan="5">Saturday 4th July 2026</th></tr>
+<tr data-href="/match/2">
+<td class="d-none export-only">4/7/2026</td><td class="status">3pm</td>
+<td class="team home-team">Fisher</td><td class="versus">v</td>
+<td class="team away-team">Faversham Town</td>
+</tr>
+</tbody>
+</table>
+</body></html>`;
+  }
+
+  it("filters out date headers and spacer rows", () => {
+    const tables = extractTables(fwpHtml());
+    expect(tables).toHaveLength(1);
+    expect(tables[0].rows).toHaveLength(2);
+    expect(tables[0].rowCount).toBe(2);
+  });
+
+  it("maps FWP fixture rows via header mapping with status-as-time", () => {
+    const tables = extractTables(fwpHtml());
+    const { rows, errors } = parseHtmlTableRows(tables[0], "https://www.footballwebpages.co.uk/non-league-friendlies");
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(2);
+
+    expect(rows[0].homeParticipantRaw).toBe("Punjab United");
+    expect(rows[0].awayParticipantRaw).toBe("Ebbsfleet United");
+    expect(rows[0].kickoffDate).toBe("2026-07-01");
+    expect(rows[0].kickoffTime).toBe("19:45");
+
+    expect(rows[1].homeParticipantRaw).toBe("Fisher");
+    expect(rows[1].awayParticipantRaw).toBe("Faversham Town");
+    expect(rows[1].kickoffDate).toBe("2026-07-04");
+    expect(rows[1].kickoffTime).toBe("15:00");
+  });
+
+  it("sets competition and awayIsOneOff for friendlies URL", async () => {
+    const db = createAppDatabase();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(fwpHtml(), {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      })
+    );
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://www.footballwebpages.co.uk/non-league-friendlies", "test-admin",
+      { fetcher, seasonLabel: "2025-26" }
+    );
+
+    expect(result.batchId).toBeGreaterThan(0);
+    expect(result.rowCount).toBe(2);
+
+    const rows = await getBatchRows(db, result.batchId);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].competitionRaw).toBe("Non-League Friendlies");
+    expect(rows[0].awayIsOneOff).toBe(true);
+    expect(rows[1].competitionRaw).toBe("Non-League Friendlies");
+    expect(rows[1].awayIsOneOff).toBe(true);
+  });
+});
