@@ -4,6 +4,7 @@ import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getBatchDetail } from "@/lib/admin/imports";
 import type { ImportBatchRow, WarningIssue } from "@/lib/import/types";
+import { MapEditorWrapper } from "@/app/admin/venues/_components/MapEditorWrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -600,6 +601,11 @@ function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
   csrfToken: string; batchId: number; rowId: number; rawValue: string;
   venues: { id: number; name: string; postcode: string }[];
 }) {
+  const p = "create_venue_";
+  const latId = `${p}lat-${rowId}`;
+  const lngId = `${p}lng-${rowId}`;
+  const approxId = `${p}approx-${rowId}`;
+  const precId = `${p}precision-${rowId}`;
   return (
     <details style={{ marginTop: "0.25rem" }}>
       <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#a53a2d" }}>
@@ -627,7 +633,36 @@ function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
               {venues.map((v) => <option key={v.id} value={v.id}>{v.name}, {v.postcode}</option>)}
             </select>
           </label>
-          <VenueCreateFields prefix="create_venue_" />
+
+          <div style={{ marginTop: "0.5rem", display: "grid", gap: "0.4rem" }}>
+            <label style={labelStyle}>New venue name
+              <input name={`${p}name`} style={inputStyle} />
+            </label>
+            <label style={labelStyle}>Postcode
+              <input name={`${p}postcode`} style={inputStyle} placeholder="e.g. SW1A 1AA" />
+            </label>
+
+            <MapEditorWrapper
+              isApproximate={false}
+              latInputId={latId}
+              lngInputId={lngId}
+              approxInputId={approxId}
+              precisionInputId={precId}
+              mode="create"
+            />
+
+            <input id={latId} name={`${p}latitude`} type="number" step="any" style={{ ...inputStyle, display: "none" }} />
+            <input id={lngId} name={`${p}longitude`} type="number" step="any" style={{ ...inputStyle, display: "none" }} />
+            <input id={approxId} name={`${p}is_approximate`} type="checkbox" value="1" defaultChecked style={{ display: "none" }} />
+            <select id={precId} name={`${p}coordinate_precision`} style={{ ...inputStyle, display: "none" }} defaultValue="ground_approximate">
+              <option value="ground_approximate" />
+            </select>
+
+            <label style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input name={`${p}set_primary`} type="checkbox" value="1" defaultChecked />
+              Set as home club&apos;s primary venue
+            </label>
+          </div>
         </fieldset>
 
         <button type="submit" style={greenBtnStyle}>Create club & revalidate</button>
@@ -636,50 +671,14 @@ function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
   );
 }
 
-function VenueCreateFields({ prefix }: { prefix: string }) {
-  const inputId = (field: string) => `${prefix}${field}`;
-  return (
-    <div style={{ marginTop: "0.5rem", display: "grid", gap: "0.5rem" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-        <label style={labelStyle}>New venue name
-          <input name={inputId("name")} style={inputStyle} />
-        </label>
-        <label style={labelStyle}>Postcode
-          <input name={inputId("postcode")} style={inputStyle} />
-        </label>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-        <label style={labelStyle}>Latitude
-          <input name={inputId("latitude")} type="number" step="any" style={inputStyle} />
-        </label>
-        <label style={labelStyle}>Longitude
-          <input name={inputId("longitude")} type="number" step="any" style={inputStyle} />
-        </label>
-      </div>
-      <label style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <input name={inputId("is_approximate")} type="checkbox" value="1" defaultChecked />
-        Coordinates are approximate
-      </label>
-      <label style={labelStyle}>Coordinate precision
-        <select name={inputId("coordinate_precision")} style={inputStyle} defaultValue="ground_approximate">
-          <option value="exact">Exact — surveyed or official source</option>
-          <option value="postcode">Postcode — from postcode lookup</option>
-          <option value="ground_approximate">Ground located — manually placed</option>
-          <option value="unknown">Unknown</option>
-        </select>
-      </label>
-      <label style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <input name={inputId("set_primary")} type="checkbox" value="1" defaultChecked />
-        Set as home club&apos;s primary venue
-      </label>
-    </div>
-  );
-}
-
 function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
   csrfToken: string; batchId: number; rowId: number; clubId: number | null;
   venues: { id: number; name: string; postcode: string }[];
 }) {
+  const latId = `crv-lat-${rowId}`;
+  const lngId = `crv-lng-${rowId}`;
+  const approxId = `crv-approx-${rowId}`;
+  const precId = `crv-precision-${rowId}`;
   return (
     <div style={{ marginTop: "0.25rem" }}>
       <details>
@@ -723,7 +722,29 @@ function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
           <input type="hidden" name="redirect_row_id" value={rowId} />
           {clubId && <input type="hidden" name="club_id" value={clubId} />}
 
-          <VenueCreateFields prefix="" />
+          <label style={labelStyle}>Venue name
+            <input name="name" required style={inputStyle} />
+          </label>
+          <label style={labelStyle}>Postcode
+            <input name="postcode" required style={inputStyle} placeholder="e.g. SW1A 1AA" />
+          </label>
+
+          <MapEditorWrapper
+            isApproximate={false}
+            latInputId={latId}
+            lngInputId={lngId}
+            approxInputId={approxId}
+            precisionInputId={precId}
+            mode="create"
+          />
+
+          <input id={latId} name="latitude" type="number" step="any" required style={{ ...inputStyle, display: "none" }} />
+          <input id={lngId} name="longitude" type="number" step="any" required style={{ ...inputStyle, display: "none" }} />
+          <input id={approxId} name="is_approximate" type="checkbox" value="1" style={{ display: "none" }} />
+          <select id={precId} name="coordinate_precision" style={{ ...inputStyle, display: "none" }} defaultValue="ground_approximate">
+            <option value="ground_approximate" />
+          </select>
+
           <label style={labelStyle}>Effective from
             <input name="effective_from" type="date" style={inputStyle}
               defaultValue={new Date(new Date().getFullYear(), 6, 1).toISOString().split("T")[0]} />
