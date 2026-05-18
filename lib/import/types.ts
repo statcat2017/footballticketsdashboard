@@ -107,3 +107,14 @@ export interface ImportBatchRowInput {
   rowIndex: number;
   row: NormalizedFixtureRow;
 }
+
+export interface BatchRowOutcomeUpdate {
+  matchResult?: MatchResult;
+  warnings?: unknown[] | Record<string, unknown> | null;
+  finalAction?: FinalAction;
+  finalFixtureId?: number | null;
+  homeParticipantResolvedId?: number | null;
+  awayParticipantResolvedId?: number | null;
+  competitionResolvedCode?: string | null;
+  venueResolvedId?: number | null;
+}

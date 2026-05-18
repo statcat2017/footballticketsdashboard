@@ -6,6 +6,7 @@ import type {
   ImportBatchRowInput,
   ApprovalStatus,
   ParseStatus,
+  BatchRowOutcomeUpdate,
 } from "./types.ts";
 
 function mapBatchRow(row: Record<string, unknown>): ImportBatch {
@@ -156,13 +157,20 @@ export async function updateBatchStatus(
   return updated;
 }
 
+export interface BatchCountUpdate {
+  rowCountTotal?: number;
+  rowCountApproved?: number;
+  rowCountFailed?: number;
+  parseErrorsJson?: string | null;
+}
+
 export async function updateBatchCounts(
   db: AppDatabase,
   id: number,
-  counts: { rowCountTotal?: number; rowCountApproved?: number; rowCountFailed?: number }
+  counts: BatchCountUpdate
 ): Promise<void> {
   const fields: string[] = ["updated_at = CURRENT_TIMESTAMP"];
-  const params: (string | number)[] = [];
+  const params: (string | number | null)[] = [];
 
   if (counts.rowCountTotal !== undefined) {
     fields.push("row_count_total = ?");
@@ -175,6 +183,10 @@ export async function updateBatchCounts(
   if (counts.rowCountFailed !== undefined) {
     fields.push("row_count_failed = ?");
     params.push(counts.rowCountFailed);
+  }
+  if (counts.parseErrorsJson !== undefined) {
+    fields.push("parse_errors_json = ?");
+    params.push(counts.parseErrorsJson);
   }
 
   params.push(id);
@@ -320,4 +332,44 @@ export async function updateBatchRow(
     throw new Error(`Import batch row ${id} not found after update.`);
   }
   return updated;
+}
+
+export async function getBatchRowsByMatchResult(
+  db: AppDatabase,
+  batchId: number
+): Promise<Record<string, ImportBatchRow[]>> {
+  const rows = await getBatchRows(db, batchId);
+  const grouped: Record<string, ImportBatchRow[]> = {
+    insert: [],
+    update: [],
+    skip: [],
+    blocked: [],
+    pending: [],
+  };
+
+  for (const row of rows) {
+    const key = row.matchResult ?? "pending";
+    grouped[key].push(row);
+  }
+
+  return grouped;
+}
+
+export async function updateBatchRowOutcome(
+  db: AppDatabase,
+  rowId: number,
+  outcome: BatchRowOutcomeUpdate
+): Promise<ImportBatchRow> {
+  return updateBatchRow(db, rowId, {
+    matchResult: outcome.matchResult,
+    warningsJson: outcome.warnings !== undefined
+      ? JSON.stringify(outcome.warnings)
+      : undefined,
+    finalAction: outcome.finalAction,
+    finalFixtureId: outcome.finalFixtureId,
+    homeParticipantResolvedId: outcome.homeParticipantResolvedId,
+    awayParticipantResolvedId: outcome.awayParticipantResolvedId,
+    competitionResolvedCode: outcome.competitionResolvedCode,
+    venueResolvedId: outcome.venueResolvedId,
+  });
 }
