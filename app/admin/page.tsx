@@ -71,6 +71,21 @@ export default async function AdminDashboardPage() {
           }}>
             Data quality &rarr;
           </Link>
+          <Link href="/admin/imports" style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #147a4d",
+            borderRadius: "7px",
+            background: "#147a4d",
+            color: "#fff",
+            padding: "0.5rem 1rem",
+            fontSize: "14px",
+            fontWeight: 700,
+            textDecoration: "none"
+          }}>
+            Import fixtures &rarr;
+          </Link>
         </div>
       </section>
 
