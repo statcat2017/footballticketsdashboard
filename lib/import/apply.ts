@@ -29,8 +29,12 @@ function getAssumedKickoffTime(dateStr: string): string {
 function buildFixtureInsert(row: ImportBatchRow, seasonLabel: string | null): SqlWrite {
   const source = "import_batch";
   const sourceId = `${row.batchId}-${row.id}`;
-  const time = row.kickoffTime ?? (row.kickoffDate ? getAssumedKickoffTime(row.kickoffDate) : null);
-  const kickoffAt = row.kickoffDate && time ? `${row.kickoffDate}T${time}:00.000Z` : null;
+
+  const dateValue = row.kickoffDate;
+  const timeValue = row.kickoffTime;
+
+  const time = timeValue ?? (dateValue ? getAssumedKickoffTime(dateValue) : null);
+  const kickoffAt = dateValue && time ? `${dateValue}T${time}:00.000Z` : null;
   const statusValue = row.status ?? "scheduled";
   const competitionCode = row.competitionResolvedCode ?? "";
 
@@ -61,14 +65,14 @@ function buildFixtureInsert(row: ImportBatchRow, seasonLabel: string | null): Sq
       away_one_off_name = excluded.away_one_off_name,
       confidence = excluded.confidence,
       source_url = excluded.source_url,
-      source_updated_at = excluded.source_updated_at`,
+      source_updated_at = CURRENT_TIMESTAMP`,
     params: [
       source, sourceId, competitionCode,
       row.homeParticipantResolvedId,
       row.awayParticipantResolvedId,
       row.venueResolvedId,
       kickoffAt,
-      row.kickoffDate,
+      dateValue,
       time,
       row.kickoffTime ? "confirmed" : (time ? "assumed" : "unknown"),
       seasonLabel,
@@ -99,7 +103,7 @@ function buildFixtureUpdate(row: ImportBatchRow, fixtureId: number): SqlWrite {
     setClauses.push("away_club_id = ?");
     params.push(row.awayParticipantResolvedId);
   }
-  if (row.venueResolvedId) {
+  if (row.venueResolvedId && row.venueRaw) {
     setClauses.push("venue_id = ?");
     params.push(row.venueResolvedId);
   }
@@ -173,38 +177,49 @@ async function findExistingFixture(
 ): Promise<ExistingFixture | null> {
   if (!row.competitionResolvedCode) return null;
 
-  let fixture: Record<string, unknown> | undefined;
+  let fixtures: Record<string, unknown>[] = [];
 
   if (row.homeIsOneOff && row.awayIsOneOff) {
-    fixture = await db.get<Record<string, unknown>>(
+    fixtures = await db.all<Record<string, unknown>>(
       `SELECT * FROM fixtures
        WHERE competition_code = ? AND season_label = ?
        AND home_one_off_name = ? AND away_one_off_name = ?`,
       [row.competitionResolvedCode, seasonLabel, row.homeParticipantRaw, row.awayParticipantRaw]
     );
   } else if (row.homeIsOneOff && row.awayParticipantResolvedId) {
-    fixture = await db.get<Record<string, unknown>>(
+    fixtures = await db.all<Record<string, unknown>>(
       `SELECT * FROM fixtures
        WHERE competition_code = ? AND season_label = ?
        AND home_one_off_name = ? AND away_club_id = ?`,
       [row.competitionResolvedCode, seasonLabel, row.homeParticipantRaw, row.awayParticipantResolvedId]
     );
   } else if (row.awayIsOneOff && row.homeParticipantResolvedId) {
-    fixture = await db.get<Record<string, unknown>>(
+    fixtures = await db.all<Record<string, unknown>>(
       `SELECT * FROM fixtures
        WHERE competition_code = ? AND season_label = ?
        AND away_one_off_name = ? AND home_club_id = ?`,
       [row.competitionResolvedCode, seasonLabel, row.awayParticipantRaw, row.homeParticipantResolvedId]
     );
   } else if (row.homeParticipantResolvedId && row.awayParticipantResolvedId) {
-    fixture = await db.get<Record<string, unknown>>(
-      `SELECT * FROM fixtures
-       WHERE home_club_id = ? AND away_club_id = ? AND competition_code = ? AND season_label = ?`,
-      [row.homeParticipantResolvedId, row.awayParticipantResolvedId, row.competitionResolvedCode, seasonLabel]
-    );
+    let sql = `SELECT * FROM fixtures
+      WHERE home_club_id = ? AND away_club_id = ? AND competition_code = ? AND season_label = ?`;
+    const params: (string | number | null)[] = [
+      row.homeParticipantResolvedId,
+      row.awayParticipantResolvedId,
+      row.competitionResolvedCode,
+      seasonLabel,
+    ];
+    if (row.kickoffDate) {
+      sql += ` AND fixture_date = ?`;
+      params.push(row.kickoffDate);
+    }
+    fixtures = await db.all<Record<string, unknown>>(sql, params);
   }
 
-  if (!fixture) return null;
+  if (fixtures.length === 0) return null;
+  if (fixtures.length > 1) return null;
+
+  const fixture = fixtures[0];
 
   const before: Record<string, unknown> = {};
   const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url"];
@@ -243,60 +258,71 @@ export async function applyBatchRows(
 
   const seasonLabel = (batch.seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
   const fixtureStatements: SqlWrite[] = [];
-  const fixtureRowMapping: { rowId: number; isUpdate: boolean; fixtureId?: number }[] = [];
+  const fixtureMetadata: { rowId: number; finalAction: "insert" | "update"; fixtureId?: number; before?: Record<string, unknown> }[] = [];
+  const staleUpdateRows: ImportBatchRow[] = [];
 
   for (const row of applyRows) {
     if (row.matchResult === "update") {
       const existing = await findExistingFixture(db, row, seasonLabel);
       if (existing) {
         fixtureStatements.push(buildFixtureUpdate(row, existing.id));
-        fixtureRowMapping.push({ rowId: row.id, isUpdate: true, fixtureId: existing.id });
+        fixtureMetadata.push({ rowId: row.id, finalAction: "update", fixtureId: existing.id, before: existing.before });
         continue;
       }
+      staleUpdateRows.push(row);
+      continue;
     }
     fixtureStatements.push(buildFixtureInsert(row, seasonLabel));
-    fixtureRowMapping.push({ rowId: row.id, isUpdate: false });
+    fixtureMetadata.push({ rowId: row.id, finalAction: "insert" });
   }
 
-  if (fixtureStatements.length === 0) {
-    return { inserted: 0, updated: 0, skipped: skippedCount, total: skippedCount };
-  }
-
-  const fixtureResults = await db.writeBatch(fixtureStatements);
+  const totalSkipped = skippedCount + staleUpdateRows.length;
 
   const rowUpdateStatements: SqlWrite[] = [];
   const auditStatements: SqlWrite[] = [];
-  let insertedCount = 0;
-  let updatedCount = 0;
 
-  for (let i = 0; i < fixtureRowMapping.length; i++) {
-    const mapping = fixtureRowMapping[i];
-    const row = applyRows.find((r) => r.id === mapping.rowId);
-    if (!row) continue;
+  // Write stale update markers before checking if there are fixture statements
+  for (const row of staleUpdateRows) {
+    rowUpdateStatements.push({
+      sql: `UPDATE import_batch_rows SET match_result = 'blocked', final_action = 'blocked', warnings_json = ? WHERE id = ?`,
+      params: [
+        JSON.stringify({
+          messages: ["Target fixture not found at apply time. The fixture may have been deleted."],
+          fields: [],
+        }),
+        row.id,
+      ],
+    });
+  }
 
-    let fixtureId: number | undefined = mapping.fixtureId;
-    if (!fixtureId && fixtureResults[i]) {
-      fixtureId = fixtureResults[i].lastInsertRowid;
+  if (fixtureStatements.length === 0) {
+    if (rowUpdateStatements.length > 0) {
+      await db.writeBatch(rowUpdateStatements);
     }
+    return { inserted: 0, updated: 0, skipped: totalSkipped, total: totalSkipped };
+  }
 
-    const finalAction = row.matchResult === "update" ? "update" as const : "insert" as const;
-    if (finalAction === "insert") insertedCount++;
-    else updatedCount++;
-
+  for (const meta of fixtureMetadata) {
     rowUpdateStatements.push({
       sql: `UPDATE import_batch_rows SET final_action = ?, final_fixture_id = ? WHERE id = ?`,
-      params: [finalAction, fixtureId ?? null, row.id],
+      params: [meta.finalAction, meta.fixtureId ?? null, meta.rowId],
     });
 
+    const auditAction = meta.finalAction === "insert" ? "create" as const : "update" as const;
     auditStatements.push(buildAdminAuditLogWrite({
-      action: finalAction === "insert" ? "create" : "update",
+      action: auditAction,
       entityType: "fixture",
-      entityId: fixtureId,
+      entityId: meta.fixtureId,
       actor,
+      before: meta.before,
+      after: meta.finalAction === "update" ? { import_batch_row_id: meta.rowId } : undefined,
     }));
   }
 
-  const approvalStatus = allBlocked > 0 || allPending > 0
+  const insertedCount = fixtureMetadata.filter((m) => m.finalAction === "insert").length;
+  const updatedCount = fixtureMetadata.filter((m) => m.finalAction === "update").length;
+
+  const approvalStatus = allBlocked > 0 || allPending > 0 || staleUpdateRows.length > 0
     ? "partially_approved" as const
     : "approved" as const;
 
@@ -305,15 +331,40 @@ export async function applyBatchRows(
     params: [approvalStatus, insertedCount + updatedCount, batchId],
   });
 
-  const allStatements = [...rowUpdateStatements, ...auditStatements];
-  if (allStatements.length > 0) {
-    await db.writeBatch(allStatements);
+  // Build metadata statements with placeholder fixture IDs for inserts
+  const metadataStatements = [...rowUpdateStatements, ...auditStatements];
+
+  // Execute fixture writes first, then metadata in a single atomic batch
+  const combinedStatements = [...fixtureStatements, ...metadataStatements];
+  const batchResults = await db.writeBatch(combinedStatements);
+
+  // After batch succeeds, read back inserted fixture IDs
+  for (let i = 0; i < fixtureMetadata.length; i++) {
+    const meta = fixtureMetadata[i];
+    if (meta.finalAction === "insert") {
+      const result = batchResults[i];
+      const insertedId = result?.lastInsertRowid as number | undefined;
+      if (insertedId) {
+        fixtureMetadata[i] = { ...meta, fixtureId: insertedId };
+      }
+    }
+  }
+
+  // Update the row records with actual fixture IDs (separate writes, safe because
+  // the combined batch already applied the batch atomically)
+  for (const meta of fixtureMetadata) {
+    if (meta.finalAction === "insert" && meta.fixtureId) {
+      await db.run(
+        `UPDATE import_batch_rows SET final_fixture_id = ? WHERE id = ?`,
+        [meta.fixtureId, meta.rowId]
+      );
+    }
   }
 
   return {
     inserted: insertedCount,
     updated: updatedCount,
-    skipped: skippedCount,
-    total: insertedCount + updatedCount + skippedCount,
+    skipped: totalSkipped,
+    total: insertedCount + updatedCount + totalSkipped,
   };
 }

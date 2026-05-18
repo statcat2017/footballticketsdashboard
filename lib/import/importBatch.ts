@@ -262,6 +262,9 @@ export async function updateBatchRow(
     awayIsOneOff: boolean;
     competitionResolvedCode: string | null;
     venueResolvedId: number | null;
+    kickoffDate: string | null;
+    kickoffTime: string | null;
+    status: ImportBatchRow["status"];
     matchResult: ImportBatchRow["matchResult"];
     warningsJson: string | null;
     finalAction: ImportBatchRow["finalAction"];
@@ -294,6 +297,18 @@ export async function updateBatchRow(
   if (updates.venueResolvedId !== undefined) {
     fields.push("venue_resolved_id = ?");
     params.push(updates.venueResolvedId);
+  }
+  if (updates.kickoffDate !== undefined) {
+    fields.push("kickoff_date = ?");
+    params.push(updates.kickoffDate);
+  }
+  if (updates.kickoffTime !== undefined) {
+    fields.push("kickoff_time = ?");
+    params.push(updates.kickoffTime);
+  }
+  if (updates.status !== undefined) {
+    fields.push("status = ?");
+    params.push(updates.status);
   }
   if (updates.matchResult !== undefined) {
     fields.push("match_result = ?");
@@ -371,5 +386,8 @@ export async function updateBatchRowOutcome(
     awayParticipantResolvedId: outcome.awayParticipantResolvedId,
     competitionResolvedCode: outcome.competitionResolvedCode,
     venueResolvedId: outcome.venueResolvedId,
+    kickoffDate: outcome.kickoffDate,
+    kickoffTime: outcome.kickoffTime,
+    status: outcome.status,
   });
 }
