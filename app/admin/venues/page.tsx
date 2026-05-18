@@ -8,12 +8,13 @@ export const dynamic = "force-dynamic";
 const precisionColors: Record<string, { bg: string; fg: string; border: string }> = {
   exact: { bg: "#0e573718", fg: "#0e5737", border: "#0e573740" },
   postcode: { bg: "#1a6b9c18", fg: "#1a6b9c", border: "#1a6b9c40" },
-  ground_approximate: { bg: "#a7680018", fg: "#a76800", border: "#a7680040" },
+  ground_approximate: { bg: "#0e573718", fg: "#0e5737", border: "#0e573740" },
   unknown: { bg: "#6f7e7a18", fg: "#6f7e7a", border: "#6f7e7a40" },
 };
 
 function precisionLabel(value: string | null): string {
   if (!value) return "Unknown";
+  if (value === "ground_approximate") return "Ground located";
   return value.charAt(0).toUpperCase() + value.slice(1).replace("_", " ");
 }
 

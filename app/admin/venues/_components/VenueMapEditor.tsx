@@ -58,7 +58,6 @@ export function VenueMapEditor({
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
-  const wasApproximate = useRef(isApproximate);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [postcodeInput, setPostcodeInput] = useState(initialPostcode);
   const lastSourceRef = useRef<"map" | "postcode">("map");
@@ -87,9 +86,7 @@ export function VenueMapEditor({
       setCheckbox(approxInputId, false);
     } else {
       setSelectValue(precisionInputId, "ground_approximate");
-      if (!wasApproximate.current && mode === "edit") {
-        setCheckbox(approxInputId, true);
-      }
+      setCheckbox(approxInputId, false);
     }
   }
 
@@ -103,6 +100,7 @@ export function VenueMapEditor({
     markerRef.current.on("dragend", () => {
       if (markerRef.current) {
         const { lat, lng } = markerRef.current.getLatLng();
+        lastSourceRef.current = "map";
         syncInputs(lat, lng, "map");
       }
     });

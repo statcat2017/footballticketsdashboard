@@ -95,7 +95,7 @@ export default async function AdminNewVenuePage(props: { searchParams: Promise<{
           >
             <option value="exact">Exact — surveyed or official source</option>
             <option value="postcode">Postcode — from postcode lookup</option>
-            <option value="ground_approximate">Ground approximate — placed on map</option>
+            <option value="ground_approximate">Ground located — manually placed coordinates</option>
             <option value="unknown">Unknown</option>
           </select>
         </div>
