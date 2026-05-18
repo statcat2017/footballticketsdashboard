@@ -315,7 +315,7 @@ export async function applyBatchRows(
       entityId: meta.fixtureId,
       actor,
       before: meta.before,
-      after: meta.finalAction === "update" ? { import_batch_row_id: meta.rowId } : undefined,
+      after: { import_batch_row_id: meta.rowId, batch_id: batchId },
     }));
   }
 
@@ -334,29 +334,25 @@ export async function applyBatchRows(
   // Build metadata statements with placeholder fixture IDs for inserts
   const metadataStatements = [...rowUpdateStatements, ...auditStatements];
 
-  // Execute fixture writes first, then metadata in a single atomic batch
+  // Execute fixture writes + metadata in a single atomic batch
   const combinedStatements = [...fixtureStatements, ...metadataStatements];
-  const batchResults = await db.writeBatch(combinedStatements);
+  await db.writeBatch(combinedStatements);
 
-  // After batch succeeds, read back inserted fixture IDs
-  for (let i = 0; i < fixtureMetadata.length; i++) {
-    const meta = fixtureMetadata[i];
-    if (meta.finalAction === "insert") {
-      const result = batchResults[i];
-      const insertedId = result?.lastInsertRowid as number | undefined;
-      if (insertedId) {
-        fixtureMetadata[i] = { ...meta, fixtureId: insertedId };
-      }
-    }
-  }
-
-  // Update the row records with actual fixture IDs (separate writes, safe because
-  // the combined batch already applied the batch atomically)
-  for (const meta of fixtureMetadata) {
-    if (meta.finalAction === "insert" && meta.fixtureId) {
+  // Reconcile inserted fixture IDs via deterministic source/source_id.
+  // This is idempotent — only updates rows with null final_fixture_id.
+  const reconciledFixtures = await db.all<{ id: number; source_id: string }>(
+    `SELECT id, source_id FROM fixtures
+     WHERE source = 'import_batch'
+       AND source_id LIKE ?`,
+    [`${batchId}-%`]
+  );
+  for (const fx of reconciledFixtures) {
+    const rowIdStr = fx.source_id.slice(String(batchId).length + 1);
+    const rowId = parseInt(rowIdStr, 10);
+    if (!isNaN(rowId)) {
       await db.run(
-        `UPDATE import_batch_rows SET final_fixture_id = ? WHERE id = ?`,
-        [meta.fixtureId, meta.rowId]
+        `UPDATE import_batch_rows SET final_fixture_id = ? WHERE id = ? AND final_fixture_id IS NULL`,
+        [fx.id, rowId]
       );
     }
   }
