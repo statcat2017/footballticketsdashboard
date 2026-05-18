@@ -49,6 +49,7 @@ describe("data quality checks", () => {
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Homeless FC");
     expect(match[0].severity).toBe("error");
+    expect(match[0].issueType).toBe("No primary venue");
   });
 
   it("detects mapped clubs at venues with invalid coordinates", async () => {
@@ -100,17 +101,28 @@ describe("data quality checks", () => {
     expect(match[0].severity).toBe("error");
   });
 
-  it("detects venues with imprecise coordinates", async () => {
+  it("detects venues with unknown coordinates", async () => {
     const db = minimalDb();
     db.exec(`INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
-      (50, 'Approx Arena', 'AA1 1AA', 51.5, -0.1, 'ground_approximate');`);
+      (50, 'Uncertain United', 'UU1 1AA', 51.5, -0.1, 'unknown');`);
     getDatabase.mockResolvedValue(db);
 
     const issues = await runDataQualityChecks();
     const match = issues.filter((i) => i.id.startsWith("imprecise-coords"));
     expect(match).toHaveLength(1);
-    expect(match[0].entity).toBe("Approx Arena");
+    expect(match[0].entity).toBe("Uncertain United");
     expect(match[0].severity).toBe("warning");
+  });
+
+  it("does not flag ground_approximate venues as imprecise", async () => {
+    const db = minimalDb();
+    db.exec(`INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
+      (50, 'Ground Located Arena', 'GL1 1AA', 51.5, -0.1, 'ground_approximate');`);
+    getDatabase.mockResolvedValue(db);
+
+    const issues = await runDataQualityChecks();
+    const match = issues.filter((i) => i.id.startsWith("imprecise-coords"));
+    expect(match).toHaveLength(0);
   });
 
   it("does not flag cross-scope aliases as duplicates", async () => {
@@ -147,6 +159,7 @@ describe("data quality checks", () => {
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("No Tickets");
     expect(match[0].severity).toBe("info");
+    expect(match[0].issueType).toBe("No ticket URL");
   });
 
   it("detects divisions over max size", async () => {

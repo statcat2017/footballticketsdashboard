@@ -8,6 +8,7 @@ export type DataQualitySeverity = "error" | "warning" | "info";
 export interface DataQualityIssue {
   id: string;
   severity: DataQualitySeverity;
+  issueType: string;
   category: string;
   entity: string;
   entityId: number;
@@ -43,6 +44,7 @@ async function clubsWithNoPrimaryVenue(db: AppDatabase): Promise<DataQualityIssu
   return rows.map((r) => ({
     id: `no-primary-venue-${r.id}`,
     severity: "error",
+    issueType: "No primary venue",
     category: "Club",
     entity: r.name,
     entityId: r.id,
@@ -68,6 +70,7 @@ async function mappedClubsMissingVenueData(db: AppDatabase): Promise<DataQuality
   return rows.map((r) => ({
     id: `mapped-club-no-venue-${r.pyramid_club_id}`,
     severity: "error",
+    issueType: "Mapped club missing venue data",
     category: "Mapped Club",
     entity: r.club_name,
     entityId: r.pyramid_club_id,
@@ -84,6 +87,7 @@ async function venuesWithBlankPostcode(db: AppDatabase): Promise<DataQualityIssu
   return rows.map((r) => ({
     id: `blank-postcode-${r.id}`,
     severity: "warning",
+    issueType: "Blank venue postcode",
     category: "Venue",
     entity: r.name,
     entityId: r.id,
@@ -105,6 +109,7 @@ async function venuesWithInvalidCoordinates(db: AppDatabase): Promise<DataQualit
   return rows.map((r) => ({
     id: `invalid-coords-${r.id}`,
     severity: "error",
+    issueType: "Invalid venue coordinates",
     category: "Venue",
     entity: r.name,
     entityId: r.id,
@@ -117,14 +122,15 @@ async function venuesImpreciseCoords(db: AppDatabase): Promise<DataQualityIssue[
   const rows = await db.all<{ id: number; name: string; precision: string | null }>(
     `SELECT id, name, coordinate_precision AS precision
      FROM venues
-     WHERE coordinate_precision IN ('ground_approximate', 'unknown')
-        OR coordinate_precision IS NULL
+     WHERE coordinate_precision IS NULL
+        OR coordinate_precision = 'unknown'
      ORDER BY name`
   );
 
   return rows.map((r) => ({
     id: `imprecise-coords-${r.id}`,
     severity: "warning",
+    issueType: "Imprecise venue coordinates",
     category: "Venue",
     entity: r.name,
     entityId: r.id,
@@ -139,6 +145,7 @@ async function duplicateClubAliases(db: AppDatabase): Promise<DataQualityIssue[]
   return groups.map((g) => ({
     id: `duplicate-alias-${g.normalizedAlias}-${g.competitionCode ?? "unscoped"}`,
     severity: "warning",
+    issueType: "Duplicate club alias",
     category: "Alias",
     entity: `${g.normalizedAlias} (${g.competitionCode ?? "unscoped"})`,
     entityId: 0,
@@ -158,6 +165,7 @@ async function clubsWithoutTicketUrl(db: AppDatabase): Promise<DataQualityIssue[
   return rows.map((r) => ({
     id: `no-ticket-url-${r.id}`,
     severity: "info",
+    issueType: "No ticket URL",
     category: "Club",
     entity: r.name,
     entityId: r.id,
@@ -185,6 +193,7 @@ async function divisionsOverMaxSize(db: AppDatabase): Promise<DataQualityIssue[]
   return rows.map((r) => ({
     id: `division-over-size-${r.id}`,
     severity: "warning",
+    issueType: "Division over max size",
     category: "Division",
     entity: r.name,
     entityId: r.id,
@@ -213,6 +222,7 @@ async function divisionsWithoutCompetitionMapping(db: AppDatabase): Promise<Data
   return rows.map((r) => ({
     id: `division-no-mapping-${r.id}`,
     severity: "warning",
+    issueType: "Division not published",
     category: "Division",
     entity: r.name,
     entityId: r.id,
@@ -240,6 +250,7 @@ async function clubsWithoutPublicMapping(db: AppDatabase): Promise<DataQualityIs
   return rows.map((r) => ({
     id: `club-no-mapping-${r.id}`,
     severity: "warning",
+    issueType: "Club not published",
     category: "Club",
     entity: r.name,
     entityId: r.id,
@@ -261,6 +272,7 @@ async function fixturesMissingSourceUrl(db: AppDatabase): Promise<DataQualityIss
   return rows.map((r) => ({
     id: `fixture-no-source-url-${r.id}`,
     severity: "info",
+    issueType: "Fixture missing source URL",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -282,6 +294,7 @@ async function fixturesWithAssumedKickoff(db: AppDatabase): Promise<DataQualityI
   return rows.map((r) => ({
     id: `fixture-assumed-kickoff-${r.id}`,
     severity: "warning",
+    issueType: "Fixture assumed kickoff",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -305,6 +318,7 @@ async function fixturesMissingTicketInfo(db: AppDatabase): Promise<DataQualityIs
   return rows.map((r) => ({
     id: `fixture-no-ticket-${r.id}`,
     severity: "info",
+    issueType: "Fixture missing ticket info",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -329,6 +343,7 @@ async function fixturesHiddenByLocation(db: AppDatabase): Promise<DataQualityIss
   return rows.map((r) => ({
     id: `fixture-hidden-location-${r.id}`,
     severity: "error",
+    issueType: "Fixture hidden by bad coordinates",
     category: "Fixture",
     entity: `${r.source}/${r.source_id}`,
     entityId: r.id,
@@ -362,6 +377,8 @@ export async function runDataQualityChecks(): Promise<DataQualityIssue[]> {
     const order = ["error", "warning", "info"];
     const sevDiff = order.indexOf(a.severity) - order.indexOf(b.severity);
     if (sevDiff !== 0) return sevDiff;
+    const typeDiff = a.issueType.localeCompare(b.issueType);
+    if (typeDiff !== 0) return typeDiff;
     return a.category.localeCompare(b.category) || a.summary.localeCompare(b.summary);
   });
 }

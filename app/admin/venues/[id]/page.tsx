@@ -27,12 +27,13 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
 
   const isShared = data.sharingClubs.length > 1;
   const precision = data.venue.coordinate_precision ?? "unknown";
-  const precisionLabel = precision.charAt(0).toUpperCase() + precision.slice(1).replace("_", " ");
+  const precisionLabel = precision === "ground_approximate"
+    ? "Ground located"
+    : precision.charAt(0).toUpperCase() + precision.slice(1).replace("_", " ");
 
   const precisionColor =
-    precision === "exact" ? "#0e5737" :
+    precision === "exact" || precision === "ground_approximate" ? "#0e5737" :
     precision === "postcode" ? "#1a6b9c" :
-    precision === "ground_approximate" ? "#a76800" :
     "#6f7e7a";
 
   return (
@@ -222,7 +223,7 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
             >
               <option value="exact">Exact — surveyed or official source</option>
               <option value="postcode">Postcode — from postcode lookup</option>
-              <option value="ground_approximate">Ground approximate — placed on map</option>
+              <option value="ground_approximate">Ground located — manually placed coordinates</option>
               <option value="unknown">Unknown</option>
             </select>
           </div>
