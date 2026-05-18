@@ -290,10 +290,6 @@ export async function updateBatchRow(
     fields.push("away_is_one_off = ?");
     params.push(updates.awayIsOneOff ? 1 : 0);
   }
-  if (updates.homeIsOneOff !== undefined) {
-    fields.push("home_is_one_off = ?");
-    params.push(updates.homeIsOneOff ? 1 : 0);
-  }
   if (updates.competitionResolvedCode !== undefined) {
     fields.push("competition_resolved_code = ?");
     params.push(updates.competitionResolvedCode);

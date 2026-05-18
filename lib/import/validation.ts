@@ -327,14 +327,12 @@ export async function validateRow(
     hasBlocker = true;
   }
 
-  let resolvedAwayIsOneOff = row.awayIsOneOff;
-  const away = await resolveParticipant(db, row.awayParticipantRaw, row.awayIsOneOff, competitionCode ?? undefined, "away");
-  if (competitionKind === "friendly" && row.awayParticipantRaw && away.isBlocked) {
-    away.clubId = null;
-    away.isBlocked = false;
-    away.warnings = [];
-    resolvedAwayIsOneOff = true;
-  }
+  const awayRaw = await resolveParticipant(db, row.awayParticipantRaw, row.awayIsOneOff, competitionCode ?? undefined, "away");
+  const friendlyOverride = competitionKind === "friendly" && row.awayParticipantRaw && awayRaw.isBlocked;
+  const away = friendlyOverride
+    ? { clubId: null, isBlocked: false, warnings: [] as ValidationWarning[] }
+    : awayRaw;
+  const resolvedAwayIsOneOff = friendlyOverride ? true : row.awayIsOneOff;
   warnings.push(...away.warnings);
   if (away.isBlocked) hasBlocker = true;
 

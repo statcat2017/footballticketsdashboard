@@ -424,8 +424,13 @@ export async function createImportBatchFromHtmlUrl(
 }
 
 function isFriendlyFixturesUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.includes("friendly") || lower.includes("friendlies") || lower.includes("non-league");
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith("footballwebpages.co.uk")
+      && /\/non-league-friendlies\/?$/.test(parsed.pathname);
+  } catch {
+    return false;
+  }
 }
 
 function concatUint8(chunks: Uint8Array[]): Uint8Array {
