@@ -41,24 +41,62 @@ function StatusBadge({ published }: { published: boolean }) {
   );
 }
 
-export default async function AdminPublishPage() {
+export default async function AdminPublishPage(props: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
   const divisions = await getPublishableDivisions();
   const clubs = await getPublishableClubs();
 
-  const clubsByDivision = new Map<string, typeof clubs>();
+  const sp = await props.searchParams;
+  const successMessage = typeof sp?.success === "string" ? sp.success : null;
+  const errorMessage = typeof sp?.error === "string" ? sp.error : null;
+
+  const clubsByDivision = new Map<number, typeof clubs>();
   for (const club of clubs) {
-    let group = clubsByDivision.get(club.divisionName);
+    const key = club.divisionId;
+    let group = clubsByDivision.get(key);
     if (!group) {
       group = [];
-      clubsByDivision.set(club.divisionName, group);
+      clubsByDivision.set(key, group);
     }
     group.push(club);
   }
 
+  const divisionPublishedById = new Map<number, boolean>();
+  for (const d of divisions) {
+    divisionPublishedById.set(d.id, d.isPublished);
+  }
+
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
+      {successMessage && (
+        <div style={{
+          padding: "0.75rem 1rem",
+          marginBottom: "1rem",
+          borderRadius: "7px",
+          background: "#eef8f1",
+          color: "#0e5737",
+          border: "1px solid #b8dfc5",
+          fontSize: "14px",
+          fontWeight: 600
+        }}>
+          {successMessage}
+        </div>
+      )}
+      {errorMessage && (
+        <div style={{
+          padding: "0.75rem 1rem",
+          marginBottom: "1rem",
+          borderRadius: "7px",
+          background: "#fde9e5",
+          color: "#a53a2d",
+          border: "1px solid #f5bcb3",
+          fontSize: "14px",
+          fontWeight: 600
+        }}>
+          {errorMessage}
+        </div>
+      )}
       <header style={{
         display: "flex",
         justifyContent: "space-between",
@@ -97,7 +135,7 @@ export default async function AdminPublishPage() {
       ) : (
         <div style={{ display: "grid", gap: "1.5rem" }}>
           {divisions.map((division) => {
-            const divisionClubs = clubsByDivision.get(division.name) ?? [];
+            const divisionClubs = clubsByDivision.get(division.id) ?? [];
 
             return (
               <section key={division.id} style={{
@@ -199,7 +237,7 @@ export default async function AdminPublishPage() {
                               <StatusBadge published={club.isPublished} />
                             </td>
                             <td style={{ padding: "0.6rem 1rem" }}>
-                              {!club.isPublished && club.venueName && (
+                              {!club.isPublished && club.venueName && divisionPublishedById.get(club.divisionId) && (
                                 <form method="post" action="/api/admin/publish/club">
                                   <input type="hidden" name="csrf" value={csrfToken} />
                                   <input type="hidden" name="pyramid_club_id" value={club.id} />
@@ -224,6 +262,15 @@ export default async function AdminPublishPage() {
                                   fontWeight: 600
                                 }}>
                                   Create venue first
+                                </span>
+                              )}
+                              {!club.isPublished && club.venueName && !divisionPublishedById.get(club.divisionId) && (
+                                <span style={{
+                                  fontSize: "12px",
+                                  color: "#a53a2d",
+                                  fontWeight: 600
+                                }}>
+                                  Publish competition first
                                 </span>
                               )}
                               {club.isPublished && (

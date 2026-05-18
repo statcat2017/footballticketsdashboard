@@ -345,6 +345,7 @@ export interface PublishableDivision {
 export interface PublishableClub {
   id: number;
   name: string;
+  divisionId: number;
   divisionName: string;
   venueName: string | null;
   isPublished: boolean;
@@ -428,12 +429,14 @@ export async function getPublishableClubs(): Promise<PublishableClub[]> {
   const rows = await db.all<{
     id: number;
     name: string;
+    division_id: number;
     division_name: string;
     venue_name: string | null;
     club_mapping_id: number | null;
   }>(
     `SELECT
       pc.id, pc.name,
+      d.id AS division_id,
       d.name AS division_name,
       v.name AS venue_name,
       cm.id AS club_mapping_id
@@ -453,6 +456,7 @@ export async function getPublishableClubs(): Promise<PublishableClub[]> {
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    divisionId: row.division_id,
     divisionName: row.division_name,
     venueName: row.venue_name,
     isPublished: row.club_mapping_id !== null

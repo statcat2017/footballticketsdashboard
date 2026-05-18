@@ -94,44 +94,91 @@ export async function POST(request: Request) {
       );
     }
 
-    const existingClub = await db.get<{ id: number }>(
-      `SELECT id FROM clubs WHERE name = ?`,
+    const existingClub = await db.get<{ id: number; competition_code: string; venue_id: number }>(
+      `SELECT id, competition_code, venue_id FROM clubs WHERE name = ?`,
       [pyramidClub.name]
     );
 
     if (existingClub) {
+      const existingClubMapping = await db.get<{ pyramid_club_id: number }>(
+        `SELECT pyramid_club_id FROM club_mappings WHERE club_id = ?`,
+        [existingClub.id]
+      );
+
+      if (existingClubMapping) {
+        return NextResponse.redirect(
+          new URL(`/admin/publish?error=Public club "${pyramidClub.name}" is already mapped to pyramid club ID ${existingClubMapping.pyramid_club_id}.`, request.url),
+          { status: 303 }
+        );
+      }
+
+      if (existingClub.competition_code !== divisionMapping.competition_code) {
+        return NextResponse.redirect(
+          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" has competition "${existingClub.competition_code}" but this division maps to "${divisionMapping.competition_code}".`, request.url),
+          { status: 303 }
+        );
+      }
+
+      if (existingClub.venue_id !== venue.id) {
+        return NextResponse.redirect(
+          new URL(`/admin/publish?error=Existing club "${pyramidClub.name}" has venue ID ${existingClub.venue_id} but "${pyramidClub.name}" uses venue ID ${venue.id} ("${venue.name}").`, request.url),
+          { status: 303 }
+        );
+      }
+
+      await db.transaction(async (txDb) => {
+        await txDb.run(
+          `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
+          [pyramidClubId, existingClub.id]
+        );
+
+        await writeAdminAuditLog(txDb, {
+          action: "publish",
+          entityType: "club_mapping",
+          entityId: existingClub.id,
+          after: {
+            name: pyramidClub.name,
+            pyramid_club_id: pyramidClubId,
+            club_id: existingClub.id,
+            note: "mapped to existing public club"
+          }
+        });
+      });
+
       return NextResponse.redirect(
-        new URL(`/admin/publish?error=Club "${pyramidClub.name}" already exists in clubs table.`, request.url),
+        new URL(`/admin/publish?success=Club "${pyramidClub.name}" mapped to existing public club.`, request.url),
         { status: 303 }
       );
     }
 
-    // Publish club
-    const clubResult = await db.run(
-      `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
-      [pyramidClub.name, pyramidClub.aliases, divisionMapping.competition_code, venue.id]
-    );
+    // Publish new club
+    await db.transaction(async (txDb) => {
+      const clubResult = await txDb.run(
+        `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
+        [pyramidClub.name, pyramidClub.aliases, divisionMapping.competition_code, venue.id]
+      );
 
-    const newClubId = clubResult.lastInsertRowid!;
-    if (!newClubId) throw new Error("Failed to create club record.");
+      const newClubId = clubResult.lastInsertRowid;
+      if (!newClubId) throw new Error("Failed to create club record.");
 
-    await db.run(
-      `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
-      [pyramidClubId, newClubId]
-    );
+      await txDb.run(
+        `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
+        [pyramidClubId, newClubId]
+      );
 
-    await writeAdminAuditLog(db, {
-      action: "publish",
-      entityType: "club",
-      entityId: newClubId,
-      after: {
-        name: pyramidClub.name,
-        aliases: pyramidClub.aliases,
-        competition_code: divisionMapping.competition_code,
-        venue_id: venue.id,
-        venue_name: venue.name,
-        pyramid_club_id: pyramidClubId
-      }
+      await writeAdminAuditLog(txDb, {
+        action: "publish",
+        entityType: "club",
+        entityId: newClubId,
+        after: {
+          name: pyramidClub.name,
+          aliases: pyramidClub.aliases,
+          competition_code: divisionMapping.competition_code,
+          venue_id: venue.id,
+          venue_name: venue.name,
+          pyramid_club_id: pyramidClubId
+        }
+      });
     });
 
     return NextResponse.redirect(
