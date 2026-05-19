@@ -271,13 +271,28 @@ async function handleCreateClub(
 
   let venueId: number | null = null;
 
+  // Preflight alias conflict before any writes (venue creation, club insert)
+  if (alias && alias.trim() && alias.trim() !== name) {
+    const normalized = normalizeName(alias.trim());
+    const existingAlias = normalized ? await db.get<{ id: number }>(
+      `SELECT id FROM club_aliases WHERE normalized_alias = ? AND competition_code IS NULL AND retired_at IS NULL`,
+      [normalized]
+    ) : null;
+    if (existingAlias) {
+      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}" already exists for another club.` });
+    }
+    if (normalized === normalizeName(name)) {
+      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}" is the same as the club name.` });
+    }
+  }
+
   // Option A: select existing venue
   if (venueIdStr) {
     venueId = parseInt(venueIdStr, 10);
     if (isNaN(venueId) || venueId <= 0) venueId = null;
   }
 
-  // Option B: create new venue inline
+  // Option B: create new venue inline (safe — alias preflighted above)
   if (!venueId && createVenueName) {
     const postcode = readString(form.get("create_venue_postcode"));
     const latitudeRaw = form.get("create_venue_latitude");
@@ -305,21 +320,6 @@ async function handleCreateClub(
 
   if (!venueId) {
     return redirectTo(request, batchId, { error: "Select an existing venue or provide venue details to create one." });
-  }
-
-  // Preflight alias conflict before creating the club
-  if (alias && alias.trim() && alias.trim() !== name) {
-    const normalized = normalizeName(alias.trim());
-    const existingAlias = normalized ? await db.get<{ id: number }>(
-      `SELECT id FROM club_aliases WHERE normalized_alias = ? AND competition_code IS NULL AND retired_at IS NULL`,
-      [normalized]
-    ) : null;
-    if (existingAlias) {
-      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}" already exists for another club.` });
-    }
-    if (normalized === normalizeName(name)) {
-      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}}" is the same as the club name.` });
-    }
   }
 
   // Create club (competition_code nullable, no FRIENDLY workaround needed)
@@ -482,10 +482,17 @@ async function handleCreateVenueAndAssign(
   const postcode = readString(form.get("postcode"));
   const latitudeRaw = form.get("latitude");
   const longitudeRaw = form.get("longitude");
+  const clubIdStr = readString(form.get("club_id"));
+  const effectiveFrom = readString(form.get("effective_from"));
   const redirectRowId = readString(form.get("redirect_row_id"));
 
   if (!name || !postcode) {
     return redirectTo(request, batchId, { error: "Venue name and postcode are required." });
+  }
+
+  const clubId = clubIdStr ? parseInt(clubIdStr, 10) : NaN;
+  if (!clubIdStr || isNaN(clubId) || clubId <= 0) {
+    return redirectTo(request, batchId, { error: "Club ID is required." });
   }
 
   const latNum = typeof latitudeRaw === "string" ? Number(latitudeRaw) : NaN;
@@ -497,7 +504,20 @@ async function handleCreateVenueAndAssign(
   const isApproximate = form.get("is_approximate") === "1" ? 1 : 0;
   const coordinatePrecision = readString(form.get("coordinate_precision")) ?? "ground_approximate";
 
-  await createAdminVenue({
+  // Validate redirect_row_id before any writes
+  let redirectRowIdParsed: number | undefined;
+  if (redirectRowId) {
+    const parsed = parseInt(redirectRowId, 10);
+    if (!isNaN(parsed)) {
+      const row = await getRowOrError(db, parsed, batchId);
+      if (!row) {
+        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+      }
+      redirectRowIdParsed = parsed;
+    }
+  }
+
+  const newVenueId = await createAdminVenue({
     name,
     postcode,
     latitude: latNum,
@@ -506,26 +526,27 @@ async function handleCreateVenueAndAssign(
     coordinate_precision: coordinatePrecision,
   });
 
-  // Update the row's venueRaw so the card displays it
-  if (redirectRowId) {
-    const rowId = parseInt(redirectRowId, 10);
-    if (!isNaN(rowId)) {
-      await db.run(
-        `UPDATE import_batch_rows SET venue_raw = ? WHERE id = ? AND venue_raw IS NULL`,
-        [name, rowId]
-      );
-    }
+  const effective = effectiveFrom && isValidDate(effectiveFrom)
+    ? effectiveFrom
+    : nextJuly1st();
+
+  await assignAdminVenue(clubId, newVenueId, effective);
+
+  if (redirectRowIdParsed) {
+    await db.run(
+      `UPDATE import_batch_rows SET venue_raw = ? WHERE id = ? AND venue_raw IS NULL`,
+      [name, redirectRowIdParsed]
+    );
   }
 
   // Revalidate affected row
-  if (redirectRowId) {
-    const rowId = parseInt(redirectRowId, 10);
-    if (!isNaN(rowId)) await validateRowById(db, rowId);
+  if (redirectRowIdParsed) {
+    await validateRowById(db, redirectRowIdParsed);
   }
 
-  const anchor = redirectRowId ? `fixture-${redirectRowId}` : undefined;
+  const anchor = redirectRowIdParsed ? `fixture-${redirectRowIdParsed}` : undefined;
   return redirectTo(request, batchId, {
-    success: `Venue "${name}" created.`,
+    success: `Venue "${name}" created and assigned to club.`,
     ...(anchor ? { anchor } : {}),
   });
 }
