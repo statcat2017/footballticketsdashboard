@@ -79,6 +79,10 @@ export async function searchFixtures(
     rows = await queryFixtures(db, dateRange, origin.district, true);
   }
 
+  if (rows.length === 0) {
+    rows = await queryAllHistoricalFixtures(db, origin.district);
+  }
+
   const radiusFilter = request.radiusMiles;
   const inRadius = radiusFilter === undefined
     ? rows
@@ -162,6 +166,58 @@ function queryFixtures(
     request.dateFrom,
     request.dateTo
   ]);
+}
+
+function queryAllHistoricalFixtures(
+  db: AppDatabase,
+  postcodeDistrictValue: string
+): Promise<FixtureRow[]> {
+  return db.all<FixtureRow>(`
+    SELECT
+      f.id,
+      f.competition_code,
+      c.name as competition_name,
+      f.kickoff_at,
+      f.is_demo_data,
+      f.is_historical,
+      COALESCE(home.name, f.home_one_off_name) as home_club,
+      COALESCE(away.name, f.away_one_off_name) as away_club,
+      f.home_one_off,
+      f.away_one_off,
+      f.fixture_date,
+      f.kickoff_time,
+      f.kickoff_time_status,
+      f.season_label,
+      home.official_site_url,
+      home.generic_ticket_url,
+      v.id as venue_id,
+      v.name as venue_name,
+      v.postcode as venue_postcode,
+      v.latitude,
+      v.longitude,
+      COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
+      COALESCE(fpo.adult_price_pence, ctp.adult_price_pence) as adult_price_pence,
+      COALESCE(fpo.concession_price_pence, ctp.concession_price_pence) as concession_price_pence,
+      COALESCE(fpo.source_url, ctp.source_url) as source_url,
+      COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
+      COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
+      CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
+      tc.distance_miles as cached_distance_miles,
+      tc.driving_minutes,
+      tc.public_transport_minutes,
+      tc.provider as cached_provider
+    FROM fixtures f
+    JOIN competitions c ON c.code = f.competition_code
+    LEFT JOIN clubs home ON home.id = f.home_club_id
+    LEFT JOIN clubs away ON away.id = f.away_club_id
+    JOIN venues v ON v.id = f.venue_id
+    LEFT JOIN club_ticket_prices ctp ON ctp.club_id = home.id
+    LEFT JOIN fixture_ticket_price_overrides fpo ON fpo.fixture_id = f.id
+    LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
+    WHERE f.is_historical = 1
+    ORDER BY COALESCE(f.kickoff_at, f.fixture_date) DESC
+    LIMIT 50
+  `, [postcodeDistrictValue]);
 }
 
 function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: number }): FixtureResult {
