@@ -325,7 +325,7 @@ CREATE TABLE IF NOT EXISTS import_batch_rows (
   source_url TEXT,
   evidence_json TEXT,
   confidence TEXT DEFAULT 'unknown' CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown')),
-  match_result TEXT CHECK (match_result IN ('insert', 'update', 'skip', 'blocked', 'pending')),
+  match_result TEXT CHECK (match_result IN ('insert', 'update', 'skip', 'blocked', 'pending', 'duplicate_existing_fixture', 'duplicate_pending_batch', 'duplicate_same_batch')),
   warnings_json TEXT,
   final_action TEXT CHECK (final_action IN ('insert', 'update', 'skip', 'blocked')),
   final_fixture_id INTEGER REFERENCES fixtures(id),
