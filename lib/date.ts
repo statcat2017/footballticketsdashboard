@@ -1,8 +1,8 @@
-export function defaultDateRange(now = new Date()): { dateFrom: string; dateTo: string } {
+export function defaultDateRange(now = new Date(), daysAhead = 14): { dateFrom: string; dateTo: string } {
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
   const from = fmt.format(now);
 
-  const endDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const endDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
   const to = fmt.format(endDate);
 
   return { dateFrom: from, dateTo: to };
@@ -52,5 +52,6 @@ export function computeDateRange(filter: string): { dateFrom: string; dateTo: st
     return { dateFrom: toDateString(nextFriday), dateTo: toDateString(nextMonday) };
   }
 
-  return defaultDateRange(today);
+  // Show upcoming fixtures up to 180 days out (covers pre-season friendlies)
+  return defaultDateRange(today, 180);
 }
