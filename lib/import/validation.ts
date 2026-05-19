@@ -193,24 +193,45 @@ async function resolveParticipant(
 
   const normalized = normalizeName(name);
 
-  const aliasMultiples = await db.all<{ club_id: number }>(
-    `SELECT ca.club_id FROM club_aliases ca
-     WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-     ${competitionCode ? "AND (ca.competition_code IS NULL OR ca.competition_code = ?)" : "AND ca.competition_code IS NULL"}`,
-    competitionCode ? [normalized, competitionCode] : [normalized]
-  );
-
-  if (aliasMultiples.length > 1) {
-    const clubs = await db.all<{ name: string }>(
-      `SELECT c.name FROM clubs c
-       JOIN club_aliases ca ON ca.club_id = c.id
+  if (competitionCode) {
+    // Scoped alias wins: check scoped matches for ambiguity; ignore global aliases
+    const scopedMatches = await db.all<{ club_id: number }>(
+      `SELECT ca.club_id FROM club_aliases ca
        WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-       ${competitionCode ? "AND (ca.competition_code IS NULL OR ca.competition_code = ?)" : "AND ca.competition_code IS NULL"}`,
-      competitionCode ? [normalized, competitionCode] : [normalized]
+         AND ca.competition_code = ?`,
+      [normalized, competitionCode]
     );
-    const names = clubs.map((c) => c.name).join(", ");
-    warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field, rawValue: name }));
-    return { clubId: null, warnings, isBlocked: true };
+    if (scopedMatches.length > 1) {
+      const clubs = await db.all<{ name: string }>(
+        `SELECT c.name FROM clubs c
+         JOIN club_aliases ca ON ca.club_id = c.id
+         WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
+           AND ca.competition_code = ?`,
+        [normalized, competitionCode]
+      );
+      const names = clubs.map((c) => c.name).join(", ");
+      warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field, rawValue: name }));
+      return { clubId: null, warnings, isBlocked: true };
+    }
+  } else {
+    const unscopedMatches = await db.all<{ club_id: number }>(
+      `SELECT ca.club_id FROM club_aliases ca
+       WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
+         AND ca.competition_code IS NULL`,
+      [normalized]
+    );
+    if (unscopedMatches.length > 1) {
+      const clubs = await db.all<{ name: string }>(
+        `SELECT c.name FROM clubs c
+         JOIN club_aliases ca ON ca.club_id = c.id
+         WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
+           AND ca.competition_code IS NULL`,
+        [normalized]
+      );
+      const names = clubs.map((c) => c.name).join(", ");
+      warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field, rawValue: name }));
+      return { clubId: null, warnings, isBlocked: true };
+    }
   }
 
   const resolved = await resolveFixtureParticipant(db, name, {

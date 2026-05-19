@@ -60,7 +60,7 @@ function formatDateRange(results: FixtureResult[]): string {
     .sort();
 
   if (dates.length === 0) {
-    return "Next 10 days";
+    return "";
   }
 
   return `${dateRangeFormatter.format(new Date(dates[0]))} - ${dateRangeFormatter.format(new Date(dates[dates.length - 1]))}`;
@@ -114,10 +114,8 @@ export function SearchDashboard() {
 
   const resultCount = sortedResults.length;
   const featuredFixture = useMemo(() => {
-    if (results.length === 0) return null;
-    const sorted = [...results].sort((a, b) => a.travel.distanceMiles - b.travel.distanceMiles);
-    return sorted[0];
-  }, [results]);
+    return sortedResults.length > 0 ? sortedResults[0] : null;
+  }, [sortedResults]);
   const visibleResults = useMemo(() => sortedResults.slice(0, visibleCount), [sortedResults, visibleCount]);
   const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
 
@@ -159,7 +157,7 @@ export function SearchDashboard() {
   }, []);
 
   useEffect(() => {
-    void runSearch(postcode);
+    void runSearch(postcode, computeDateRange(dateFilter));
     return () => {
       abortRef.current?.abort();
     };
@@ -249,7 +247,7 @@ export function SearchDashboard() {
         {state === "loading" && (
           <div className="state-panel">
             <strong>Finding nearby fixtures</strong>
-            <span>Checking Premier League and Championship fixtures in the next 10 days.</span>
+            <span>Checking fixtures for the selected date range.</span>
           </div>
         )}
 
@@ -262,7 +260,7 @@ export function SearchDashboard() {
 
         {state === "ready" && results.length === 0 && (
           <div className="state-panel">
-            <strong>No fixtures found in the next 10 days.</strong>
+            <strong>No fixtures found for the selected dates.</strong>
             <span>Try a different postcode, expand your search to &quot;All upcoming&quot;, or check back later for new fixtures.</span>
           </div>
         )}
