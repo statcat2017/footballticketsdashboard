@@ -22,7 +22,7 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 describe("fixture search", () => {
-  it("does not fall back to historical demo fixtures when the live date range is empty", async () => {
+  it("falls back to unconstrained historical fixtures when date range has no live or historical matches", async () => {
     const db = createAppDatabase();
 
     const results = await searchFixtures(db, {
@@ -31,7 +31,15 @@ describe("fixture search", () => {
       dateTo: "2026-05-05"
     });
 
-    expect(results).toEqual([]);
+    expect(results.length).toBeGreaterThan(0);
+    for (const result of results) {
+      expect(result.isHistorical).toBe(true);
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("Historical fixture shown")
+        ])
+      );
+    }
   });
 
   it("falls back to historical fixtures when no live fixtures match and historical seed data exists", async () => {
