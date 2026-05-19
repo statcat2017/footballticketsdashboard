@@ -561,7 +561,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
           <details style={{ display: "inline-block" }}>
             <summary style={{
               cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
-            }}>Edit all fields</summary>
+            }}>Edit fields</summary>
             <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} competitions={competitions} />
           </details>
         </div>
@@ -577,7 +577,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
           <details style={{ display: "inline-block" }}>
             <summary style={{
               cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
-            }}>Edit all fields</summary>
+            }}>Edit fields</summary>
             <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} competitions={competitions} />
           </details>
         </div>
@@ -642,6 +642,12 @@ function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue, competitio
   competitions: { code: string; name: string; kind: string }[];
 }) {
   const code = rawValue.replace(/[^a-z0-9]/gi, "_").toUpperCase();
+  const compDefault = (() => {
+    const match = competitions.find(
+      (c) => c.code === rawValue || c.name === rawValue
+    );
+    return match?.code ?? "";
+  })();
   return (
     <div style={{ marginTop: "0.25rem" }}>
       {/* Select existing competition or friendly */}
@@ -655,10 +661,10 @@ function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue, competitio
         <input type="hidden" name="row_id" value={rowId} />
 
         <label style={labelStyle}>Competition
-          <select name="competitionRaw" defaultValue={rawValue} style={inputStyle} id={`comp-select-${rowId}`}>
+          <select name="competitionRaw" defaultValue={compDefault} style={inputStyle} id={`comp-select-${rowId}`}>
             <option value="">-- Select competition --</option>
             {competitions.map((c) => (
-              <option key={c.code} value={c.name}>{c.name} ({c.code})</option>
+              <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
             ))}
           </select>
         </label>
@@ -991,6 +997,13 @@ function RowEditForm({ rowId, batchId, csrfToken, row, competitions }: {
   competitions: { code: string; name: string; kind: string }[];
 }) {
   const isFriendly = row.competitionResolvedCode === "FRIENDLY" || (row.competitionRaw ?? "").toLowerCase().includes("friendly");
+  const compDefault = (() => {
+    if (row.competitionResolvedCode) return row.competitionResolvedCode;
+    const match = competitions.find(
+      (c) => c.code === row.competitionRaw || c.name === row.competitionRaw
+    );
+    return match?.code ?? "";
+  })();
   return (
     <div style={{
       marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
@@ -1010,10 +1023,10 @@ function RowEditForm({ rowId, batchId, csrfToken, row, competitions }: {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
           <label style={labelStyle}>Competition
-            <select name="competitionRaw" defaultValue={row.competitionRaw ?? ""} style={inputStyle} id={`edit-comp-${rowId}`}>
+            <select name="competitionRaw" defaultValue={compDefault} style={inputStyle} id={`edit-comp-${rowId}`}>
               <option value="">-- Select --</option>
               {competitions.map((c) => (
-                <option key={c.code} value={c.name}>{c.name} ({c.code})</option>
+                <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
               ))}
             </select>
           </label>

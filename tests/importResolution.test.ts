@@ -196,6 +196,28 @@ describe("editAndRevalidateRow", () => {
     expect(actions[0].action).toBe("edit_row");
   });
 
+  it("preserves competitionRaw when editing unrelated fields", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Norwich City", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
+    ]);
+
+    await validateImportBatch(db, batchId);
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].competitionRaw).toBe("PL");
+    expect(rows[0].competitionResolvedCode).toBe("PL");
+
+    // Edit only venue — competitionRaw should not be touched
+    await editAndRevalidateRow(db, rows[0].id, { venueRaw: "Loftus Road" }, "test_admin");
+
+    const updated = await getBatchRows(db, batchId);
+    expect(updated[0].venueRaw).toBe("Loftus Road");
+    expect(updated[0].competitionRaw).toBe("PL");
+    expect(updated[0].competitionResolvedCode).toBe("PL");
+    expect(updated[0].matchResult).toBe("insert");
+  });
+
   it("refuses to edit a finalized row", async () => {
     const db = setupTestDb();
     const sourceId = await createTestSource(db);
