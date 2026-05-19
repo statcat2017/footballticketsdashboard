@@ -108,6 +108,7 @@ export async function POST(request: Request) {
       );
     }
 
+    console.error("[search] error:", error instanceof Error ? error.stack || error.message : error);
     return NextResponse.json(
       { error: "Search failed." },
       { status: 500 }

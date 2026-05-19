@@ -3,7 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
-import { addAlias } from "@/lib/db/clubMapping";
+import { addAlias, normalizeName } from "@/lib/db/clubMapping";
 import { getBatchRow, getBatchRows } from "@/lib/import/importBatch";
 import {
   createAdminVenue,
@@ -103,7 +103,8 @@ export async function POST(
         return redirectTo(request, batchId, { error: `Unknown action: ${action}` });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
+    console.error(`[repairs] action="${action}" batch=${batchId} error:`, error);
     return redirectTo(request, batchId, { error: encodeURIComponent(message) });
   }
 }
@@ -306,29 +307,31 @@ async function handleCreateClub(
     return redirectTo(request, batchId, { error: "Select an existing venue or provide venue details to create one." });
   }
 
-  // Ensure FRIENDLY competition exists for the club FK
-  const friendlyExists = await db.get<{ code: string }>(
-    `SELECT code FROM competitions WHERE code = 'FRIENDLY'`
-  );
-  if (!friendlyExists) {
-    await db.run(
-      `INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', 10, 'friendly')`
-    );
+  // Preflight alias conflict before creating the club
+  if (alias && alias.trim() && alias.trim() !== name) {
+    const normalized = normalizeName(alias.trim());
+    const existingAlias = normalized ? await db.get<{ id: number }>(
+      `SELECT id FROM club_aliases WHERE normalized_alias = ? AND competition_code IS NULL AND retired_at IS NULL`,
+      [normalized]
+    ) : null;
+    if (existingAlias) {
+      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}" already exists for another club.` });
+    }
+    if (normalized === normalizeName(name)) {
+      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}}" is the same as the club name.` });
+    }
   }
 
-  // Create club with FRIENDLY as default competition
+  // Create club (competition_code nullable, no FRIENDLY workaround needed)
   const clubResult = await db.run(
-    `INSERT INTO clubs (name, venue_id, competition_code) VALUES (?, ?, 'FRIENDLY')`,
+    `INSERT INTO clubs (name, venue_id, status) VALUES (?, ?, 'partial')`,
     [name, venueId]
   );
   const newClubId = clubResult.lastInsertRowid;
   if (!newClubId) throw new Error("Failed to create club record.");
 
-  // Also insert into pyramid_clubs so the club appears in admin club pages
-  await db.run(
-    `INSERT OR IGNORE INTO pyramid_clubs (name, status) VALUES (?, 'partial')`,
-    [name]
-  );
+  // Assign venue to the club
+  await assignAdminVenue(newClubId as number, venueId, nextJuly1st());
 
   await db.writeBatch([
     buildAdminAuditLogWrite({
@@ -340,9 +343,13 @@ async function handleCreateClub(
     }),
   ]);
 
-  // Add alias if different from name
+  // Add alias if different from name (already preflighted above)
   if (alias && alias.trim() && alias.trim() !== name) {
-    await addAlias(db, newClubId as number, alias.trim(), { source: "import_batch_repair" });
+    try {
+      await addAlias(db, newClubId as number, alias.trim(), { source: "import_batch_repair" });
+    } catch {
+      // Alias failure should not block club creation
+    }
   }
 
   // If we created a venue, update the row's venueRaw so the card shows it

@@ -54,7 +54,7 @@ describe("D1 initialization", () => {
 
     await initializeD1Database(binding);
 
-    const clubsIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_clubs "));
+    const clubsIndex = operations.findIndex((operation) => operation.includes("INSERT INTO clubs "));
     const membershipIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_season_memberships "));
     const movementIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_movements "));
     const batchIndex = operations.findIndex((operation) => operation.startsWith("batch:"));

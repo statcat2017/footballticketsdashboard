@@ -632,13 +632,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
-  for (const club of MEN_PYRAMID_CLUBS) {
-    add(
-      "INSERT INTO pyramid_clubs (id, name, aliases, league_name, source_url, verified_at, status) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, aliases = excluded.aliases, league_name = excluded.league_name, source_url = excluded.source_url, verified_at = excluded.verified_at, status = excluded.status",
-      [club.id, club.name, club.aliases, club.league_name, club.source_url, club.verified_at, club.status]
-    );
-  }
-
   for (const c of SEED_DATA.competitions) {
     add(
       "INSERT INTO competitions (code, name, tier, kind) VALUES (?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier, kind = excluded.kind",
@@ -658,24 +651,55 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
+  // Build ID translation: old pyramid_club_id → new clubs.id
+  const pyramidToClubId = new Map<number, number>();
+  const maxPyramidId = Math.max(...MEN_PYRAMID_CLUBS.map((c) => c.id));
+  const usedClubIds = new Set(SEED_DATA.clubs.map((c) => c.id));
+  let nextId = Math.max(maxPyramidId, ...usedClubIds) + 1;
+  const pyramidClubNames = new Set(SEED_DATA.clubs.map((c) => c.name));
+  for (const pc of MEN_PYRAMID_CLUBS) {
+    if (pyramidClubNames.has(pc.name)) {
+      const seedClub = SEED_DATA.clubs.find((c) => c.name === pc.name)!;
+      pyramidToClubId.set(pc.id, seedClub.id);
+    } else if (usedClubIds.has(pc.id)) {
+      pyramidToClubId.set(pc.id, nextId++);
+    } else {
+      pyramidToClubId.set(pc.id, pc.id);
+      usedClubIds.add(pc.id);
+    }
+  }
+  const translateClubId = (pyramidClubId: number): number =>
+    pyramidToClubId.get(pyramidClubId) ?? pyramidClubId;
+
   for (const cl of SEED_DATA.clubs) {
+    const pc = MEN_PYRAMID_CLUBS.find((p) => p.name === cl.name);
     add(
-      "INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, competition_code, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, football_data_team_id = excluded.football_data_team_id, aliases = excluded.aliases, short_name = excluded.short_name, competition_code = excluded.competition_code, venue_id = excluded.venue_id, official_site_url = excluded.official_site_url, generic_ticket_url = excluded.generic_ticket_url, price_source_url = excluded.price_source_url, verified_at = excluded.verified_at",
-      [cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name, cl.competition_code, cl.venue_id, cl.official_site_url, cl.generic_ticket_url, cl.price_source_url, cl.verified_at]
+      "INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, competition_code, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at, status, source_url, league_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, football_data_team_id = excluded.football_data_team_id, aliases = excluded.aliases, short_name = excluded.short_name, competition_code = excluded.competition_code, venue_id = excluded.venue_id, official_site_url = excluded.official_site_url, generic_ticket_url = excluded.generic_ticket_url, price_source_url = excluded.price_source_url, verified_at = excluded.verified_at, status = excluded.status, source_url = excluded.source_url, league_name = excluded.league_name",
+      [cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name, cl.competition_code, cl.venue_id, cl.official_site_url, cl.generic_ticket_url, cl.price_source_url, cl.verified_at, pc?.status ?? 'known', pc?.source_url ?? cl.generic_ticket_url ?? null, pc?.league_name ?? null]
     );
+  }
+
+  for (const pc of MEN_PYRAMID_CLUBS) {
+    if (!pyramidClubNames.has(pc.name)) {
+      const newId = pyramidToClubId.get(pc.id)!;
+      add(
+        "INSERT INTO clubs (id, name, aliases, verified_at, status, source_url, league_name) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, aliases = excluded.aliases, verified_at = excluded.verified_at, status = excluded.status, source_url = excluded.source_url, league_name = excluded.league_name",
+        [newId, pc.name, pc.aliases, pc.verified_at, pc.status, pc.source_url, pc.league_name]
+      );
+    }
   }
 
   for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
     add(
       "INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET season_id = excluded.season_id, template_id = excluded.template_id, season_division_id = excluded.season_division_id, club_id = excluded.club_id",
-      [membership.id, membership.season_id, membership.template_id, membership.season_division_id, membership.club_id]
+      [membership.id, membership.season_id, membership.template_id, membership.season_division_id, translateClubId(membership.club_id)]
     );
   }
 
   for (const movement of MEN_PYRAMID_MOVEMENTS) {
     add(
       "INSERT INTO pyramid_movements (id, season_id, template_id, club_id, from_season_division_id, to_season_division_id, movement_type, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET season_id = excluded.season_id, template_id = excluded.template_id, club_id = excluded.club_id, from_season_division_id = excluded.from_season_division_id, to_season_division_id = excluded.to_season_division_id, movement_type = excluded.movement_type, note = excluded.note, created_at = excluded.created_at",
-      [movement.id, movement.season_id, movement.template_id, movement.club_id, movement.from_season_division_id, movement.to_season_division_id, movement.movement_type, movement.note, movement.created_at]
+      [movement.id, movement.season_id, movement.template_id, translateClubId(movement.club_id), movement.from_season_division_id, movement.to_season_division_id, movement.movement_type, movement.note, movement.created_at]
     );
   }
 
@@ -704,7 +728,7 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
   for (const assignment of CLUB_VENUE_ASSIGNMENTS) {
     add(
       "INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET club_id = excluded.club_id, venue_id = excluded.venue_id, effective_from = excluded.effective_from, effective_to = excluded.effective_to, is_primary = excluded.is_primary",
-      [assignment.id, assignment.club_id, assignment.venue_id, assignment.effective_from, assignment.effective_to, assignment.is_primary]
+      [assignment.id, translateClubId(assignment.club_id), assignment.venue_id, assignment.effective_from, assignment.effective_to, assignment.is_primary]
     );
   }
 

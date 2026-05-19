@@ -35,7 +35,7 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
       INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Homeless FC', 'known'), (101, 'Housed FC', 'known');
+      INSERT INTO clubs (id, name, status) VALUES (100, 'Homeless FC', 'known'), (101, 'Housed FC', 'known');
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
         (100, 1, 1, 10, 100), (101, 1, 1, 10, 101);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Stadium', 'TE1 1ST', 51.5, -0.1);
@@ -50,31 +50,6 @@ describe("data quality checks", () => {
     expect(match[0].entity).toBe("Homeless FC");
     expect(match[0].severity).toBe("error");
     expect(match[0].issueType).toBe("No primary venue");
-  });
-
-  it("detects mapped clubs at venues with invalid coordinates", async () => {
-    const db = minimalDb();
-    db.exec(`
-      INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
-      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
-      INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Bad Venue Club', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
-      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Broken Ground', 'BG1 1XX', 999, 0);
-      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
-      INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES (200, 'Mapped Bad Venue', 'PL', 50, 'https://tickets.example.com');
-      INSERT INTO club_mappings (id, pyramid_club_id, club_id) VALUES (1, 100, 200);
-    `);
-    getDatabase.mockResolvedValue(db);
-
-    const issues = await runDataQualityChecks();
-    const match = issues.filter((i) => i.id.startsWith("mapped-club-no-venue"));
-    expect(match).toHaveLength(1);
-    expect(match[0].entity).toBe("Mapped Bad Venue");
-    expect(match[0].entityId).toBe(100);
-    expect(match[0].severity).toBe("error");
   });
 
   it("detects venues with blank postcode", async () => {
@@ -128,7 +103,7 @@ describe("data quality checks", () => {
   it("does not flag cross-scope aliases as duplicates", async () => {
     const db = minimalDb();
     db.exec(`
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Club A', 'known'), (101, 'Club B', 'known');
+      INSERT INTO clubs (id, name, status) VALUES (100, 'Club A', 'known'), (101, 'Club B', 'known');
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1), (2, 'ELC', 'Championship', 2);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Pub A', 'PL', 50), (201, 'Pub B', 'ELC', 50);
@@ -169,7 +144,7 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Overcrowded Division', 1, 1);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
       INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
+      INSERT INTO clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
         (100, 1, 1, 10, 100), (101, 1, 1, 10, 101);
     `);
@@ -192,7 +167,7 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
       INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES
         (10, 1, 1, 10, 'open'), (11, 1, 1, 11, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
+      INSERT INTO clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
         (100, 1, 1, 10, 100), (101, 1, 1, 11, 101);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
@@ -204,25 +179,6 @@ describe("data quality checks", () => {
     const match = issues.filter((i) => i.id.startsWith("division-no-mapping"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Unmapped Division");
-    expect(match[0].severity).toBe("warning");
-  });
-
-  it("detects clubs without public mapping", async () => {
-    const db = minimalDb();
-    db.exec(`
-      INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
-      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier', 1, 20);
-      INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Unmapped Club', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
-    `);
-    getDatabase.mockResolvedValue(db);
-
-    const issues = await runDataQualityChecks();
-    const match = issues.filter((i) => i.id.startsWith("club-no-mapping"));
-    expect(match).toHaveLength(1);
-    expect(match[0].entity).toBe("Unmapped Club");
     expect(match[0].severity).toBe("warning");
   });
 
@@ -301,12 +257,11 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
       INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'C', 'known');
+      INSERT INTO clubs (id, name, status) VALUES (100, 'C', 'known');
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', '', 999, 0);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
       INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Pub C', 'PL', 50);
-      INSERT INTO club_mappings (id, pyramid_club_id, club_id) VALUES (1, 100, 200);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 200, '2026-05-20T15:00:00Z', 'assumed', 'scheduled', NULL);
     `);
@@ -328,7 +283,7 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
       INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Healthy Club', 'known');
+      INSERT INTO clubs (id, name, status, generic_ticket_url) VALUES (100, 'Healthy Club', 'known', 'https://tickets.example.com');
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
       INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
         (50, 'Healthy Ground', 'TE1 1ST', 51.5, -0.1, 'exact');
@@ -337,7 +292,6 @@ describe("data quality checks", () => {
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
       INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES
         (200, 'Healthy Public Club', 'PL', 50, 'https://tickets.example.com');
-      INSERT INTO club_mappings (id, pyramid_club_id, club_id) VALUES (1, 100, 200);
       INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 200, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');

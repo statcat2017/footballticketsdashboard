@@ -43,7 +43,7 @@ function createMinimalDb(): AppDatabase {
       (12, 1, 1, 10, 'open'),
       (13, 1, 1, 11, 'open');
 
-    INSERT INTO pyramid_clubs (id, name, status) VALUES
+    INSERT INTO clubs (id, name, status) VALUES
       (100, 'Test Town United', 'known'),
       (101, 'City Athletic', 'known'),
       (102, 'Rovers FC', 'partial'),
@@ -96,11 +96,11 @@ describe("admin club browser", () => {
     expect(first!.clubs[0].club_name).toBe("Rovers FC");
   });
 
-  it("returns null for club not in latest season", async () => {
+  it("returns club detail with unassigned season when club not in latest season", async () => {
     const db = createMinimalDb();
 
     db.exec(`
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (200, 'Old Club', 'known');
+      INSERT INTO clubs (id, name, status) VALUES (200, 'Old Club', 'known');
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
         (200, 1, 1, 13, 200);
     `);
@@ -109,7 +109,10 @@ describe("admin club browser", () => {
 
     const detail = await getAdminClubDetail(200);
 
-    expect(detail).toBeNull();
+    expect(detail).not.toBeNull();
+    expect(detail!.club.name).toBe("Old Club");
+    expect(detail!.season.label).toBe("Unassigned");
+    expect(detail!.season.division_name).toBe("No division");
   });
 
   it("returns club detail for latest season membership", async () => {
@@ -140,7 +143,7 @@ describe("admin club browser", () => {
     const db = createMinimalDb();
 
     db.exec(`
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (300, 'Homeless FC', 'partial');
+      INSERT INTO clubs (id, name, status) VALUES (300, 'Homeless FC', 'partial');
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
         (300, 2, 1, 10, 300);
     `);
@@ -215,7 +218,7 @@ describe("updateAdminClub", () => {
     });
 
     const club = await db.get<{ name: string; status: string; aliases: string; admin_updated_at: string | null }>(
-      "SELECT name, status, aliases, admin_updated_at FROM pyramid_clubs WHERE id = ?", [100]
+      "SELECT name, status, aliases, admin_updated_at FROM clubs WHERE id = ?", [100]
     );
 
     expect(club!.name).toBe("Test Town Renamed");
@@ -231,7 +234,7 @@ describe("updateAdminClub", () => {
     await updateAdminClub(100, { name: "Renamed Town" });
 
     const audit = await db.get<{ action: string; entity_type: string; entity_id: string; before_json: string; after_json: string }>(
-      "SELECT action, entity_type, entity_id, before_json, after_json FROM admin_audit_log WHERE entity_type = 'pyramid_club' AND action = 'update'"
+      "SELECT action, entity_type, entity_id, before_json, after_json FROM admin_audit_log WHERE entity_type = 'club' AND action = 'update'"
     );
 
     expect(audit).not.toBeNull();
@@ -253,7 +256,7 @@ describe("updateAdminClub", () => {
     await updateAdminClub(100, { source_url: "https://example.com" });
 
     const club = await db.get<{ name: string; status: string; source_url: string | null }>(
-      "SELECT name, status, source_url FROM pyramid_clubs WHERE id = ?", [100]
+      "SELECT name, status, source_url FROM clubs WHERE id = ?", [100]
     );
 
     expect(club!.name).toBe("Test Town United");

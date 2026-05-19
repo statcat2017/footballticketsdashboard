@@ -36,7 +36,8 @@ export function buildFixtureInsert(row: ImportBatchRow, seasonLabel: string | nu
   const time = timeValue ?? (dateValue ? getAssumedKickoffTime(dateValue) : null);
   const kickoffAt = dateValue && time ? `${dateValue}T${time}:00.000Z` : null;
   const statusValue = row.status ?? "scheduled";
-  const competitionCode = row.competitionResolvedCode ?? "";
+  const competitionCode = row.competitionResolvedCode
+    || (row.awayIsOneOff ? "FRIENDLY" : "");
 
   return {
     sql: `INSERT INTO fixtures (

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' next dev",
     "build": "NODE_ENV=production next build",
     "preview": "NODE_ENV=production opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "db:migrate:d1:remote": "CI=1 wrangler d1 migrations apply football --remote",

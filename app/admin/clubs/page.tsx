@@ -52,7 +52,7 @@ export default async function AdminClubsPage() {
   const csrfToken = await createAdminCsrfToken();
   const data = await getAdminClubList();
 
-  const totalClubs = data.divisions.reduce((sum, d) => sum + d.clubs.length, 0);
+  const totalClubs = data.divisions.reduce((sum, d) => sum + d.clubs.length, 0) + data.unassignedClubs.length;
 
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
@@ -89,7 +89,7 @@ export default async function AdminClubsPage() {
         </form>
       </header>
 
-      {data.divisions.length === 0 ? (
+      {data.divisions.length === 0 && data.unassignedClubs.length === 0 ? (
         <p style={{ color: "#6f7e7a" }}>No clubs found for this season.</p>
       ) : (
         <div style={{ display: "grid", gap: "1.5rem" }}>
@@ -167,6 +167,67 @@ export default async function AdminClubsPage() {
               </div>
             </section>
           ))}
+          {data.unassignedClubs.length > 0 && (
+            <section style={{
+              border: "1px solid #dce3e2",
+              borderRadius: "8px",
+              overflow: "hidden"
+            }}>
+              <div style={{
+                padding: "0.75rem 1rem",
+                background: "#f5f7f7",
+                borderBottom: "1px solid #dce3e2",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}>
+                <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#8a5a00" }}>
+                  Unassigned clubs
+                </h2>
+                <span style={{
+                  fontSize: "12px",
+                  color: "#6f7e7a",
+                  fontWeight: 600
+                }}>
+                  {data.unassignedClubs.length} clubs
+                </span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                  <thead>
+                    <tr style={{ background: "#fbfcfc", borderBottom: "1px solid #dce3e2" }}>
+                      <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Club</th>
+                      <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Status</th>
+                      <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Ground</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.unassignedClubs.map((club) => (
+                      <tr key={club.club_id} style={{ borderBottom: "1px solid #eef1f1" }}>
+                        <td style={{ padding: "0.6rem 1rem" }}>
+                          <Link href={`/admin/clubs/${club.club_id}`} style={{
+                            color: "#17221f", textDecoration: "none", fontWeight: 700, fontSize: "14px"
+                          }}>
+                            {club.club_name}
+                          </Link>
+                        </td>
+                        <td style={{ padding: "0.6rem 1rem" }}>
+                          <ClubStatusBadge status={club.club_status} />
+                        </td>
+                        <td style={{ padding: "0.6rem 1rem", color: club.venue_name ? "#34413e" : "#a53a2d" }}>
+                          {club.venue_name ? (
+                            <span>{club.venue_name}{club.venue_postcode ? `, ${club.venue_postcode}` : ""}</span>
+                          ) : (
+                            <WarningNote text="No primary ground" />
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
       )}
     </main>

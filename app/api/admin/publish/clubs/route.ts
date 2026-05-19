@@ -57,10 +57,9 @@ export async function POST(request: Request) {
 
     const divisionMapping = await db.get<{ competition_code: string }>(
       `SELECT dcm.competition_code
-       FROM pyramid_season_divisions psd
-       JOIN division_competition_mappings dcm ON dcm.division_id = psd.division_id
-       WHERE psd.season_id = ? AND dcm.division_id = ?`,
-      [seasonId, divisionId]
+       FROM division_competition_mappings dcm
+       WHERE dcm.division_id = ?`,
+      [divisionId]
     );
 
     if (!divisionMapping) {
@@ -70,146 +69,79 @@ export async function POST(request: Request) {
     const clubs = await db.all<{
       id: number;
       name: string;
-      aliases: string | null;
-      venue_id: number | null;
-      venue_name: string | null;
-      club_mapping_id: number | null;
-      existing_club_id: number | null;
-      existing_club_comp: string | null;
-      existing_club_venue_id: number | null;
-      existing_mapping_id: number | null;
+      competition_code: string | null;
+      status: string;
     }>(
-      `SELECT
-        pc.id,
-        pc.name,
-        pc.aliases,
-        v.id AS venue_id,
-        v.name AS venue_name,
-        cm.id AS club_mapping_id,
-        ec.id AS existing_club_id,
-        ec.competition_code AS existing_club_comp,
-        ec.venue_id AS existing_club_venue_id,
-        ecm.id AS existing_mapping_id
-      FROM pyramid_season_memberships psm
-      JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
-      JOIN pyramid_clubs pc ON pc.id = psm.club_id
-      LEFT JOIN club_venue_assignments cva
-        ON cva.club_id = pc.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-      LEFT JOIN venues v ON v.id = cva.venue_id
-      LEFT JOIN club_mappings cm ON cm.pyramid_club_id = pc.id
-      LEFT JOIN clubs ec ON ec.name = pc.name
-      LEFT JOIN club_mappings ecm ON ecm.club_id = ec.id
-      WHERE psm.season_id = ? AND psd.division_id = ?
-      ORDER BY pc.name`,
-      [seasonId, divisionId]
+      `SELECT c.id, c.name, c.competition_code, c.status
+       FROM pyramid_season_memberships psm
+       JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
+       JOIN clubs c ON c.id = psm.club_id
+       WHERE psd.division_id = ? AND psm.season_id = ?
+       ORDER BY c.name`,
+      [divisionId, seasonId]
     );
 
-    type ClubAction = "publish_new" | "map_existing" | "skip_already_published" | "skip_no_venue" | "skip_conflict";
-    interface EligibleClub {
-      club: typeof clubs[number];
-      action: ClubAction;
+    if (clubs.length === 0) {
+      return redirectWith({ error: "No clubs found in this division." });
     }
 
-    const eligible: EligibleClub[] = [];
+    const statements: SqlWrite[] = [];
+    const updated: string[] = [];
     const skipped: { name: string; reason: string }[] = [];
+    const now = new Date().toISOString();
 
     for (const club of clubs) {
-      if (club.club_mapping_id !== null) {
+      if (club.status === "known" && club.competition_code === divisionMapping.competition_code) {
         skipped.push({ name: club.name, reason: "Already published" });
         continue;
       }
 
-      if (!club.venue_id) {
-        skipped.push({ name: club.name, reason: "No primary venue" });
-        continue;
+      const setClauses: string[] = [];
+      const setParams: (string | number)[] = [];
+
+      if (club.competition_code !== divisionMapping.competition_code) {
+        setClauses.push("competition_code = ?");
+        setParams.push(divisionMapping.competition_code);
       }
 
-      if (club.existing_club_id !== null) {
-        if (club.existing_mapping_id !== null) {
-          skipped.push({ name: club.name, reason: "Public club already mapped to another pyramid club" });
-          continue;
-        }
-
-        if (club.existing_club_comp !== divisionMapping.competition_code) {
-          skipped.push({ name: club.name, reason: "Competition code mismatch for existing public club" });
-          continue;
-        }
-
-        if (club.existing_club_venue_id !== club.venue_id) {
-          skipped.push({ name: club.name, reason: "Venue mismatch for existing public club" });
-          continue;
-        }
-
-        eligible.push({ club, action: "map_existing" });
-      } else {
-        eligible.push({ club, action: "publish_new" });
+      if (club.status !== "known") {
+        setClauses.push("status = 'known'");
       }
-    }
 
-    if (eligible.length === 0) {
-      let msg = "No clubs to publish.";
-      if (skipped.length > 0) {
-        msg += ` Skipped: ${skipped.map((s) => `${s.name} (${s.reason})`).join(", ")}.`;
-      }
-      return redirectWith({ error: msg });
-    }
+      setClauses.push("admin_updated_at = ?");
+      setParams.push(now);
 
-    const statements: SqlWrite[] = [];
+      statements.push({
+        sql: `UPDATE clubs SET ${setClauses.join(", ")} WHERE id = ?`,
+        params: [...setParams, club.id]
+      });
 
-    for (const entry of eligible) {
-      const club = entry.club;
-
-      if (entry.action === "publish_new") {
-        statements.push({
-          sql: `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
-          params: [club.name, club.aliases, divisionMapping.competition_code, club.venue_id]
-        });
-
-        const after = {
+      statements.push(buildAdminAuditLogWrite({
+        action: "publish",
+        entityType: "club",
+        entityId: club.id,
+        before: {
           name: club.name,
-          aliases: club.aliases,
+          competition_code: club.competition_code,
+          status: club.status
+        },
+        after: {
+          name: club.name,
           competition_code: divisionMapping.competition_code,
-          venue_id: club.venue_id,
-          venue_name: club.venue_name,
-          pyramid_club_id: club.id
-        };
+          status: "known"
+        }
+      }));
 
-        statements.push({
-          sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, (SELECT id FROM clubs WHERE name = ?))`,
-          params: [club.id, club.name]
-        });
+      updated.push(club.name);
+    }
 
-        statements.push(buildAdminAuditLogWrite({
-          action: "publish",
-          entityType: "club",
-          entityId: club.id,
-          after
-        }));
-      } else if (entry.action === "map_existing") {
-        const after = {
-          name: club.name,
-          pyramid_club_id: club.id,
-          club_id: club.existing_club_id,
-          note: "mapped to existing public club"
-        };
-
-        statements.push({
-          sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
-          params: [club.id, club.existing_club_id]
-        });
-
-        statements.push(buildAdminAuditLogWrite({
-          action: "publish",
-          entityType: "club_mapping",
-          entityId: club.existing_club_id,
-          after
-        }));
-      }
+    if (statements.length === 0) {
+      return redirectWith({ error: "No clubs to publish." });
     }
 
     await db.writeBatch(statements);
 
-    let summary = `Published ${eligible.length} club${eligible.length > 1 ? "s" : ""}.`;
+    let summary = `Published ${updated.length} club${updated.length > 1 ? "s" : ""}: ${updated.join(", ")}.`;
     if (skipped.length > 0) {
       summary += ` Skipped ${skipped.length}: ${skipped.map((s) => `${s.name} (${s.reason})`).join(", ")}.`;
     }

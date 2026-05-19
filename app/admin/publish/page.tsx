@@ -279,7 +279,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                                 {!club.isPublished && club.venueName && division.isPublished && (
                                   <form method="post" action="/api/admin/publish/club">
                                     <input type="hidden" name="csrf" value={csrfToken} />
-                                    <input type="hidden" name="pyramid_club_id" value={club.id} />
+                                    <input type="hidden" name="club_id" value={club.id} />
                                     <input type="hidden" name="redirect_division_id" value={division.id} />
                                     <button type="submit" style={{
                                       border: "1px solid #147a4d",

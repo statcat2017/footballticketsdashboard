@@ -84,7 +84,6 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertPyramidSeasonDivision.run(seasonDivision.id, seasonDivision.season_id, seasonDivision.template_id, seasonDivision.division_id, seasonDivision.status, seasonDivision.locked_at);
     }
 
-
     const insertVenue = db.prepare(`
       INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -97,93 +96,6 @@ export function seedDatabase(db: SqliteDatabase): void {
     `);
     for (const v of SEED_DATA.venues) {
       insertVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate);
-    }
-
-    const insertPyramidClub = db.prepare(`
-      INSERT INTO pyramid_clubs (id, name, aliases, league_name, source_url, verified_at, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        aliases = excluded.aliases,
-        league_name = excluded.league_name,
-        source_url = excluded.source_url,
-        verified_at = excluded.verified_at,
-        status = excluded.status
-    `);
-
-    const insertClubVenueAssignment = db.prepare(`
-      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        club_id = excluded.club_id,
-        venue_id = excluded.venue_id,
-        effective_from = excluded.effective_from,
-        effective_to = excluded.effective_to,
-        is_primary = excluded.is_primary
-    `);
-    for (const club of MEN_PYRAMID_CLUBS) {
-      insertPyramidClub.run(
-        club.id,
-        club.name,
-        club.aliases,
-        club.league_name,
-        club.source_url,
-        club.verified_at,
-        club.status
-      );
-    }
-
-    for (const a of CLUB_VENUE_ASSIGNMENTS) {
-      insertClubVenueAssignment.run(a.id, a.club_id, a.venue_id, a.effective_from, a.effective_to, a.is_primary);
-    }
-
-    const insertPyramidMembership = db.prepare(`
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        season_id = excluded.season_id,
-        template_id = excluded.template_id,
-        season_division_id = excluded.season_division_id,
-        club_id = excluded.club_id
-    `);
-    for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
-      insertPyramidMembership.run(membership.id, membership.season_id, membership.template_id, membership.season_division_id, membership.club_id);
-    }
-
-    const insertPyramidMovement = db.prepare(`
-      INSERT INTO pyramid_movements (
-        id, season_id, template_id, club_id, from_season_division_id, to_season_division_id,
-        movement_type, note, created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        season_id = excluded.season_id,
-        template_id = excluded.template_id,
-        club_id = excluded.club_id,
-        from_season_division_id = excluded.from_season_division_id,
-        to_season_division_id = excluded.to_season_division_id,
-        movement_type = excluded.movement_type,
-        note = excluded.note,
-        created_at = excluded.created_at
-    `);
-    for (const movement of MEN_PYRAMID_MOVEMENTS) {
-      insertPyramidMovement.run(
-        movement.id,
-        movement.season_id,
-        movement.template_id,
-        movement.club_id,
-        movement.from_season_division_id,
-        movement.to_season_division_id,
-        movement.movement_type,
-        movement.note,
-        movement.created_at
-      );
-    }
-
-    const pyramidIssues = validatePyramidSeason(MEN_PYRAMID_DIVISIONS, MEN_PYRAMID_SEASON_DIVISIONS, MEN_PYRAMID_MEMBERSHIPS, MEN_PYRAMID_MOVEMENTS);
-
-    if (pyramidIssues.length > 0) {
-      throw new Error(`Invalid pyramid seed data: ${pyramidIssues.map((issue) => issue.message).join("; ")}`);
     }
 
     const insertCompetition = db.prepare(`
@@ -209,9 +121,41 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertAppVenue.run(v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate);
     }
 
+    const pyramidClubByName = new Map<string, (typeof MEN_PYRAMID_CLUBS)[number]>();
+    for (const pc of MEN_PYRAMID_CLUBS) {
+      pyramidClubByName.set(pc.name, pc);
+    }
+
+    // Build ID translation: old pyramid_club_id → new clubs.id
+    // SEED_DATA.clubs keep their existing IDs (1-6)
+    // Pyramid-only clubs get max(seed_id)+1, max(seed_id)+2, ...
+    const pyramidToClubId = new Map<number, number>();
+    const maxPyramidId = Math.max(...MEN_PYRAMID_CLUBS.map((c) => c.id));
+    const usedClubIds = new Set(SEED_DATA.clubs.map((c) => c.id));
+    let nextId = Math.max(maxPyramidId, ...usedClubIds) + 1;
+    const pyramidClubNames = new Set(SEED_DATA.clubs.map((c) => c.name));
+    for (const pc of MEN_PYRAMID_CLUBS) {
+      if (pyramidClubNames.has(pc.name)) {
+        const seedClub = SEED_DATA.clubs.find((c) => c.name === pc.name)!;
+        pyramidToClubId.set(pc.id, seedClub.id);
+      } else {
+        if (usedClubIds.has(pc.id)) {
+          pyramidToClubId.set(pc.id, nextId++);
+        } else {
+          pyramidToClubId.set(pc.id, pc.id);
+          usedClubIds.add(pc.id);
+        }
+      }
+    }
+
     const insertClub = db.prepare(`
-      INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, competition_code, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clubs (
+        id, name, football_data_team_id, aliases, short_name, competition_code, venue_id,
+        official_site_url, generic_ticket_url, price_source_url, verified_at,
+        status, source_url, league_name, admin_updated_at,
+        coordinate_precision, coordinates_verified_at, coordinates_confidence, coordinates_notes
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         football_data_team_id = excluded.football_data_team_id,
@@ -222,10 +166,107 @@ export function seedDatabase(db: SqliteDatabase): void {
         official_site_url = excluded.official_site_url,
         generic_ticket_url = excluded.generic_ticket_url,
         price_source_url = excluded.price_source_url,
-        verified_at = excluded.verified_at
+        verified_at = excluded.verified_at,
+        status = excluded.status,
+        source_url = excluded.source_url,
+        league_name = excluded.league_name,
+        admin_updated_at = excluded.admin_updated_at,
+        coordinate_precision = excluded.coordinate_precision,
+        coordinates_verified_at = excluded.coordinates_verified_at,
+        coordinates_confidence = excluded.coordinates_confidence,
+        coordinates_notes = excluded.coordinates_notes
     `);
+
     for (const cl of SEED_DATA.clubs) {
-      insertClub.run(cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name, cl.competition_code, cl.venue_id, cl.official_site_url, cl.generic_ticket_url, cl.price_source_url, cl.verified_at);
+      const pyramidMatch = pyramidClubByName.get(cl.name);
+      insertClub.run(
+        cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name,
+        cl.competition_code, cl.venue_id, cl.official_site_url, cl.generic_ticket_url,
+        cl.price_source_url, cl.verified_at,
+        pyramidMatch?.status ?? "partial",
+        pyramidMatch?.source_url ?? null,
+        pyramidMatch?.league_name ?? null,
+        null, null, null, null, null
+      );
+    }
+
+    for (const pc of MEN_PYRAMID_CLUBS) {
+      if (!pyramidClubNames.has(pc.name)) {
+        const newId = pyramidToClubId.get(pc.id)!;
+        insertClub.run(
+          newId, pc.name, null, pc.aliases, null,
+          null, null, null, null,
+          null, pc.verified_at,
+          pc.status, pc.source_url, pc.league_name,
+          null, null, null, null, null
+        );
+      }
+    }
+
+    const translateClubId = (pyramidClubId: number): number =>
+      pyramidToClubId.get(pyramidClubId) ?? pyramidClubId;
+
+    const insertClubVenueAssignment = db.prepare(`
+      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        club_id = excluded.club_id,
+        venue_id = excluded.venue_id,
+        effective_from = excluded.effective_from,
+        effective_to = excluded.effective_to,
+        is_primary = excluded.is_primary
+    `);
+    for (const a of CLUB_VENUE_ASSIGNMENTS) {
+      insertClubVenueAssignment.run(a.id, translateClubId(a.club_id), a.venue_id, a.effective_from, a.effective_to, a.is_primary);
+    }
+
+    const insertPyramidMembership = db.prepare(`
+      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        season_id = excluded.season_id,
+        template_id = excluded.template_id,
+        season_division_id = excluded.season_division_id,
+        club_id = excluded.club_id
+    `);
+    for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
+      insertPyramidMembership.run(membership.id, membership.season_id, membership.template_id, membership.season_division_id, translateClubId(membership.club_id));
+    }
+
+    const insertPyramidMovement = db.prepare(`
+      INSERT INTO pyramid_movements (
+        id, season_id, template_id, club_id, from_season_division_id, to_season_division_id,
+        movement_type, note, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        season_id = excluded.season_id,
+        template_id = excluded.template_id,
+        club_id = excluded.club_id,
+        from_season_division_id = excluded.from_season_division_id,
+        to_season_division_id = excluded.to_season_division_id,
+        movement_type = excluded.movement_type,
+        note = excluded.note,
+        created_at = excluded.created_at
+    `);
+    for (const movement of MEN_PYRAMID_MOVEMENTS) {
+      insertPyramidMovement.run(
+        movement.id,
+        movement.season_id,
+        movement.template_id,
+        translateClubId(movement.club_id),
+        movement.from_season_division_id,
+        movement.to_season_division_id,
+        movement.movement_type,
+        movement.note,
+        movement.created_at
+      );
+    }
+
+    const pyramidIssues = validatePyramidSeason(MEN_PYRAMID_DIVISIONS, MEN_PYRAMID_SEASON_DIVISIONS, MEN_PYRAMID_MEMBERSHIPS, MEN_PYRAMID_MOVEMENTS);
+
+    if (pyramidIssues.length > 0) {
+      throw new Error(`Invalid pyramid seed data: ${pyramidIssues.map((issue) => issue.message).join("; ")}`);
     }
 
     const insertPrice = db.prepare(`
