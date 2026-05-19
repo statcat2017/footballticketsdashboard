@@ -5,6 +5,7 @@ import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
 import { createSource, createBatch, addBatchRows } from "@/lib/import";
+import { getBatchRows } from "@/lib/import/importBatch";
 import { getSeasons, getRecentBatches, getBatchDetail, getSources } from "@/lib/admin/imports";
 import type { NormalizedFixtureRow } from "@/lib/import";
 
@@ -122,5 +123,65 @@ describe("getSources", () => {
     const sources = await getSources(db);
     expect(sources).toHaveLength(1);
     expect(sources[0].name).toBe("A");
+  });
+});
+
+describe("repairs route - create_venue_and_assign cross-batch protection", () => {
+  afterEach(() => { getDatabase.mockReset(); });
+
+  it("rejects redirect_row_id from a different batch", async () => {
+    const db = setupTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    // Create two batches with rows
+    const src = await createSource(db, { sourceType: "csv_paste", name: "Src" });
+    const batchA = await createBatch(db, { sourceId: src.id, adapterType: "csv_paste", actor: "test" });
+    await addBatchRows(db, batchA.id, [
+      { rowIndex: 0, row: { homeParticipantRaw: "Team A", awayParticipantRaw: "Team B" } },
+    ]);
+
+    const batchB = await createBatch(db, { sourceId: src.id, adapterType: "csv_paste", actor: "test" });
+    await addBatchRows(db, batchB.id, [
+      { rowIndex: 0, row: { homeParticipantRaw: "Team C", awayParticipantRaw: "Team D" } },
+    ]);
+
+    const rowsB = await getBatchRows(db, batchB.id);
+    const crossBatchRowId = rowsB[0].id;
+
+    // Create a club to assign venue to
+    await db.run(`INSERT INTO clubs (id, name, status) VALUES (999, 'Test Club', 'known')`);
+
+    const form = new FormData();
+    form.append("_action", "create_venue_and_assign");
+    form.append("csrf", "test-csrf");
+    form.append("name", "Cross Batch Venue");
+    form.append("postcode", "CB1 1BC");
+    form.append("latitude", "51.5");
+    form.append("longitude", "-0.1");
+    form.append("club_id", "999");
+    form.append("redirect_row_id", String(crossBatchRowId));
+    form.append("is_approximate", "0");
+    form.append("coordinate_precision", "ground_approximate");
+    form.append("effective_from", "2026-07-01");
+
+    const { POST } = await import("@/app/api/admin/imports/[id]/repairs/route");
+    const response = await POST(
+      new Request(`http://localhost/admin/imports/${batchA.id}`, { method: "POST", body: form }),
+      { params: Promise.resolve({ id: String(batchA.id) }) },
+    );
+
+    // Should reject with error redirect
+    expect(response.status).toBe(303);
+    const location = response.headers.get("Location") || "";
+    expect(location).toContain("error=");
+    expect(location).toContain("different+batch");
+
+    // No venue should have been created
+    const venues = await db.all("SELECT id, name FROM venues");
+    expect(venues).toHaveLength(0);
+
+    // Batch B's row should not have been mutated
+    const rowsBAfter = await getBatchRows(db, batchB.id);
+    expect(rowsBAfter[0].venueRaw).toBeNull();
   });
 });
