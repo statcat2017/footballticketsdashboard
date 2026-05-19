@@ -82,7 +82,7 @@ function travelMinutes(value: number | null): string {
   return value === null ? "TBC" : `${value} min`;
 }
 
-export function SearchDashboard() {
+export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boolean }) {
   const [postcode, setPostcode] = useState("SE20 7RS");
   const [state, setState] = useState<SearchState>("idle");
   const [error, setError] = useState("");
@@ -200,6 +200,7 @@ export function SearchDashboard() {
           <span>nearme.fc</span>
         </div>
         <div className="nav-links">
+          {showAdminLink && <a href="/admin">Admin</a>}
           <a href="#" className="active">Fixtures</a>
           <a href="#">Grounds</a>
           <a href="/pyramid">Pyramid</a>

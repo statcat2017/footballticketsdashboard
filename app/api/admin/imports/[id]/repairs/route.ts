@@ -715,6 +715,11 @@ async function handleEditRow(
     }
   }
 
+  // Friendly checkbox overrides competition
+  if (form.get("isFriendly") === "1") {
+    edits.competitionRaw = "Non-League Friendlies";
+  }
+
   await editAndRevalidateRow(db, rowId, edits as Parameters<typeof editAndRevalidateRow>[2], actor);
 
   const updated = await getBatchRow(db, rowId);
