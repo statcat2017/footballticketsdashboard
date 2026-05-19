@@ -87,6 +87,7 @@ export async function getBatchDetail(db: AppDatabase, batchId: number): Promise<
   const activeGrouped: Record<string, ImportBatchRow[]> = { insert: [], update: [], skip: [], blocked: [], pending: [] };
   for (const r of activeRows) {
     const key = r.matchResult ?? "pending";
+    if (!activeGrouped[key]) activeGrouped[key] = [];
     activeGrouped[key].push(r);
   }
 

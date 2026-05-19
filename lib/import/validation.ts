@@ -329,6 +329,58 @@ async function resolveVenue(
 
 const VALID_FIXTURE_STATUSES: FixtureStatus[] = ["scheduled", "postponed", "cancelled", "finished", "unknown"];
 
+/* ── Duplicate detection ── */
+
+function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string, unknown>): boolean {
+  if (row.kickoffDate && before.fixture_date && row.kickoffDate !== before.fixture_date) return true;
+  if (row.competitionResolvedCode && before.competition_code && row.competitionResolvedCode !== before.competition_code) return true;
+  if (row.venueResolvedId && row.venueRaw && before.venue_id !== null && row.venueResolvedId !== before.venue_id) return true;
+  if (row.status && before.status && row.status !== before.status) return true;
+  if (row.kickoffTime && before.kickoff_time && row.kickoffTime !== before.kickoff_time) return true;
+  return false;
+}
+
+async function findDuplicateInSameBatch(
+  db: AppDatabase,
+  row: ImportBatchRow,
+): Promise<number | null> {
+  if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
+  // Only find rows with a lower id (inserted earlier), so first occurrence is never tagged as duplicate
+  const result = await db.get<{ id: number }>(
+    `SELECT id FROM import_batch_rows
+     WHERE batch_id = ? AND id < ? AND final_action IS NULL
+     AND home_participant_raw = ? AND away_participant_raw = ?
+     AND kickoff_date = ?`,
+    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate]
+  );
+  return result?.id ?? null;
+}
+
+async function findDuplicateBatchRow(
+  db: AppDatabase,
+  row: ImportBatchRow,
+  excludeRowId: number,
+): Promise<{ batchId: number; rowId: number } | null> {
+  if (!row.competitionResolvedCode || !row.kickoffDate) return null;
+
+  const isNormal = !row.homeIsOneOff && !row.awayIsOneOff && row.homeParticipantResolvedId && row.awayParticipantResolvedId;
+  if (!isNormal) return null;
+
+  const result = await db.get<{ id: number; batch_id: number }>(
+    `SELECT r.id, r.batch_id FROM import_batch_rows r
+     JOIN import_batches b ON b.id = r.batch_id
+     WHERE r.id != ? AND r.batch_id != ? AND r.final_action IS NULL
+     AND r.home_participant_resolved_id = ?
+     AND r.away_participant_resolved_id = ?
+     AND r.competition_resolved_code = ?
+     AND r.kickoff_date = ?
+     AND r.match_result NOT IN ('skip', 'blocked', 'duplicate_same_batch')`,
+    [excludeRowId, row.batchId, row.homeParticipantResolvedId, row.awayParticipantResolvedId, row.competitionResolvedCode, row.kickoffDate]
+  );
+  if (!result) return null;
+  return { batchId: result.batch_id, rowId: result.id };
+}
+
 export async function validateRow(
   db: AppDatabase,
   row: ImportBatchRow,
@@ -486,6 +538,64 @@ export async function validateRow(
     ));
     return {
       matchResult: "blocked",
+      warnings,
+      homeParticipantResolvedId: home.clubId,
+      awayParticipantResolvedId: away.clubId,
+      competitionResolvedCode: competitionCode,
+      venueResolvedId: venue.venueId,
+      normalizedDate,
+      normalizedTime,
+      normalizedStatus,
+      awayIsOneOff: resolvedAwayIsOneOff,
+      awayParticipantRaw: row.awayParticipantRaw,
+    };
+  }
+
+  // Duplicate detection — check after resolution is complete.
+  // Order: same-batch → fixture match (canonical) → other-batch → insert/update
+
+  const sameBatchDup = await findDuplicateInSameBatch(db, row);
+  if (sameBatchDup) {
+    warnings.push(makeIssue("duplicate_same_batch", `Duplicate row — matches row #${sameBatchDup} in this batch.`, { severity: "warning" }));
+    return {
+      matchResult: "duplicate_same_batch",
+      warnings,
+      homeParticipantResolvedId: home.clubId,
+      awayParticipantResolvedId: away.clubId,
+      competitionResolvedCode: competitionCode,
+      venueResolvedId: venue.venueId,
+      normalizedDate,
+      normalizedTime,
+      normalizedStatus,
+      awayIsOneOff: resolvedAwayIsOneOff,
+      awayParticipantRaw: row.awayParticipantRaw,
+    };
+  }
+
+  // Check existing fixture first — if it matches with no changes, it's duplicate
+  if (existingMatch.kind === "match" && !hasMeaningfulChanges(row, existingMatch.before)) {
+    warnings.push(makeIssue("duplicate_existing_fixture", `Already imported as fixture #${existingMatch.id}. No material changes detected.`, { severity: "warning" }));
+    return {
+      matchResult: "duplicate_existing_fixture",
+      warnings,
+      homeParticipantResolvedId: home.clubId,
+      awayParticipantResolvedId: away.clubId,
+      competitionResolvedCode: competitionCode,
+      venueResolvedId: venue.venueId,
+      normalizedDate,
+      normalizedTime,
+      normalizedStatus,
+      awayIsOneOff: resolvedAwayIsOneOff,
+      awayParticipantRaw: row.awayParticipantRaw,
+    };
+  }
+
+  // Check other pending batches (only when no existing fixture, or fixture has changes)
+  const otherBatchDup = existingMatch.kind !== "match" ? await findDuplicateBatchRow(db, { ...row, homeParticipantResolvedId: home.clubId, awayParticipantResolvedId: away.clubId, competitionResolvedCode: competitionCode, venueResolvedId: venue.venueId, awayIsOneOff: resolvedAwayIsOneOff } as ImportBatchRow, row.id) : null;
+  if (otherBatchDup) {
+    warnings.push(makeIssue("duplicate_pending_batch", `Already in batch #${otherBatchDup.batchId} (row ${otherBatchDup.rowId}).`, { severity: "warning" }));
+    return {
+      matchResult: "duplicate_pending_batch",
       warnings,
       homeParticipantResolvedId: home.clubId,
       awayParticipantResolvedId: away.clubId,

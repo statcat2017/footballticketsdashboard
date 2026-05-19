@@ -265,7 +265,7 @@ describe("importSingleRow", () => {
     const db = setupTestDb();
     const sourceId = await createTestSource(db);
     const batchId = await createTestBatch(db, sourceId, [
-      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
+      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "19:45", venueRaw: "Stamford Bridge" },
     ]);
 
     await validateImportBatch(db, batchId);
@@ -461,7 +461,7 @@ describe("partially approved batch semantics", () => {
     const sourceId = await createTestSource(db);
     const batchId = await createTestBatch(db, sourceId, [
       { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Norwich City", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
-      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
+      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "19:45", venueRaw: "Stamford Bridge" },
     ]);
 
     await validateImportBatch(db, batchId);
@@ -473,7 +473,7 @@ describe("partially approved batch semantics", () => {
     const batch = await getBatch(db, batchId);
     expect(batch?.approvalStatus).toBe("partially_approved");
 
-    // Should still be able to apply the other row via bulk (it's an update since fixture 100 matches)
+    // Should still be able to apply the other row via bulk (it's an update since fixture 100 matches with changed time)
     const result = await applyBatchRows(db, batchId, "test_admin");
     expect(result.updated).toBe(1);
   });

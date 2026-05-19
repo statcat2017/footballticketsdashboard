@@ -111,13 +111,14 @@ describe("validateImportBatch", () => {
   it("marks row as update when existing fixture identity found", async () => {
     const db = setupTestDb();
     const sourceId = await createTestSource(db);
+    // Different time from existing fixture (19:45 vs 15:00) = meaningful change → update
     const batchId = await createTestBatch(db, sourceId, [
       {
         homeParticipantRaw: "Chelsea",
         awayParticipantRaw: "Arsenal",
         competitionRaw: "PL",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
       },
     ]);
@@ -130,6 +131,68 @@ describe("validateImportBatch", () => {
     expect(rows[0].matchResult).toBe("update");
     expect(rows[0].homeParticipantResolvedId).toBe(1);
     expect(rows[0].awayParticipantResolvedId).toBe(2);
+  });
+
+  it("resolves club via alias", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Chelsea FC",
+        awayParticipantRaw: "Arsenal",
+        competitionRaw: "PL",
+        kickoffDate: "2026-05-20",
+        kickoffTime: "19:45",
+        venueRaw: "Stamford Bridge",
+      },
+    ]);
+
+    const result = await validateImportBatch(db, batchId);
+    expect(result.updateCount).toBe(1);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].homeParticipantResolvedId).toBe(1);
+  });
+
+  it("resolves competition by name", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Chelsea",
+        awayParticipantRaw: "Arsenal",
+        competitionRaw: "Premier League",
+        kickoffDate: "2026-05-20",
+        kickoffTime: "19:45",
+        venueRaw: "Stamford Bridge",
+      },
+    ]);
+
+    const result = await validateImportBatch(db, batchId);
+    expect(result.updateCount).toBe(1);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].competitionResolvedCode).toBe("PL");
+  });
+
+  it("infers competition from home club when not provided", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Chelsea",
+        awayParticipantRaw: "Arsenal",
+        kickoffDate: "2026-05-20",
+        kickoffTime: "19:45",
+        venueRaw: "Stamford Bridge",
+      },
+    ]);
+
+    const result = await validateImportBatch(db, batchId);
+    expect(result.updateCount).toBe(1);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].competitionResolvedCode).toBe("PL");
   });
 
   it("marks unknown club as blocked", async () => {
@@ -162,7 +225,7 @@ describe("validateImportBatch", () => {
         awayParticipantRaw: "Arsenal",
         competitionRaw: "PL",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
       },
     ]);
@@ -183,7 +246,7 @@ describe("validateImportBatch", () => {
         awayParticipantRaw: "Arsenal",
         competitionRaw: "Premier League",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
       },
     ]);
@@ -203,7 +266,7 @@ describe("validateImportBatch", () => {
         homeParticipantRaw: "Chelsea",
         awayParticipantRaw: "Arsenal",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
       },
     ]);
@@ -251,24 +314,20 @@ describe("validateImportBatch", () => {
 
   it("assumes weekend time 15:00 for saturday", async () => {
     const db = setupTestDb();
-    // Add a fixture matching the import row date for identity matching
-    db.exec(`
-      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
-      VALUES (300, 'test', 'fixture-sat', 'PL', 1, 2, 1, '2026-05-23', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
-    `);
+    // Use Norwich vs QPR (ELC) — no existing fixture matches this
     const sourceId = await createTestSource(db);
     const batchId = await createTestBatch(db, sourceId, [
       {
-        homeParticipantRaw: "Chelsea",
-        awayParticipantRaw: "Arsenal",
-        competitionRaw: "PL",
+        homeParticipantRaw: "Norwich City",
+        awayParticipantRaw: "Queens Park Rangers",
+        competitionRaw: "ELC",
         kickoffDate: "2026-05-23", // Saturday
-        venueRaw: "Stamford Bridge",
+        venueRaw: "Carrow Road",
       },
     ]);
 
     const result = await validateImportBatch(db, batchId);
-    expect(result.updateCount).toBe(1);
+    expect(result.insertCount).toBe(1);
 
     const rows = await getBatchRows(db, batchId);
     expect(rows[0].warningsJson).toContain("assumed");
@@ -280,16 +339,16 @@ describe("validateImportBatch", () => {
     const sourceId = await createTestSource(db);
     const batchId = await createTestBatch(db, sourceId, [
       {
-        homeParticipantRaw: "Chelsea",
-        awayParticipantRaw: "Arsenal",
-        competitionRaw: "PL",
+        homeParticipantRaw: "Norwich City",
+        awayParticipantRaw: "Queens Park Rangers",
+        competitionRaw: "ELC",
         kickoffDate: "2026-05-20", // Wednesday
-        venueRaw: "Stamford Bridge",
+        venueRaw: "Carrow Road",
       },
     ]);
 
     const result = await validateImportBatch(db, batchId);
-    expect(result.updateCount).toBe(1);
+    expect(result.insertCount).toBe(1);
 
     const rows = await getBatchRows(db, batchId);
     expect(rows[0].warningsJson).toContain("assumed");
@@ -326,7 +385,7 @@ describe("validateImportBatch", () => {
         awayParticipantRaw: "Arsenal",
         competitionRaw: "PL",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
       },
     ]);
@@ -345,8 +404,10 @@ describe("validateImportBatch", () => {
       {
         homeParticipantRaw: "Chelsea",
         awayParticipantRaw: "Arsenal",
+        competitionRaw: "PL",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
+        venueRaw: "Stamford Bridge",
       },
     ]);
 
@@ -405,7 +466,7 @@ describe("applyBatchRows", () => {
         awayParticipantRaw: "Arsenal",
         competitionRaw: "PL",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
       },
     ]);
@@ -448,14 +509,20 @@ describe("applyBatchRows", () => {
 
   it("preserves blank fields on update (never erases)", async () => {
     const db = setupTestDb();
+    // Create a fixture at a different venue
+    db.exec(`
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (400, 'test', 'fixture-blank-field-test', 'PL', 1, 2, 2, '2026-07-15', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+    `);
     const sourceId = await createTestSource(db);
     const batchId = await createTestBatch(db, sourceId, [
       {
         homeParticipantRaw: "Chelsea",
         awayParticipantRaw: "Arsenal",
         competitionRaw: "PL",
-        kickoffDate: "2026-05-20",
-        // No venueRaw provided - should use existing fixture venue_id
+        kickoffDate: "2026-07-15",
+        kickoffTime: "19:45", // Changed — meaningful update
+        // No venueRaw — should NOT overwrite existing venue_id=2
       },
     ]);
 
@@ -464,18 +531,18 @@ describe("applyBatchRows", () => {
     await applyBatchRows(db, batchId, "test");
 
     const fixture = await db.get<{ id: number; venue_id: number; kickoff_time: string | null }>(
-      `SELECT id, venue_id, kickoff_time FROM fixtures WHERE id = 100`
+      `SELECT id, venue_id, kickoff_time FROM fixtures WHERE id = 400`
     );
-    expect(fixture?.venue_id).toBe(1); // Existing venue, not overwritten
-    expect(fixture?.kickoff_time).toBe("15:00"); // Updated from import
+    expect(fixture?.venue_id).toBe(2); // Existing venue, not overwritten
+    expect(fixture?.kickoff_time).toBe("19:45"); // Updated from import
   });
 
   it("preserves different existing venue when import row has no venue", async () => {
     const db = setupTestDb();
-    // Add a second fixture at a different venue
+    // Add a second fixture at a different venue, with different time
     db.exec(`
       INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
-      VALUES (200, 'test', 'fixture-alt-venue', 'PL', 1, 2, 2, '2026-06-01', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      VALUES (200, 'test', 'fixture-alt-venue', 'PL', 1, 2, 2, '2026-06-01', '19:45', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
     `);
 
     const sourceId = await createTestSource(db);
@@ -485,6 +552,7 @@ describe("applyBatchRows", () => {
         awayParticipantRaw: "Arsenal",
         competitionRaw: "PL",
         kickoffDate: "2026-06-01",
+        kickoffTime: "15:00", // Change from fixture's 19:45 → meaningful update
         // No venueRaw provided - should NOT overwrite existing venue_id=2
       },
     ]);
@@ -560,7 +628,7 @@ describe("applyBatchRows", () => {
         awayParticipantRaw: "Arsenal",
         competitionRaw: "PL",
         kickoffDate: "2026-05-20",
-        kickoffTime: "15:00",
+        kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
       },
     ]);
@@ -716,5 +784,95 @@ describe("duplicate fixture identity", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].matchResult).toBe("blocked");
     expect(rows[0].warningsJson).toContain("ambiguous_fixture_match");
+  });
+});
+
+describe("duplicate detection during validation", () => {
+  it("marks duplicate row in same batch as duplicate_same_batch", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    // Two identical rows in the same batch — use a new fixture that doesn't exist
+    const batch = await createBatch(db, {
+      sourceId,
+      adapterType: "csv_paste",
+      actor: "test",
+    });
+    const rowInputs: NormalizedFixtureRow[] = [
+      { homeParticipantRaw: "Norwich City", awayParticipantRaw: "Birmingham City", competitionRaw: "ELC", kickoffDate: "2026-06-15", kickoffTime: "15:00", venueRaw: "Carrow Road" },
+      { homeParticipantRaw: "Norwich City", awayParticipantRaw: "Birmingham City", competitionRaw: "ELC", kickoffDate: "2026-06-15", kickoffTime: "15:00", venueRaw: "Carrow Road" },
+    ];
+    await addBatchRows(db, batch.id, rowInputs.map((row, i) => ({ rowIndex: i, row })));
+
+    await validateImportBatch(db, batch.id);
+
+    const rows = await getBatchRows(db, batch.id);
+    expect(rows).toHaveLength(2);
+    // First row is insert, second is duplicate
+    expect(rows[0].matchResult).toBe("insert");
+    expect(rows[1].matchResult).toBe("duplicate_same_batch");
+  });
+
+  it("marks duplicate row in another pending batch as duplicate_pending_batch", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+
+    // Use a NEW fixture that doesn't exist yet (Norwich vs QPR, ELC)
+    const batch1 = await createBatch(db, {
+      sourceId,
+      adapterType: "csv_paste",
+      actor: "test",
+    });
+    const rowInputs1: NormalizedFixtureRow[] = [
+      { homeParticipantRaw: "Norwich City", awayParticipantRaw: "Queens Park Rangers", competitionRaw: "ELC", kickoffDate: "2026-06-01", kickoffTime: "15:00", venueRaw: "Carrow Road" },
+    ];
+    await addBatchRows(db, batch1.id, rowInputs1.map((row, i) => ({ rowIndex: i, row })));
+    await validateImportBatch(db, batch1.id);
+    const rows1 = await getBatchRows(db, batch1.id);
+    expect(rows1[0].matchResult).toBe("insert"); // new fixture - no existing match
+
+    // Second batch — same new fixture
+    const batch2 = await createBatch(db, {
+      sourceId,
+      adapterType: "csv_paste",
+      actor: "test",
+    });
+    const rowInputs2: NormalizedFixtureRow[] = [
+      { homeParticipantRaw: "Norwich City", awayParticipantRaw: "Queens Park Rangers", competitionRaw: "ELC", kickoffDate: "2026-06-01", kickoffTime: "15:00", venueRaw: "Carrow Road" },
+    ];
+    await addBatchRows(db, batch2.id, rowInputs2.map((row, i) => ({ rowIndex: i, row })));
+
+    await validateImportBatch(db, batch2.id);
+
+    const rows2 = await getBatchRows(db, batch2.id);
+    expect(rows2).toHaveLength(1);
+    expect(rows2[0].matchResult).toBe("duplicate_pending_batch");
+  });
+
+  it("marks row matching existing fixture as duplicate_existing_fixture when nothing changed", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].matchResult).toBe("duplicate_existing_fixture");
+    expect(rows[0].warningsJson).toContain("duplicate_existing_fixture");
+  });
+
+  it("marks row as update not duplicate when fixture material changed", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    // Existing fixture 100 is Chelsea vs Arsenal on 2026-05-20 at 15:00. Change the time to make it meaningful.
+    const batchId = await createTestBatch(db, sourceId, [
+      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-05-20", kickoffTime: "19:45", venueRaw: "Stamford Bridge" },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].matchResult).toBe("update");
   });
 });
