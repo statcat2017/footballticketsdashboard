@@ -3,16 +3,17 @@
 -- pyramid_clubs and club_mappings are dropped.
 -- Affected FK columns are rebuilt to point to clubs.id.
 
--- Add coordinate columns to pyramid_clubs if not present (may have been missed in earlier migrations)
-ALTER TABLE pyramid_clubs ADD COLUMN coordinate_precision TEXT DEFAULT 'unknown'
-  CHECK (coordinate_precision IN ('exact', 'postcode', 'ground_approximate', 'unknown'));
-ALTER TABLE pyramid_clubs ADD COLUMN coordinates_verified_at TEXT;
-ALTER TABLE pyramid_clubs ADD COLUMN coordinates_confidence TEXT DEFAULT 'unknown'
-  CHECK (coordinates_confidence IN ('high', 'medium', 'low', 'unknown'));
-ALTER TABLE pyramid_clubs ADD COLUMN coordinates_notes TEXT;
+-- Build an explicit translation: old pyramid_club_id -> canonical clubs.id
+-- Priority: 1) existing club_mappings, 2) exact name match, 3) newly inserted row
+-- We need pyramid_clubs saved first before we can reference it.
+CREATE TABLE _tmp_pyramid_clubs (
+  id INTEGER, name TEXT, aliases TEXT, league_name TEXT,
+  source_url TEXT, verified_at TEXT, status TEXT, admin_updated_at TEXT
+);
+INSERT INTO _tmp_pyramid_clubs
+  SELECT id, name, aliases, league_name, source_url, verified_at, status, admin_updated_at
+  FROM pyramid_clubs;
 
--- Save all affected tables to temp
-CREATE TABLE _tmp_pyramid_clubs AS SELECT * FROM pyramid_clubs;
 CREATE TABLE _tmp_clubs AS SELECT * FROM clubs;
 CREATE TABLE _tmp_club_mappings AS SELECT * FROM club_mappings;
 CREATE TABLE _tmp_club_venue_assignments AS SELECT * FROM club_venue_assignments;
@@ -24,6 +25,34 @@ CREATE TABLE _tmp_fixtures AS SELECT * FROM fixtures;
 CREATE TABLE _tmp_fixture_ticket_price_overrides AS SELECT * FROM fixture_ticket_price_overrides;
 CREATE TABLE _tmp_import_batch_rows AS SELECT * FROM import_batch_rows;
 CREATE TABLE _tmp_import_batch_row_actions AS SELECT * FROM import_batch_row_actions;
+
+-- Build club ID translation table
+CREATE TABLE _tmp_club_id_map (
+  pyramid_club_id INTEGER NOT NULL PRIMARY KEY,
+  canonical_club_id INTEGER NOT NULL
+);
+INSERT INTO _tmp_club_id_map (pyramid_club_id, canonical_club_id)
+SELECT DISTINCT cm.pyramid_club_id, cm.club_id
+FROM _tmp_club_mappings cm;
+INSERT INTO _tmp_club_id_map (pyramid_club_id, canonical_club_id)
+SELECT pc.id, c.id
+FROM _tmp_pyramid_clubs pc
+JOIN _tmp_clubs c ON c.name = pc.name
+WHERE NOT EXISTS (SELECT 1 FROM _tmp_club_id_map m WHERE m.pyramid_club_id = pc.id);
+INSERT INTO _tmp_club_id_map (pyramid_club_id, canonical_club_id)
+SELECT pc.id, pc.id
+FROM _tmp_pyramid_clubs pc
+WHERE NOT EXISTS (SELECT 1 FROM _tmp_club_id_map m WHERE m.pyramid_club_id = pc.id)
+  AND NOT EXISTS (SELECT 1 FROM _tmp_clubs c WHERE c.id = pc.id);
+-- Remaining orphan pyramid clubs whose ID conflicts with existing clubs
+INSERT INTO _tmp_club_id_map (pyramid_club_id, canonical_club_id)
+WITH remaining AS (
+  SELECT pc.id, ROW_NUMBER() OVER (ORDER BY pc.id) AS rn
+  FROM _tmp_pyramid_clubs pc
+  WHERE NOT EXISTS (SELECT 1 FROM _tmp_club_id_map m WHERE m.pyramid_club_id = pc.id)
+)
+SELECT r.id, (SELECT COALESCE(MAX(m.canonical_club_id), 0) FROM _tmp_club_id_map m) + r.rn
+FROM remaining r;
 
 -- Drop in dependency order (children before parents)
 DROP TABLE fixture_ticket_price_overrides;
@@ -64,7 +93,7 @@ CREATE TABLE clubs (
   coordinates_notes TEXT
 );
 
--- Step 1: Insert existing fixture/public clubs into canonical clubs
+-- Insert existing public clubs
 INSERT INTO clubs (
   id, name, football_data_team_id, aliases, short_name,
   competition_code, venue_id, official_site_url, generic_ticket_url,
@@ -76,90 +105,37 @@ SELECT
   price_source_url, ground_source_url, coordinates_source_url, verified_at
 FROM _tmp_clubs;
 
--- Helper: translate a pyramid_club_id to the equivalent clubs.id.
--- Order: club_mappings → name match in _tmp_clubs → same-ID fallback.
--- Used inline in later INSERT statements. (SQLite can't do CTEs across statements,
--- so we repeat the pattern.)
-
--- Step 2: Merge pyramid_clubs data into clubs by ID match
+-- Merge pyramid metadata into clubs that have a mapping
 UPDATE clubs SET
   status = COALESCE(
-    (SELECT pc.status FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), status
-  ),
-  source_url = COALESCE(
-    (SELECT pc.source_url FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), source_url
-  ),
-  league_name = COALESCE(
-    (SELECT pc.league_name FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), league_name
-  ),
-  admin_updated_at = COALESCE(
-    (SELECT pc.admin_updated_at FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), admin_updated_at
-  ),
-  coordinate_precision = COALESCE(
-    (SELECT pc.coordinate_precision FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), coordinate_precision
-  ),
-  coordinates_verified_at = COALESCE(
-    (SELECT pc.coordinates_verified_at FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), coordinates_verified_at
-  ),
-  coordinates_confidence = COALESCE(
-    (SELECT pc.coordinates_confidence FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), coordinates_confidence
-  ),
-  coordinates_notes = COALESCE(
-    (SELECT pc.coordinates_notes FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id), coordinates_notes
-  )
-WHERE EXISTS (SELECT 1 FROM _tmp_pyramid_clubs pc WHERE pc.id = clubs.id);
-
--- Step 3: Merge pyramid_clubs data into clubs by club_mappings link
-UPDATE clubs SET
-  status = COALESCE(
-    (SELECT pc.status FROM _tmp_club_mappings cm JOIN _tmp_pyramid_clubs pc ON pc.id = cm.pyramid_club_id WHERE cm.club_id = clubs.id),
+    (SELECT pc.status FROM _tmp_club_id_map m JOIN _tmp_pyramid_clubs pc ON pc.id = m.pyramid_club_id WHERE m.canonical_club_id = clubs.id),
     status
   ),
   source_url = COALESCE(
-    (SELECT pc.source_url FROM _tmp_club_mappings cm JOIN _tmp_pyramid_clubs pc ON pc.id = cm.pyramid_club_id WHERE cm.club_id = clubs.id),
+    (SELECT pc.source_url FROM _tmp_club_id_map m JOIN _tmp_pyramid_clubs pc ON pc.id = m.pyramid_club_id WHERE m.canonical_club_id = clubs.id),
     source_url
   ),
   league_name = COALESCE(
-    (SELECT pc.league_name FROM _tmp_club_mappings cm JOIN _tmp_pyramid_clubs pc ON pc.id = cm.pyramid_club_id WHERE cm.club_id = clubs.id),
+    (SELECT pc.league_name FROM _tmp_club_id_map m JOIN _tmp_pyramid_clubs pc ON pc.id = m.pyramid_club_id WHERE m.canonical_club_id = clubs.id),
     league_name
-  )
-WHERE EXISTS (
-  SELECT 1 FROM _tmp_club_mappings cm JOIN _tmp_pyramid_clubs pc ON pc.id = cm.pyramid_club_id WHERE cm.club_id = clubs.id
-);
-
--- Step 4: Merge pyramid_clubs data into clubs by name match
--- (handles seed data where pyramid_clubs.id != clubs.id for the same real club)
-UPDATE clubs SET
-  status = COALESCE(
-    (SELECT pc.status FROM _tmp_pyramid_clubs pc WHERE pc.name = clubs.name), status
   ),
-  source_url = COALESCE(
-    (SELECT pc.source_url FROM _tmp_pyramid_clubs pc WHERE pc.name = clubs.name), source_url
-  ),
-  league_name = COALESCE(
-    (SELECT pc.league_name FROM _tmp_pyramid_clubs pc WHERE pc.name = clubs.name), league_name
+  admin_updated_at = COALESCE(
+    (SELECT pc.admin_updated_at FROM _tmp_club_id_map m JOIN _tmp_pyramid_clubs pc ON pc.id = m.pyramid_club_id WHERE m.canonical_club_id = clubs.id),
+    admin_updated_at
   ),
   verified_at = COALESCE(
-    (SELECT pc.verified_at FROM _tmp_pyramid_clubs pc WHERE pc.name = clubs.name), verified_at
+    (SELECT pc.verified_at FROM _tmp_club_id_map m JOIN _tmp_pyramid_clubs pc ON pc.id = m.pyramid_club_id WHERE m.canonical_club_id = clubs.id),
+    verified_at
   )
 WHERE EXISTS (
-  SELECT 1 FROM _tmp_pyramid_clubs pc WHERE pc.name = clubs.name
-    AND NOT EXISTS (SELECT 1 FROM _tmp_clubs c WHERE c.id = clubs.id AND c.id IN (SELECT id FROM _tmp_pyramid_clubs))
+  SELECT 1 FROM _tmp_club_id_map m WHERE m.canonical_club_id = clubs.id
 );
 
--- Step 5: Insert pyramid-only clubs (exist in pyramid_clubs but not in clubs by name)
-INSERT INTO clubs (
-  id, name, aliases, verified_at,
-  status, source_url, league_name, admin_updated_at,
-  coordinate_precision, coordinates_verified_at,
-  coordinates_confidence, coordinates_notes
-)
-SELECT
-  pc.id, pc.name, pc.aliases, pc.verified_at,
-  pc.status, pc.source_url, pc.league_name, pc.admin_updated_at,
-  pc.coordinate_precision, pc.coordinates_verified_at,
-  pc.coordinates_confidence, pc.coordinates_notes
-FROM _tmp_pyramid_clubs pc
+-- Insert pyramid-only clubs (no name match in old clubs)
+INSERT INTO clubs (id, name, aliases, verified_at, status, source_url, league_name, admin_updated_at)
+SELECT m.canonical_club_id, pc.name, pc.aliases, pc.verified_at, pc.status, pc.source_url, pc.league_name, pc.admin_updated_at
+FROM _tmp_club_id_map m
+JOIN _tmp_pyramid_clubs pc ON pc.id = m.pyramid_club_id
 WHERE NOT EXISTS (SELECT 1 FROM _tmp_clubs c WHERE c.name = pc.name);
 
 -- Recreate pyramid_season_memberships with FK to clubs.id
@@ -174,11 +150,9 @@ CREATE TABLE pyramid_season_memberships (
   FOREIGN KEY (season_division_id, season_id, template_id) REFERENCES pyramid_season_divisions(id, season_id, template_id) ON DELETE CASCADE
 );
 INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id)
-SELECT
-  m.id, m.season_id, m.template_id, m.season_division_id,
+SELECT m.id, m.season_id, m.template_id, m.season_division_id,
   COALESCE(
-    (SELECT cm.club_id FROM _tmp_club_mappings cm WHERE cm.pyramid_club_id = m.club_id),
-    (SELECT c.id FROM clubs c WHERE c.name = (SELECT pc.name FROM _tmp_pyramid_clubs pc WHERE pc.id = m.club_id)),
+    (SELECT map.canonical_club_id FROM _tmp_club_id_map map WHERE map.pyramid_club_id = m.club_id),
     m.club_id
   )
 FROM _tmp_pyramid_season_memberships m;
@@ -201,11 +175,9 @@ CREATE TABLE pyramid_movements (
   FOREIGN KEY (to_season_division_id, season_id, template_id) REFERENCES pyramid_season_divisions(id, season_id, template_id) ON DELETE CASCADE
 );
 INSERT INTO pyramid_movements (id, season_id, template_id, club_id, from_season_division_id, to_season_division_id, movement_type, note, created_at)
-SELECT
-  mv.id, mv.season_id, mv.template_id,
+SELECT mv.id, mv.season_id, mv.template_id,
   COALESCE(
-    (SELECT cm.club_id FROM _tmp_club_mappings cm WHERE cm.pyramid_club_id = mv.club_id),
-    (SELECT c.id FROM clubs c WHERE c.name = (SELECT pc.name FROM _tmp_pyramid_clubs pc WHERE pc.id = mv.club_id)),
+    (SELECT map.canonical_club_id FROM _tmp_club_id_map map WHERE map.pyramid_club_id = mv.club_id),
     mv.club_id
   ),
   mv.from_season_division_id, mv.to_season_division_id, mv.movement_type, mv.note, mv.created_at
@@ -224,11 +196,9 @@ CREATE TABLE club_venue_assignments (
   UNIQUE (club_id, venue_id, effective_from)
 );
 INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary, admin_updated_at)
-SELECT
-  cva.id,
+SELECT cva.id,
   COALESCE(
-    (SELECT cm.club_id FROM _tmp_club_mappings cm WHERE cm.pyramid_club_id = cva.club_id),
-    (SELECT c.id FROM clubs c WHERE c.name = (SELECT pc.name FROM _tmp_pyramid_clubs pc WHERE pc.id = cva.club_id)),
+    (SELECT map.canonical_club_id FROM _tmp_club_id_map map WHERE map.pyramid_club_id = cva.club_id),
     cva.club_id
   ),
   cva.venue_id, cva.effective_from, cva.effective_to, cva.is_primary, cva.admin_updated_at
@@ -406,7 +376,8 @@ CREATE INDEX IF NOT EXISTS idx_ibr_row ON import_batch_issue_resolutions(row_id)
 CREATE INDEX IF NOT EXISTS idx_ibra_batch ON import_batch_row_actions(batch_id);
 CREATE INDEX IF NOT EXISTS idx_ibra_row ON import_batch_row_actions(row_id);
 
--- Clean up temp tables
+-- Clean up temp tables including the mapping table
+DROP TABLE _tmp_club_id_map;
 DROP TABLE _tmp_pyramid_clubs;
 DROP TABLE _tmp_clubs;
 DROP TABLE _tmp_club_mappings;

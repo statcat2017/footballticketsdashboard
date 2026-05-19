@@ -3,7 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
-import { addAlias } from "@/lib/db/clubMapping";
+import { addAlias, normalizeName } from "@/lib/db/clubMapping";
 import { getBatchRow, getBatchRows } from "@/lib/import/importBatch";
 import {
   createAdminVenue,
@@ -306,19 +306,22 @@ async function handleCreateClub(
     return redirectTo(request, batchId, { error: "Select an existing venue or provide venue details to create one." });
   }
 
-  // Preflight alias check
-  const trimmedAlias = alias && alias.trim() && alias.trim() !== name ? alias.trim() : null;
-  if (trimmedAlias) {
-    const existingAlias = await db.get<{ club_id: number }>(
-      `SELECT club_id FROM club_mapping WHERE alias = ? AND competition_code IS NULL`,
-      [trimmedAlias]
-    );
+  // Preflight alias conflict before creating the club
+  if (alias && alias.trim() && alias.trim() !== name) {
+    const normalized = normalizeName(alias.trim());
+    const existingAlias = normalized ? await db.get<{ id: number }>(
+      `SELECT id FROM club_aliases WHERE normalized_alias = ? AND competition_code IS NULL AND retired_at IS NULL`,
+      [normalized]
+    ) : null;
     if (existingAlias) {
-      return redirectTo(request, batchId, { error: `Alias "${trimmedAlias}" already exists for club ID ${existingAlias.club_id}.` });
+      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}" already exists for another club.` });
+    }
+    if (normalized === normalizeName(name)) {
+      return redirectTo(request, batchId, { error: `Alias "${alias.trim()}}" is the same as the club name.` });
     }
   }
 
-  // Create club — competition_code is nullable
+  // Create club (competition_code nullable, no FRIENDLY workaround needed)
   const clubResult = await db.run(
     `INSERT INTO clubs (name, venue_id, status) VALUES (?, ?, 'partial')`,
     [name, venueId]
@@ -326,7 +329,7 @@ async function handleCreateClub(
   const newClubId = clubResult.lastInsertRowid;
   if (!newClubId) throw new Error("Failed to create club record.");
 
-  // Assign venue to club
+  // Assign venue to the club
   await assignAdminVenue(newClubId as number, venueId, nextJuly1st());
 
   await db.writeBatch([
@@ -339,10 +342,10 @@ async function handleCreateClub(
     }),
   ]);
 
-  // Add alias if different from name
-  if (trimmedAlias) {
+  // Add alias if different from name (already preflighted above)
+  if (alias && alias.trim() && alias.trim() !== name) {
     try {
-      await addAlias(db, newClubId as number, trimmedAlias, { source: "import_batch_repair" });
+      await addAlias(db, newClubId as number, alias.trim(), { source: "import_batch_repair" });
     } catch {
       // Alias failure should not block club creation
     }

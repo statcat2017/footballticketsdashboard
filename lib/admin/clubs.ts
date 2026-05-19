@@ -30,7 +30,7 @@ export interface AdminDivisionGroup {
 export interface AdminClubListData {
   season_label: string;
   divisions: AdminDivisionGroup[];
-  unassigned_clubs: AdminClubRow[];
+  unassignedClubs: AdminClubRow[];
 }
 
 interface ClubDivisionRow {
@@ -201,7 +201,7 @@ export async function getAdminClubList(): Promise<AdminClubListData> {
   return {
     season_label: rows[0]?.season_label ?? "",
     divisions: Array.from(divisions.values()),
-    unassigned_clubs: unassignedRows
+    unassignedClubs: unassignedRows
   };
 }
 
@@ -217,15 +217,15 @@ export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetai
       v.id AS venue_id, v.name AS venue_name, v.postcode AS venue_postcode,
       v.latitude, v.longitude, v.is_approximate
     FROM clubs c
-    JOIN pyramid_season_memberships psm ON psm.club_id = c.id
-    JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id AND psm.season_id = psd.season_id
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    JOIN pyramid_seasons ps ON ps.id = psm.season_id
+    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = c.id AND psm.season_id = ?
+    LEFT JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id AND psm.season_id = psd.season_id
+    LEFT JOIN pyramid_divisions d ON d.id = psd.division_id
+    LEFT JOIN pyramid_seasons ps ON ps.id = psm.season_id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE c.id = ? AND psm.season_id = ?`,
-    [clubId, seasonId]
+    WHERE c.id = ?`,
+    [seasonId, clubId]
   );
 
   if (!clubRow) {
@@ -275,12 +275,19 @@ export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetai
       source_url: clubRow.source_url,
       verified_at: clubRow.verified_at
     },
-    season: {
-      label: clubRow.season_label,
-      division_id: clubRow.division_id,
-      division_name: clubRow.division_name,
-      division_level: clubRow.division_level
-    },
+    season: clubRow.season_label
+      ? {
+          label: clubRow.season_label,
+          division_id: clubRow.division_id!,
+          division_name: clubRow.division_name!,
+          division_level: clubRow.division_level!
+        }
+      : {
+          label: "Unassigned",
+          division_id: 0,
+          division_name: "No division",
+          division_level: 0
+        },
     primaryVenue: clubRow.venue_id
       ? {
           id: clubRow.venue_id,
