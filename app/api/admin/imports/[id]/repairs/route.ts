@@ -103,7 +103,8 @@ export async function POST(
         return redirectTo(request, batchId, { error: `Unknown action: ${action}` });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
+    console.error(`[repairs] action="${action}" batch=${batchId} error:`, error);
     return redirectTo(request, batchId, { error: encodeURIComponent(message) });
   }
 }
