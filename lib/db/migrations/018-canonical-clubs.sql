@@ -46,12 +46,19 @@ WHERE NOT EXISTS (SELECT 1 FROM _tmp_club_id_map m WHERE m.pyramid_club_id = pc.
   AND NOT EXISTS (SELECT 1 FROM _tmp_clubs c WHERE c.id = pc.id);
 -- Remaining orphan pyramid clubs whose ID conflicts with existing clubs
 INSERT INTO _tmp_club_id_map (pyramid_club_id, canonical_club_id)
-WITH remaining AS (
+WITH base AS (
+  SELECT MAX(max_id) AS value
+  FROM (
+    SELECT COALESCE(MAX(id), 0) AS max_id FROM _tmp_clubs
+    UNION ALL
+    SELECT COALESCE(MAX(canonical_club_id), 0) AS max_id FROM _tmp_club_id_map
+  )
+), remaining AS (
   SELECT pc.id, ROW_NUMBER() OVER (ORDER BY pc.id) AS rn
   FROM _tmp_pyramid_clubs pc
   WHERE NOT EXISTS (SELECT 1 FROM _tmp_club_id_map m WHERE m.pyramid_club_id = pc.id)
 )
-SELECT r.id, (SELECT COALESCE(MAX(m.canonical_club_id), 0) FROM _tmp_club_id_map m) + r.rn
+SELECT r.id, (SELECT value FROM base) + r.rn
 FROM remaining r;
 
 -- Drop in dependency order (children before parents)

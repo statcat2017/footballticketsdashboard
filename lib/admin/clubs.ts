@@ -133,6 +133,7 @@ export async function getLatestSeasonId(db: AppDatabase): Promise<number> {
 export async function getAdminClubList(): Promise<AdminClubListData> {
   const db = await getDatabase();
   const seasonId = await getLatestSeasonId(db);
+  const season = await db.get<{ season_label: string }>("SELECT season_label FROM pyramid_seasons WHERE id = ?", [seasonId]);
 
   const rows = await db.all<ClubDivisionRow>(
     `SELECT
@@ -199,7 +200,7 @@ export async function getAdminClubList(): Promise<AdminClubListData> {
   }
 
   return {
-    season_label: rows[0]?.season_label ?? "",
+    season_label: season?.season_label ?? "",
     divisions: Array.from(divisions.values()),
     unassignedClubs: unassignedRows
   };
@@ -472,5 +473,4 @@ export function divisionCodeFromName(name: string): string {
 export function getKnownCompetitionCodes(): string[] {
   return Array.from(new Set(Object.values(KNOWN_COMPETITION_MAP)));
 }
-
 
