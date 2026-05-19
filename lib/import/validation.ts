@@ -469,7 +469,7 @@ export async function validateRow(
     };
   }
 
-  const existingFixtureId = await findImportFixtureMatch(db, {
+  const existingMatch = await findImportFixtureMatch(db, {
     ...row,
     homeParticipantResolvedId: home.clubId,
     awayParticipantResolvedId: away.clubId,
@@ -479,8 +479,28 @@ export async function validateRow(
     awayIsOneOff: resolvedAwayIsOneOff,
   } as ImportBatchRow, seasonLabel);
 
+  if (existingMatch.kind === "ambiguous") {
+    warnings.push(makeIssue("ambiguous_fixture_match",
+      `Found ${existingMatch.count} existing fixtures matching this row. Cannot determine which to update.`,
+      { severity: "blocker" }
+    ));
+    return {
+      matchResult: "blocked",
+      warnings,
+      homeParticipantResolvedId: home.clubId,
+      awayParticipantResolvedId: away.clubId,
+      competitionResolvedCode: competitionCode,
+      venueResolvedId: venue.venueId,
+      normalizedDate,
+      normalizedTime,
+      normalizedStatus,
+      awayIsOneOff: resolvedAwayIsOneOff,
+      awayParticipantRaw: row.awayParticipantRaw,
+    };
+  }
+
   return {
-    matchResult: existingFixtureId ? "update" : "insert",
+    matchResult: existingMatch.kind === "match" ? "update" : "insert",
     warnings,
     homeParticipantResolvedId: home.clubId,
     awayParticipantResolvedId: away.clubId,

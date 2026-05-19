@@ -198,7 +198,7 @@ export async function applyBatchRows(
   for (const row of applyRows) {
     if (row.matchResult === "update") {
       const fixtureMatch = await findImportFixtureMatch(db, row, seasonLabel);
-      if (fixtureMatch) {
+      if (fixtureMatch.kind === "match") {
         fixtureStatements.push(buildFixtureUpdate(row, fixtureMatch.id));
         fixtureMetadata.push({ rowId: row.id, finalAction: "update", fixtureId: fixtureMatch.id, before: fixtureMatch.before });
         continue;

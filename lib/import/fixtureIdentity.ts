@@ -1,17 +1,17 @@
 import type { AppDatabase } from "../db/adapter";
 import type { ImportBatchRow } from "./types";
 
-export interface FixtureMatch {
-  id: number;
-  before: Record<string, unknown>;
-}
+export type FixtureMatchResult =
+  | { kind: "match"; id: number; before: Record<string, unknown> }
+  | { kind: "ambiguous"; count: number }
+  | { kind: "none" };
 
 export async function findImportFixtureMatch(
   db: AppDatabase,
   row: ImportBatchRow,
   seasonLabel: string | null,
-): Promise<FixtureMatch | null> {
-  if (!row.competitionResolvedCode) return null;
+): Promise<FixtureMatchResult> {
+  if (!row.competitionResolvedCode) return { kind: "none" };
 
   let fixtures: Record<string, unknown>[] = [];
 
@@ -52,8 +52,8 @@ export async function findImportFixtureMatch(
     fixtures = await db.all<Record<string, unknown>>(sql, params);
   }
 
-  if (fixtures.length === 0) return null;
-  if (fixtures.length > 1) return null;
+  if (fixtures.length === 0) return { kind: "none" };
+  if (fixtures.length > 1) return { kind: "ambiguous", count: fixtures.length };
 
   const fixture = fixtures[0];
 
@@ -64,6 +64,7 @@ export async function findImportFixtureMatch(
   }
 
   return {
+    kind: "match",
     id: fixture.id as number,
     before,
   };

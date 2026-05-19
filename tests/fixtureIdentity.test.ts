@@ -32,13 +32,13 @@ function setupTestDb(): AppDatabase {
     INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_one_off_name, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
     VALUES (102, 'test', 'f3', 'PL', 'Select XI', 'World XI', 1, '2026-07-01', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 1, 1, 'imported');
 
-    -- Duplicate normal fixtures (should return null)
+    -- Duplicate normal fixtures (should return ambiguous)
     INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
     VALUES (103, 'test', 'f4', 'PL', 2, 1, 1, '2026-08-01', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
     INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
     VALUES (104, 'test', 'f5', 'PL', 2, 1, 1, '2026-08-01', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
 
-    -- Duplicate one-off fixtures
+    -- Duplicate one-off fixtures (should return ambiguous)
     INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
     VALUES (105, 'test', 'f6', 'PL', 'Tourists FC', 2, 1, '2026-09-01', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 1, 0, 'imported');
     INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
@@ -91,12 +91,13 @@ describe("findImportFixtureMatch", () => {
       kickoffDate: "2026-05-20",
     }), "2025-26");
 
-    expect(match).not.toBeNull();
-    expect(match!.id).toBe(100);
-    expect(match!.before.competition_code).toBe("PL");
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.id).toBe(100);
+    expect(match.before.competition_code).toBe("PL");
   });
 
-  it("returns null when competition code is missing", async () => {
+  it("returns none when competition code is missing", async () => {
     const db = setupTestDb();
     const match = await findImportFixtureMatch(db, row({
       homeParticipantResolvedId: 1,
@@ -104,7 +105,7 @@ describe("findImportFixtureMatch", () => {
       competitionResolvedCode: null,
     }), "2025-26");
 
-    expect(match).toBeNull();
+    expect(match.kind).toBe("none");
   });
 
   it("matches home one-off fixture by one-off name and away club", async () => {
@@ -116,8 +117,9 @@ describe("findImportFixtureMatch", () => {
       competitionResolvedCode: "PL",
     }), "2025-26");
 
-    expect(match).not.toBeNull();
-    expect(match!.id).toBe(101);
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.id).toBe(101);
   });
 
   it("matches both one-off fixture by names", async () => {
@@ -130,11 +132,12 @@ describe("findImportFixtureMatch", () => {
       competitionResolvedCode: "PL",
     }), "2025-26");
 
-    expect(match).not.toBeNull();
-    expect(match!.id).toBe(102);
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.id).toBe(102);
   });
 
-  it("returns null for duplicate normal fixtures", async () => {
+  it("returns ambiguous for duplicate normal fixtures", async () => {
     const db = setupTestDb();
     const match = await findImportFixtureMatch(db, row({
       homeParticipantResolvedId: 2,
@@ -143,10 +146,12 @@ describe("findImportFixtureMatch", () => {
       kickoffDate: "2026-08-01",
     }), "2025-26");
 
-    expect(match).toBeNull();
+    expect(match.kind).toBe("ambiguous");
+    if (match.kind !== "ambiguous") return;
+    expect(match.count).toBe(2);
   });
 
-  it("returns null for duplicate home one-off fixtures", async () => {
+  it("returns ambiguous for duplicate home one-off fixtures", async () => {
     const db = setupTestDb();
     const match = await findImportFixtureMatch(db, row({
       homeIsOneOff: true,
@@ -155,10 +160,12 @@ describe("findImportFixtureMatch", () => {
       competitionResolvedCode: "PL",
     }), "2025-26");
 
-    expect(match).toBeNull();
+    expect(match.kind).toBe("ambiguous");
+    if (match.kind !== "ambiguous") return;
+    expect(match.count).toBe(2);
   });
 
-  it("returns null when no fixture matches", async () => {
+  it("returns none when no fixture matches", async () => {
     const db = setupTestDb();
     const match = await findImportFixtureMatch(db, row({
       homeParticipantResolvedId: 1,
@@ -167,7 +174,7 @@ describe("findImportFixtureMatch", () => {
       kickoffDate: "2026-05-20",
     }), "2025-26");
 
-    expect(match).toBeNull();
+    expect(match.kind).toBe("none");
   });
 
   it("includes before state from the matched fixture", async () => {
@@ -179,13 +186,14 @@ describe("findImportFixtureMatch", () => {
       kickoffDate: "2026-05-20",
     }), "2025-26");
 
-    expect(match).not.toBeNull();
-    expect(match!.before.fixture_date).toBe("2026-05-20");
-    expect(match!.before.kickoff_time).toBe("15:00");
-    expect(match!.before.kickoff_time_status).toBe("confirmed");
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.before.fixture_date).toBe("2026-05-20");
+    expect(match.before.kickoff_time).toBe("15:00");
+    expect(match.before.kickoff_time_status).toBe("confirmed");
   });
 
-  it("returns null for duplicate both one-off fixtures", async () => {
+  it("returns ambiguous for duplicate both one-off fixtures", async () => {
     const db = setupTestDb();
     db.exec(`
       INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_one_off_name, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
@@ -199,6 +207,8 @@ describe("findImportFixtureMatch", () => {
       competitionResolvedCode: "PL",
     }), "2025-26");
 
-    expect(match).toBeNull();
+    expect(match.kind).toBe("ambiguous");
+    if (match.kind !== "ambiguous") return;
+    expect(match.count).toBe(2);
   });
 });

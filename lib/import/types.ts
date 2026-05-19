@@ -24,7 +24,8 @@ export type IssueCode =
   | "one_off_needs_venue"
   | "missing_date"
   | "missing_participant"
-  | "missing_competition";
+  | "missing_competition"
+  | "ambiguous_fixture_match";
 
 export interface WarningIssue {
   code: IssueCode;

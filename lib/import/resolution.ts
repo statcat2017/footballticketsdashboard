@@ -156,7 +156,7 @@ export async function importSingleRow(
 
   if (revalidated.matchResult === "update") {
     const existing = await findImportFixtureMatch(db, revalidated, seasonLabel);
-    if (existing) {
+    if (existing.kind === "match") {
       statements.push(buildFixtureUpdate(revalidated, existing.id));
       fixtureId = existing.id;
       action = "import_update";
