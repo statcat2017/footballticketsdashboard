@@ -504,6 +504,19 @@ async function handleCreateVenueAndAssign(
   const isApproximate = form.get("is_approximate") === "1" ? 1 : 0;
   const coordinatePrecision = readString(form.get("coordinate_precision")) ?? "ground_approximate";
 
+  // Validate redirect_row_id before any writes
+  let redirectRowIdParsed: number | undefined;
+  if (redirectRowId) {
+    const parsed = parseInt(redirectRowId, 10);
+    if (!isNaN(parsed)) {
+      const row = await getRowOrError(db, parsed, batchId);
+      if (!row) {
+        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
+      }
+      redirectRowIdParsed = parsed;
+    }
+  }
+
   const newVenueId = await createAdminVenue({
     name,
     postcode,
@@ -518,19 +531,6 @@ async function handleCreateVenueAndAssign(
     : nextJuly1st();
 
   await assignAdminVenue(clubId, newVenueId, effective);
-
-  // Update the row's venueRaw so the card displays it
-  let redirectRowIdParsed: number | undefined;
-  if (redirectRowId) {
-    const parsed = parseInt(redirectRowId, 10);
-    if (!isNaN(parsed)) {
-      const row = await getRowOrError(db, parsed, batchId);
-      if (!row) {
-        return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
-      }
-      redirectRowIdParsed = parsed;
-    }
-  }
 
   if (redirectRowIdParsed) {
     await db.run(
