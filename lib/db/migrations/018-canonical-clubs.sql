@@ -23,6 +23,7 @@ CREATE TABLE _tmp_club_aliases AS SELECT * FROM club_aliases;
 CREATE TABLE _tmp_club_ticket_prices AS SELECT * FROM club_ticket_prices;
 CREATE TABLE _tmp_fixtures AS SELECT * FROM fixtures;
 CREATE TABLE _tmp_fixture_ticket_price_overrides AS SELECT * FROM fixture_ticket_price_overrides;
+CREATE TABLE _tmp_corrections AS SELECT * FROM corrections;
 CREATE TABLE _tmp_import_batch_rows AS SELECT * FROM import_batch_rows;
 CREATE TABLE _tmp_import_batch_row_actions AS SELECT * FROM import_batch_row_actions;
 
@@ -64,6 +65,7 @@ FROM remaining r;
 -- Drop in dependency order (children before parents)
 DROP TABLE fixture_ticket_price_overrides;
 DROP TABLE import_batch_row_actions;
+DROP TABLE corrections;
 DROP TABLE fixtures;
 DROP TABLE import_batch_rows;
 DROP TABLE club_aliases;
@@ -138,12 +140,13 @@ WHERE EXISTS (
   SELECT 1 FROM _tmp_club_id_map m WHERE m.canonical_club_id = clubs.id
 );
 
--- Insert pyramid-only clubs (no name match in old clubs)
+-- Insert pyramid-only clubs (no name match in old clubs, and no ID collision)
 INSERT INTO clubs (id, name, aliases, verified_at, status, source_url, league_name, admin_updated_at)
 SELECT m.canonical_club_id, pc.name, pc.aliases, pc.verified_at, pc.status, pc.source_url, pc.league_name, pc.admin_updated_at
 FROM _tmp_club_id_map m
 JOIN _tmp_pyramid_clubs pc ON pc.id = m.pyramid_club_id
-WHERE NOT EXISTS (SELECT 1 FROM _tmp_clubs c WHERE c.name = pc.name);
+WHERE NOT EXISTS (SELECT 1 FROM _tmp_clubs c WHERE c.name = pc.name)
+  AND NOT EXISTS (SELECT 1 FROM clubs c2 WHERE c2.id = m.canonical_club_id);
 
 -- Recreate pyramid_season_memberships with FK to clubs.id
 CREATE TABLE pyramid_season_memberships (
@@ -277,6 +280,20 @@ CREATE TABLE fixtures (
 );
 INSERT INTO fixtures SELECT * FROM _tmp_fixtures;
 
+-- Recreate corrections (FK to fixtures.id, unchanged)
+CREATE TABLE corrections (
+  id INTEGER PRIMARY KEY,
+  fixture_id INTEGER REFERENCES fixtures(id),
+  club_name TEXT,
+  email TEXT,
+  price_text TEXT NOT NULL,
+  source_url TEXT,
+  message TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO corrections SELECT * FROM _tmp_corrections;
+
 -- Recreate fixture_ticket_price_overrides (FK to fixtures.id, unchanged)
 CREATE TABLE fixture_ticket_price_overrides (
   fixture_id INTEGER PRIMARY KEY REFERENCES fixtures(id) ON DELETE CASCADE,
@@ -395,5 +412,6 @@ DROP TABLE _tmp_club_aliases;
 DROP TABLE _tmp_club_ticket_prices;
 DROP TABLE _tmp_fixtures;
 DROP TABLE _tmp_fixture_ticket_price_overrides;
+DROP TABLE _tmp_corrections;
 DROP TABLE _tmp_import_batch_rows;
 DROP TABLE _tmp_import_batch_row_actions;
