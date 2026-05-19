@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { applySchema } from "@/lib/db/setup";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
@@ -12,19 +12,6 @@ import {
   assignAdminVenue
 } from "@/lib/admin/venues";
 import type { AppDatabase } from "@/lib/db/adapter";
-
-const { getDatabase } = vi.hoisted(() => ({
-  getDatabase: vi.fn<() => Promise<AppDatabase>>()
-}));
-
-vi.mock("@/lib/db/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/db/client")>("@/lib/db/client");
-  return { ...actual, getDatabase };
-});
-
-afterEach(() => {
-  getDatabase.mockReset();
-});
 
 function createMinimalDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -74,9 +61,9 @@ function createMinimalDb(): AppDatabase {
 describe("admin venue service", () => {
   describe("getAdminVenueList", () => {
     it("returns all venues with current club counts", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
-      const venues = await getAdminVenueList();
+      const venues = await getAdminVenueList(db);
 
       expect(venues).toHaveLength(3);
       const park = venues.find((v) => v.id === 50)!;
@@ -98,9 +85,7 @@ describe("admin venue service", () => {
           (103, 100, 51, '2024-08-01', '2025-05-31', 1);
       `);
 
-      getDatabase.mockResolvedValue(db);
-
-      const venues = await getAdminVenueList();
+      const venues = await getAdminVenueList(db);
       const city = venues.find((v) => v.id === 51)!;
 
       expect(city.current_club_count).toBe(1);
@@ -109,9 +94,9 @@ describe("admin venue service", () => {
 
   describe("getAdminVenue", () => {
     it("returns venue detail with sharing clubs", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
-      const data = await getAdminVenue(50);
+      const data = await getAdminVenue(db, 50);
 
       expect(data).not.toBeNull();
       expect(data!.venue.name).toBe("Test Park");
@@ -121,17 +106,17 @@ describe("admin venue service", () => {
     });
 
     it("returns null for non-existent venue", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
-      const data = await getAdminVenue(999);
+      const data = await getAdminVenue(db, 999);
 
       expect(data).toBeNull();
     });
 
     it("returns empty sharing clubs for unused venue", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
-      const data = await getAdminVenue(52);
+      const data = await getAdminVenue(db, 52);
 
       expect(data).not.toBeNull();
       expect(data!.sharingClubs).toHaveLength(0);
@@ -141,9 +126,8 @@ describe("admin venue service", () => {
   describe("createAdminVenue", () => {
     it("creates a venue and returns its ID", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      const venueId = await createAdminVenue({
+      const venueId = await createAdminVenue(db, {
         name: "New Stadium",
         postcode: "NW1 4SA",
         latitude: 51.5,
@@ -158,9 +142,8 @@ describe("admin venue service", () => {
 
     it("writes an audit log entry", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      const venueId = await createAdminVenue({
+      const venueId = await createAdminVenue(db, {
         name: "Audit Arena",
         postcode: "A1 1AA",
         latitude: 51.0,
@@ -178,9 +161,8 @@ describe("admin venue service", () => {
 
     it("accepts is_approximate flag", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await createAdminVenue({
+      await createAdminVenue(db, {
         name: "Approx Ground",
         postcode: "AP1 1PR",
         latitude: 51.4,
@@ -198,9 +180,8 @@ describe("admin venue service", () => {
   describe("updateAdminVenue", () => {
     it("updates venue fields and stamps admin_updated_at", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await updateAdminVenue(50, { name: "Test Park Renamed", postcode: "TE2 2ND" }, true);
+      await updateAdminVenue(db, 50, { name: "Test Park Renamed", postcode: "TE2 2ND" }, true);
 
       const venue = await db.get<{ name: string; postcode: string; admin_updated_at: string | null }>(
         "SELECT name, postcode, admin_updated_at FROM venues WHERE id = ?", [50]
@@ -213,9 +194,8 @@ describe("admin venue service", () => {
 
     it("writes an audit log entry", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await updateAdminVenue(50, { name: "Renamed Park" }, true);
+      await updateAdminVenue(db, 50, { name: "Renamed Park" }, true);
 
       const audit = await db.get<{ action: string; before_json: string; after_json: string }>(
         "SELECT action, before_json, after_json FROM admin_audit_log WHERE entity_type = 'venue' AND action = 'update'"
@@ -233,10 +213,8 @@ describe("admin venue service", () => {
           (103, 102, 50, '2026-08-01', NULL, 1);
       `);
 
-      getDatabase.mockResolvedValue(db);
-
       await expect(
-        updateAdminVenue(50, { name: "Shared Park" }, false)
+        updateAdminVenue(db, 50, { name: "Shared Park" }, false)
       ).rejects.toThrow("Confirmation required");
     });
 
@@ -248,10 +226,8 @@ describe("admin venue service", () => {
           (103, 102, 50, '2026-08-01', NULL, 1);
       `);
 
-      getDatabase.mockResolvedValue(db);
-
       await expect(
-        updateAdminVenue(50, { name: "Shared Park" }, true)
+        updateAdminVenue(db, 50, { name: "Shared Park" }, true)
       ).resolves.not.toThrow();
     });
 
@@ -262,9 +238,7 @@ describe("admin venue service", () => {
         UPDATE venues SET is_approximate = 1 WHERE id = 50;
       `);
 
-      getDatabase.mockResolvedValue(db);
-
-      await updateAdminVenue(50, { is_approximate: 0 }, true);
+      await updateAdminVenue(db, 50, { is_approximate: 0 }, true);
 
       const venue = await db.get<{ is_approximate: number }>(
         "SELECT is_approximate FROM venues WHERE id = ?", [50]
@@ -273,26 +247,26 @@ describe("admin venue service", () => {
     });
 
     it("rejects invalid NaN latitude at service layer", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        updateAdminVenue(50, { latitude: NaN }, true)
+        updateAdminVenue(db, 50, { latitude: NaN }, true)
       ).rejects.toThrow("Invalid latitude.");
     });
 
     it("rejects latitude outside -90..90 range at service layer", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        updateAdminVenue(50, { latitude: 100 }, true)
+        updateAdminVenue(db, 50, { latitude: 100 }, true)
       ).rejects.toThrow("Invalid latitude.");
     });
 
     it("rejects longitude outside -180..180 range at service layer", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        updateAdminVenue(50, { longitude: 200 }, true)
+        updateAdminVenue(db, 50, { longitude: 200 }, true)
       ).rejects.toThrow("Invalid longitude.");
     });
   });
@@ -300,9 +274,8 @@ describe("admin venue service", () => {
   describe("assignAdminVenue", () => {
     it("ends current primary and creates new assignment", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await assignAdminVenue(100, 51, "2026-07-01");
+      await assignAdminVenue(db, 100, 51, "2026-07-01");
 
       const oldAssignment = await db.get<{ effective_to: string | null }>(
         "SELECT effective_to FROM club_venue_assignments WHERE id = 100"
@@ -328,9 +301,7 @@ describe("admin venue service", () => {
           (200, 1, 1, 10, 200);
       `);
 
-      getDatabase.mockResolvedValue(db);
-
-      await assignAdminVenue(200, 50, "2026-07-01");
+      await assignAdminVenue(db, 200, 50, "2026-07-01");
 
       const assignment = await db.get<{ venue_id: number; effective_from: string }>(
         "SELECT venue_id, effective_from FROM club_venue_assignments WHERE club_id = 200"
@@ -341,74 +312,70 @@ describe("admin venue service", () => {
 
     it("writes an audit log entry", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await assignAdminVenue(100, 51, "2026-07-01");
+      await assignAdminVenue(db, 100, 51, "2026-07-01");
 
       const audit = await db.get<{ action: string; entity_type: string; entity_id: string }>(
         "SELECT action, entity_type, entity_id FROM admin_audit_log WHERE entity_type = 'club_venue_assignment'"
       );
-
       expect(audit).not.toBeNull();
       expect(audit!.entity_id).toBe("100");
     });
 
     it("rejects invalid real-world date like 2026-02-31", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        assignAdminVenue(100, 51, "2026-02-31")
+        assignAdminVenue(db, 100, 51, "2026-02-31")
       ).rejects.toThrow("Invalid effective_from date.");
     });
 
     it("rejects effective date before current assignment start", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        assignAdminVenue(100, 51, "2025-06-01")
+        assignAdminVenue(db, 100, 51, "2025-06-01")
       ).rejects.toThrow("Effective date must be after the current assignment start date.");
     });
 
     it("rejects effective date equal to current assignment start", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        assignAdminVenue(100, 51, "2025-08-01")
+        assignAdminVenue(db, 100, 51, "2025-08-01")
       ).rejects.toThrow("Effective date must be after the current assignment start date.");
     });
 
     it("rejects unknown club with controlled error", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        assignAdminVenue(99999, 51, "2026-07-01")
+        assignAdminVenue(db, 99999, 51, "2026-07-01")
       ).rejects.toThrow("Club not found.");
     });
 
     it("rejects unknown venue with controlled error", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        assignAdminVenue(100, 99999, "2026-07-01")
+        assignAdminVenue(db, 100, 99999, "2026-07-01")
       ).rejects.toThrow("Venue not found.");
     });
 
     it("rejects assigning the same venue club already uses", async () => {
-      getDatabase.mockResolvedValue(createMinimalDb());
+      const db = createMinimalDb();
 
       await expect(
-        assignAdminVenue(100, 50, "2026-07-01")
+        assignAdminVenue(db, 100, 50, "2026-07-01")
       ).rejects.toThrow("Club is already assigned to this venue.");
     });
   });
-});
 
   describe("coordinate precision and provenance", () => {
     it("accepts coordinate_precision on create", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await createAdminVenue({
+      await createAdminVenue(db, {
         name: "Precision Stadium",
         postcode: "PR1 1AA",
         latitude: 51.5,
@@ -424,9 +391,8 @@ describe("admin venue service", () => {
 
     it("accepts coordinates_notes on create", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await createAdminVenue({
+      await createAdminVenue(db, {
         name: "Noted Ground",
         postcode: "NO1 1TE",
         latitude: 51.5,
@@ -442,9 +408,8 @@ describe("admin venue service", () => {
 
     it("updates coordinate_precision and writes audit log", async () => {
       const db = createMinimalDb();
-      getDatabase.mockResolvedValue(db);
 
-      await updateAdminVenue(50, { coordinate_precision: "exact" }, true);
+      await updateAdminVenue(db, 50, { coordinate_precision: "exact" }, true);
 
       const venue = await db.get<{ coordinate_precision: string }>(
         "SELECT coordinate_precision FROM venues WHERE id = ?", [50]
@@ -469,9 +434,7 @@ describe("admin venue service", () => {
           (2, 'CT1', 50, 8.1, 22, 35, 'seed', '2026-01-01T00:00:00Z');
       `);
 
-      getDatabase.mockResolvedValue(db);
-
-      const result = await updateAdminVenue(50, {
+      const result = await updateAdminVenue(db, 50, {
         latitude: 52.5,
         longitude: -1.0
       }, true);
@@ -492,9 +455,7 @@ describe("admin venue service", () => {
           (1, 'TE1', 50, 5.2, 15, 25, 'seed', '2026-01-01T00:00:00Z');
       `);
 
-      getDatabase.mockResolvedValue(db);
-
-      const result = await updateAdminVenue(50, {
+      const result = await updateAdminVenue(db, 50, {
         latitude: 51.501,
         longitude: -0.101
       }, true);
@@ -515,9 +476,7 @@ describe("admin venue service", () => {
           (1, 'TE1', 50, 5.2, 15, 25, 'seed', '2026-01-01T00:00:00Z');
       `);
 
-      getDatabase.mockResolvedValue(db);
-
-      const result = await updateAdminVenue(50, {
+      const result = await updateAdminVenue(db, 50, {
         name: "Renamed Only"
       }, true);
 
@@ -529,3 +488,4 @@ describe("admin venue service", () => {
       expect(remaining).toHaveLength(1);
     });
   });
+});

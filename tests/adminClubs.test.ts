@@ -1,24 +1,11 @@
 import Database from "better-sqlite3";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { applySchema } from "@/lib/db/setup";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import { getAdminClubList, getAdminClubDetail, updateAdminClub } from "@/lib/admin/clubs";
 import type { AppDatabase } from "@/lib/db/adapter";
-
-const { getDatabase } = vi.hoisted(() => ({
-  getDatabase: vi.fn<() => Promise<AppDatabase>>()
-}));
-
-vi.mock("@/lib/db/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/db/client")>("@/lib/db/client");
-  return { ...actual, getDatabase };
-});
-
-afterEach(() => {
-  getDatabase.mockReset();
-});
 
 function createMinimalDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -76,9 +63,9 @@ function createMinimalDb(): AppDatabase {
 
 describe("admin club browser", () => {
   it("lists clubs grouped by division for the latest season", async () => {
-    getDatabase.mockResolvedValue(createMinimalDb());
+    const db = createMinimalDb();
 
-    const result = await getAdminClubList();
+    const result = await getAdminClubList(db);
 
     expect(result.season_label).toBe("2025-26");
     expect(result.divisions).toHaveLength(2);
@@ -105,9 +92,7 @@ describe("admin club browser", () => {
         (200, 1, 1, 13, 200);
     `);
 
-    getDatabase.mockResolvedValue(db);
-
-    const detail = await getAdminClubDetail(200);
+    const detail = await getAdminClubDetail(db, 200);
 
     expect(detail).not.toBeNull();
     expect(detail!.club.name).toBe("Old Club");
@@ -116,9 +101,9 @@ describe("admin club browser", () => {
   });
 
   it("returns club detail for latest season membership", async () => {
-    getDatabase.mockResolvedValue(createMinimalDb());
+    const db = createMinimalDb();
 
-    const detail = await getAdminClubDetail(100);
+    const detail = await getAdminClubDetail(db, 100);
 
     expect(detail).not.toBeNull();
     expect(detail!.club.name).toBe("Test Town United");
@@ -129,9 +114,9 @@ describe("admin club browser", () => {
   });
 
   it("ignores older season memberships for club detail", async () => {
-    getDatabase.mockResolvedValue(createMinimalDb());
+    const db = createMinimalDb();
 
-    const detail = await getAdminClubDetail(100);
+    const detail = await getAdminClubDetail(db, 100);
 
     expect(detail).not.toBeNull();
     expect(detail!.season.label).toBe("2025-26");
@@ -148,18 +133,16 @@ describe("admin club browser", () => {
         (300, 2, 1, 10, 300);
     `);
 
-    getDatabase.mockResolvedValue(db);
-
-    const detail = await getAdminClubDetail(300);
+    const detail = await getAdminClubDetail(db, 300);
 
     expect(detail).not.toBeNull();
     expect(detail!.warnings).toContain("No current primary ground assigned.");
   });
 
   it("warns when a club shares its primary venue", async () => {
-    getDatabase.mockResolvedValue(createMinimalDb());
+    const db = createMinimalDb();
 
-    const detail = await getAdminClubDetail(103);
+    const detail = await getAdminClubDetail(db, 103);
 
     expect(detail).not.toBeNull();
     expect(detail!.sharingClubs.length).toBeGreaterThan(0);
@@ -176,9 +159,7 @@ describe("admin club browser", () => {
         (104, 101, 52, '2024-08-01', '2025-05-31', 1);
     `);
 
-    getDatabase.mockResolvedValue(db);
-
-    const detail = await getAdminClubDetail(101);
+    const detail = await getAdminClubDetail(db, 101);
 
     expect(detail).not.toBeNull();
     expect(detail!.primaryVenue).not.toBeNull();
@@ -186,9 +167,9 @@ describe("admin club browser", () => {
   });
 
   it("returns venue assignment history for a club", async () => {
-    getDatabase.mockResolvedValue(createMinimalDb());
+    const db = createMinimalDb();
 
-    const detail = await getAdminClubDetail(100);
+    const detail = await getAdminClubDetail(db, 100);
 
     expect(detail).not.toBeNull();
     expect(detail!.venueAssignments.length).toBeGreaterThanOrEqual(1);
@@ -198,9 +179,9 @@ describe("admin club browser", () => {
   });
 
   it("returns null for non-existent club", async () => {
-    getDatabase.mockResolvedValue(createMinimalDb());
+    const db = createMinimalDb();
 
-    const detail = await getAdminClubDetail(99999);
+    const detail = await getAdminClubDetail(db, 99999);
 
     expect(detail).toBeNull();
   });
@@ -209,9 +190,8 @@ describe("admin club browser", () => {
 describe("updateAdminClub", () => {
   it("updates club fields and stamps admin_updated_at", async () => {
     const db = createMinimalDb();
-    getDatabase.mockResolvedValue(db);
 
-    await updateAdminClub(100, {
+    await updateAdminClub(db, 100, {
       name: "Test Town Renamed",
       status: "partial",
       aliases: "TTU, Town"
@@ -229,9 +209,8 @@ describe("updateAdminClub", () => {
 
   it("writes an audit log entry", async () => {
     const db = createMinimalDb();
-    getDatabase.mockResolvedValue(db);
 
-    await updateAdminClub(100, { name: "Renamed Town" });
+    await updateAdminClub(db, 100, { name: "Renamed Town" });
 
     const audit = await db.get<{ action: string; entity_type: string; entity_id: string; before_json: string; after_json: string }>(
       "SELECT action, entity_type, entity_id, before_json, after_json FROM admin_audit_log WHERE entity_type = 'club' AND action = 'update'"
@@ -244,16 +223,15 @@ describe("updateAdminClub", () => {
   });
 
   it("throws for non-existent club", async () => {
-    getDatabase.mockResolvedValue(createMinimalDb());
+    const db = createMinimalDb();
 
-    await expect(updateAdminClub(999, { name: "Ghost" })).rejects.toThrow("Club not found.");
+    await expect(updateAdminClub(db, 999, { name: "Ghost" })).rejects.toThrow("Club not found.");
   });
 
   it("only updates provided fields", async () => {
     const db = createMinimalDb();
-    getDatabase.mockResolvedValue(db);
 
-    await updateAdminClub(100, { source_url: "https://example.com" });
+    await updateAdminClub(db, 100, { source_url: "https://example.com" });
 
     const club = await db.get<{ name: string; status: string; source_url: string | null }>(
       "SELECT name, status, source_url FROM clubs WHERE id = ?", [100]

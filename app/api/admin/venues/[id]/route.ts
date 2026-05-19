@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { getAdminVenue, updateAdminVenue } from "@/lib/admin/venues";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -29,7 +30,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
-  const venueRow = await getAdminVenue(venueId);
+  const db = await getDatabase();
+  const venueRow = await getAdminVenue(db, venueId);
 
   if (!venueRow) {
     return NextResponse.redirect(
@@ -76,7 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     : undefined;
 
   try {
-    const result = await updateAdminVenue(venueId, {
+    const result = await updateAdminVenue(db, venueId, {
       name: typeof name === "string" && name.length > 0 ? name : undefined,
       postcode: typeof postcode === "string" && postcode.length > 0 ? postcode : undefined,
       latitude: latNum,

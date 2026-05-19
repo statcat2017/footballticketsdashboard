@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { assignAdminVenue, isValidDate } from "@/lib/admin/venues";
 
 export async function POST(request: Request) {
@@ -50,8 +51,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const db = await getDatabase();
+
   try {
-    await assignAdminVenue(clubId, venueId, effectiveFrom);
+    await assignAdminVenue(db, clubId, venueId, effectiveFrom);
 
     return NextResponse.redirect(new URL(`/admin/clubs/${clubId}`, request.url), { status: 303 });
   } catch (error) {

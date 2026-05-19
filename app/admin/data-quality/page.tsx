@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
+import { getDatabase } from "@/lib/db/client";
 import { runDataQualityChecks, type DataQualityIssue, type DataQualitySeverity } from "@/lib/admin/dataQuality";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +35,8 @@ function buildGroups(issues: DataQualityIssue[]): IssueGroup[] {
 export default async function AdminDataQualityPage() {
   await requireAdminPageSession();
 
-  const issues = await runDataQualityChecks();
+  const db = await getDatabase();
+  const issues = await runDataQualityChecks(db);
 
   const counts: Record<DataQualitySeverity, number> = { error: 0, warning: 0, info: 0 };
   for (const issue of issues) {

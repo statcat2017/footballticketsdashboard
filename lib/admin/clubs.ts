@@ -1,4 +1,3 @@
-import { getDatabase } from "@/lib/db/client";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { writeAdminAuditLog } from "@/lib/admin/audit";
 
@@ -130,8 +129,7 @@ export async function getLatestSeasonId(db: AppDatabase): Promise<number> {
   return row.id;
 }
 
-export async function getAdminClubList(): Promise<AdminClubListData> {
-  const db = await getDatabase();
+export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListData> {
   const seasonId = await getLatestSeasonId(db);
   const season = await db.get<{ season_label: string }>("SELECT season_label FROM pyramid_seasons WHERE id = ?", [seasonId]);
 
@@ -206,8 +204,7 @@ export async function getAdminClubList(): Promise<AdminClubListData> {
   };
 }
 
-export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetailData | null> {
-  const db = await getDatabase();
+export async function getAdminClubDetail(db: AppDatabase, clubId: number): Promise<AdminClubDetailData | null> {
   const seasonId = await getLatestSeasonId(db);
 
   const clubRow = await db.get<ClubDetailRow>(
@@ -305,8 +302,7 @@ export async function getAdminClubDetail(clubId: number): Promise<AdminClubDetai
   };
 }
 
-export async function updateAdminClub(clubId: number, input: AdminClubUpdateInput): Promise<void> {
-  const db = await getDatabase();
+export async function updateAdminClub(db: AppDatabase, clubId: number, input: AdminClubUpdateInput): Promise<void> {
   const now = new Date().toISOString();
 
   const current = await db.get<{
@@ -373,8 +369,7 @@ export interface PublishableClub {
   isPublished: boolean;
 }
 
-export async function getPublishableDivisions(): Promise<PublishableDivision[]> {
-  const db = await getDatabase();
+export async function getPublishableDivisions(db: AppDatabase): Promise<PublishableDivision[]> {
   const seasonId = await getLatestSeasonId(db);
   const rows = await db.all<{
     id: number; name: string; level: number; clubCount: number; competition_code: string | null;
@@ -402,8 +397,7 @@ export async function getPublishableDivisions(): Promise<PublishableDivision[]> 
   }));
 }
 
-export async function getPublishableClubs(divisionId?: number): Promise<PublishableClub[]> {
-  const db = await getDatabase();
+export async function getPublishableClubs(db: AppDatabase, divisionId?: number): Promise<PublishableClub[]> {
   const seasonId = await getLatestSeasonId(db);
   let sql = `SELECT
       c.id, c.name,

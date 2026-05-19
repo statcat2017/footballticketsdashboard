@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { getAdminClubList } from "@/lib/admin/clubs";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ function WarningNote({ text }: { text: string }) {
 export default async function AdminClubsPage() {
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
-  const data = await getAdminClubList();
+  const data = await getAdminClubList(await getDatabase());
 
   const totalClubs = data.divisions.reduce((sum, d) => sum + d.clubs.length, 0) + data.unassignedClubs.length;
 
