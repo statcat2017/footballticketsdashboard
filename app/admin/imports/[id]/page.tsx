@@ -68,6 +68,9 @@ export default async function AdminImportDetailPage({
   // Fetch data needed for inline forms
   const clubs = await db.all<{ id: number; name: string }>(`SELECT id, name FROM clubs ORDER BY name`);
   const venues = await db.all<{ id: number; name: string; postcode: string }>(`SELECT id, name, postcode FROM venues ORDER BY name`);
+  const competitions = await db.all<{ code: string; name: string; kind: string }>(
+    `SELECT code, name, kind FROM competitions ORDER BY name`
+  );
 
   // Fetch acknowledged issue keys so ticket acknowledgement has visible effect
   const resolutions = await db.all<{ issue_key: string; row_id: number | null }>(
@@ -145,6 +148,7 @@ export default async function AdminImportDetailPage({
               mode="blocked"
               clubs={clubs}
               venues={venues}
+              competitions={competitions}
               acknowledgedKeys={acknowledgedKeys}
               acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
@@ -170,6 +174,7 @@ export default async function AdminImportDetailPage({
                   mode="ready"
                   clubs={clubs}
                   venues={venues}
+                  competitions={competitions}
                   acknowledgedKeys={acknowledgedKeys}
                   acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
                 />
@@ -186,6 +191,7 @@ export default async function AdminImportDetailPage({
               mode="ready"
               clubs={clubs}
               venues={venues}
+              competitions={competitions}
               acknowledgedKeys={acknowledgedKeys}
               acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
@@ -214,6 +220,7 @@ export default async function AdminImportDetailPage({
               mode="pending"
               clubs={clubs}
               venues={venues}
+              competitions={competitions}
               acknowledgedKeys={acknowledgedKeys}
               acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
@@ -313,13 +320,14 @@ function SummaryBadge({ count, label, bg, fg }: { count: number; label: string; 
   );
 }
 
-function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledgedKeys, acknowledgedRowKeys }: {
+function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competitions, acknowledgedKeys, acknowledgedRowKeys }: {
   row: ImportBatchRow;
   csrfToken: string;
   batchId: number;
   mode: "blocked" | "ready" | "pending";
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
+  competitions: { code: string; name: string; kind: string }[];
   acknowledgedKeys: Set<string>;
   acknowledgedRowKeys: Set<string>;
 }) {
@@ -327,7 +335,6 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledge
   const blockers = warnings.filter((w) => w.severity === "blocker");
   const nonBlockers = warnings.filter((w) => w.severity === "warning");
 
-  // Filter out acknowledged issues
   const filteredBlockers = blockers.filter((w) => {
     if (acknowledgedKeys.has(w.issueKey)) return false;
     if (acknowledgedRowKeys.has(w.issueKey)) return false;
@@ -339,16 +346,128 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledge
     return true;
   });
 
-  // Deduplicate blockers for display
   const uniqueBlockers = dedupeIssues(filteredBlockers);
   const uniqueWarnings = dedupeIssues(filteredNonBlockers);
-  const hasTicketWarning = uniqueWarnings.some((w) => w.code === "missing_ticket_info");
-  const otherWarnings = uniqueWarnings.filter((w) => w.code !== "missing_ticket_info");
+
+  const blockerMap = new Map(uniqueBlockers.map((w) => [w.code, w]));
+  const warningMap = new Map(uniqueWarnings.map((w) => [w.code, w]));
+
+  const homeClub = clubs.find((c) => c.id === row.homeParticipantResolvedId);
+  const awayClub = clubs.find((c) => c.id === row.awayParticipantResolvedId);
+  const resolvedVenue = venues.find((v) => v.id === row.venueResolvedId);
+
+  interface ChecklistItem {
+    field: string;
+    status: "resolved" | "warning" | "blocked" | "missing";
+    value: string;
+    message: string;
+  }
+
+  const checklist: ChecklistItem[] = [];
+
+  // Home club
+  if (homeClub) {
+    checklist.push({ field: "Home", status: "resolved", value: homeClub.name, message: "" });
+  } else if (blockerMap.has("unknown_club")) {
+    const raw = row.homeParticipantRaw ?? blockerMap.get("unknown_club")?.rawValue ?? "Unknown";
+    checklist.push({ field: "Home", status: "blocked", value: raw, message: blockerMap.get("unknown_club")!.message });
+  } else {
+    checklist.push({ field: "Home", status: "blocked", value: row.homeParticipantRaw ?? "?", message: "Home club not resolved" });
+  }
+
+  // Away club
+  if (awayClub) {
+    checklist.push({ field: "Away", status: "resolved", value: awayClub.name, message: "" });
+  } else if (row.awayIsOneOff && row.awayParticipantRaw) {
+    checklist.push({ field: "Away", status: "resolved", value: `${row.awayParticipantRaw} (one-off)`, message: "" });
+  } else if (blockerMap.has("unknown_club")) {
+    const blocker = blockerMap.get("unknown_club")!;
+    const raw = row.awayParticipantRaw ?? blocker.rawValue ?? "Unknown";
+    checklist.push({ field: "Away", status: "blocked", value: raw, message: blocker.message });
+  } else if (blockerMap.has("ambiguous_club")) {
+    checklist.push({ field: "Away", status: "blocked", value: row.awayParticipantRaw ?? "?", message: blockerMap.get("ambiguous_club")!.message });
+  } else {
+    checklist.push({ field: "Away", status: "missing", value: row.awayParticipantRaw ?? "?", message: "" });
+  }
+
+  // Competition
+  if (row.competitionResolvedCode) {
+    const comp = competitions.find((c) => c.code === row.competitionResolvedCode);
+    checklist.push({ field: "Competition", status: "resolved", value: comp ? comp.name : row.competitionResolvedCode, message: "" });
+  } else if (blockerMap.has("unknown_competition") || blockerMap.has("missing_competition")) {
+    const blocker = blockerMap.get("unknown_competition") ?? blockerMap.get("missing_competition")!;
+    checklist.push({ field: "Competition", status: "blocked", value: row.competitionRaw ?? "?", message: blocker.message });
+  } else {
+    checklist.push({ field: "Competition", status: "missing", value: row.competitionRaw ?? "?", message: "" });
+  }
+
+  // Venue
+  if (resolvedVenue) {
+    const isDefaulted = row.venueRaw && !venues.some((v) => v.name === row.venueRaw);
+    checklist.push({
+      field: "Venue", status: isDefaulted ? "warning" : "resolved",
+      value: isDefaulted ? `${resolvedVenue.name} (defaulted from home club)` : resolvedVenue.name,
+      message: warningMap.get("venue_not_found")?.message ?? ""
+    });
+  } else if (blockerMap.has("missing_primary_venue")) {
+    checklist.push({ field: "Venue", status: "blocked", value: "No venue", message: blockerMap.get("missing_primary_venue")!.message });
+  } else if (blockerMap.has("one_off_needs_venue")) {
+    checklist.push({ field: "Venue", status: "blocked", value: "No venue", message: blockerMap.get("one_off_needs_venue")!.message });
+  } else if (row.venueRaw) {
+    checklist.push({ field: "Venue", status: "warning", value: row.venueRaw, message: "Venue name not matched" });
+  } else {
+    checklist.push({ field: "Venue", status: "missing", value: "Not set", message: "" });
+  }
+
+  // Date & Time
+  if (!row.kickoffDate) {
+    checklist.push({ field: "Date", status: "blocked", value: "Not set", message: blockerMap.get("missing_date")?.message ?? "Missing fixture date" });
+  } else if (blockerMap.has("invalid_date")) {
+    checklist.push({ field: "Date", status: "blocked", value: row.kickoffDate, message: blockerMap.get("invalid_date")!.message });
+  } else {
+    const timeStr = row.kickoffTime ?? (warningMap.has("assumed_time") ? "(assumed)" : "");
+    const hasAssumed = warningMap.has("assumed_time");
+    checklist.push({
+      field: "Date", status: hasAssumed ? "warning" : "resolved",
+      value: `${row.kickoffDate}${timeStr ? ` ${timeStr}` : ""}`,
+      message: warningMap.get("assumed_time")?.message ?? ""
+    });
+  }
+
+  // Tickets
+  if (row.ticketUrl) {
+    checklist.push({ field: "Tickets", status: "resolved", value: "Provided", message: "" });
+  } else if (warningMap.has("missing_ticket_info")) {
+    checklist.push({ field: "Tickets", status: "warning", value: "Not provided", message: warningMap.get("missing_ticket_info")!.message });
+  } else {
+    checklist.push({ field: "Tickets", status: "missing", value: "Not provided", message: "" });
+  }
+
+  function statusIcon(status: string): string {
+    switch (status) {
+      case "resolved": return "\u2705";
+      case "warning": return "\u26A0\uFE0F";
+      case "blocked": return "\u274C";
+      case "missing": return "\u26AA";
+      default: return "\u2753";
+    }
+  }
+
+  function statusColor(status: string): string {
+    switch (status) {
+      case "resolved": return "#0e5737";
+      case "warning": return "#8a5a00";
+      case "blocked": return "#a53a2d";
+      default: return "#6f7e7a";
+    }
+  }
+
+  const showRepairForms = mode === "blocked" && uniqueBlockers.length > 0;
 
   return (
     <div id={`fixture-${row.id}`} style={{
       border: `1px solid ${mode === "blocked" ? sBlocked.border : mode === "pending" ? sPending.border : sInsert.border}`,
-      borderRadius: "8px", overflow: "hidden", marginBottom: "0.5rem"
+      borderRadius: "8px", overflow: "hidden", marginBottom: "0.75rem"
     }}>
       {/* Card header */}
       <div style={{
@@ -357,43 +476,66 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledge
         display: "flex", alignItems: "center", gap: "0.6rem", fontSize: "14px", fontWeight: 600
       }}>
         <span>{row.homeParticipantRaw ?? "?"} vs {row.awayParticipantRaw ?? "?"}</span>
-        <span style={{ fontWeight: 400, color: "#6f7e7a", fontSize: "13px" }}>
-          {row.kickoffDate}{row.kickoffTime ? ` ${row.kickoffTime}` : ""}
-          {row.competitionRaw ? ` · ${row.competitionRaw}` : ""}
-          {row.venueResolvedId ? ` · Venue #${row.venueResolvedId}` : row.venueRaw ? ` · ${row.venueRaw}` : ""}
-        </span>
       </div>
 
-      {/* Issues */}
-      {uniqueBlockers.length > 0 && (
-        <div style={{ padding: "0.5rem 1rem", fontSize: "13px", color: "#a53a2d" }}>
-          {uniqueBlockers.map((w, i) => <div key={i}>&#9888; {w.message}</div>)}
-        </div>
-      )}
+      {/* Checklist */}
+      <div style={{ padding: "0.5rem 1rem" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+          <tbody>
+            {checklist.map((item, i) => (
+              <tr key={item.field}
+                style={i < checklist.length - 1 ? { borderBottom: "1px solid #f0f1f1" } : undefined}
+              >
+                <td style={{
+                  padding: "0.35rem 0.5rem 0.35rem 0", whiteSpace: "nowrap",
+                  fontWeight: 600, color: "#6f7e7a", width: "100px"
+                }}>
+                  {item.field}
+                </td>
+                <td style={{
+                  padding: "0.35rem 0.5rem", color: statusColor(item.status),
+                  fontWeight: 500, width: "28px"
+                }}>
+                  {statusIcon(item.status)}
+                </td>
+                <td style={{ padding: "0.35rem 0.5rem", color: "#17221f", fontWeight: 500 }}>
+                  {item.value}
+                </td>
+                <td style={{ padding: "0.35rem 0 0.35rem 0.5rem", color: statusColor(item.status), fontSize: "12px" }}>
+                  {item.message}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      {/* Blocker repair forms */}
-      {mode === "blocked" && (
-        <div style={{ padding: "0.25rem 1rem 0.5rem" }}>
+      {/* Inline repair forms for blocked items */}
+      {showRepairForms && (
+        <div style={{ padding: "0 1rem 0.75rem", borderTop: "1px solid #f0f1f1" }}>
           {uniqueBlockers.map((issue, i) => (
-            <IssueRepair
-              key={i}
-              issue={issue}
-              rowId={row.id}
-              batchId={batchId}
-              csrfToken={csrfToken}
-              homeResolvedId={row.homeParticipantResolvedId}
-              competitionResolvedCode={row.competitionResolvedCode}
-              clubs={clubs}
-              venues={venues}
-            />
+            <div key={i} style={{ marginTop: "0.5rem" }}>
+              <IssueRepair
+                issue={issue}
+                rowId={row.id}
+                batchId={batchId}
+                csrfToken={csrfToken}
+                homeResolvedId={row.homeParticipantResolvedId}
+                competitionResolvedCode={row.competitionResolvedCode}
+                clubs={clubs}
+                venues={venues}
+                competitions={competitions}
+              />
+            </div>
           ))}
         </div>
       )}
 
-      {/* Warnings */}
-      {otherWarnings.length > 0 && (
-        <div style={{ padding: "0.25rem 1rem", fontSize: "12px", color: "#8a5a00" }}>
-          {otherWarnings.map((w, i) => <div key={i}>&#9888; {w.message}</div>)}
+      {/* Ticket info repair form inline (for ready/blocked with missing tickets) */}
+      {(mode === "ready" || mode === "blocked") && warningMap.has("missing_ticket_info") && (
+        <div style={{ padding: "0 1rem 0.75rem" }}>
+          <TicketRepairForm rowId={row.id} batchId={batchId} csrfToken={csrfToken}
+            homeResolvedId={row.homeParticipantResolvedId} />
         </div>
       )}
 
@@ -419,34 +561,24 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, acknowledge
           <details style={{ display: "inline-block" }}>
             <summary style={{
               cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
-            }}>Edit</summary>
-            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} />
+            }}>Edit all fields</summary>
+            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} competitions={competitions} />
           </details>
-
-          {hasTicketWarning && (
-            <details style={{ display: "inline-block" }}>
-              <summary style={{
-                cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#8a5a00", padding: "0.25rem 0.5rem"
-              }}>No ticket info</summary>
-              <TicketRepairForm rowId={row.id} batchId={batchId} csrfToken={csrfToken}
-                homeResolvedId={row.homeParticipantResolvedId} />
-            </details>
-          )}
         </div>
       )}
 
       {mode === "blocked" && (
         <div style={{
           padding: "0.5rem 1rem", borderTop: "1px solid #eef1f1",
-          display: "flex", gap: "0.5rem", alignItems: "center"
+          display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap"
         }}>
           <SkipForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} />
 
           <details style={{ display: "inline-block" }}>
             <summary style={{
               cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
-            }}>Edit</summary>
-            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} />
+            }}>Edit all fields</summary>
+            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} competitions={competitions} />
           </details>
         </div>
       )}
@@ -474,7 +606,7 @@ function parseWarnings(json: string | null): WarningIssue[] {
 
 /* ── Issue Repair Forms ── */
 
-function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competitionResolvedCode, clubs, venues }: {
+function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competitionResolvedCode, clubs, venues, competitions }: {
   issue: WarningIssue;
   rowId: number;
   batchId: number;
@@ -483,10 +615,11 @@ function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competi
   competitionResolvedCode: string | null;
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
+  competitions?: { code: string; name: string; kind: string }[];
 }) {
   switch (issue.code) {
     case "unknown_competition":
-      return <CompetitionRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""} />;
+      return <CompetitionRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""} competitions={competitions ?? []} />;
     case "unknown_club":
       return (
         <div>
@@ -504,33 +637,49 @@ function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competi
   }
 }
 
-function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue }: {
+function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue, competitions }: {
   csrfToken: string; batchId: number; rowId: number; rawValue: string;
+  competitions: { code: string; name: string; kind: string }[];
 }) {
-  const isFriendly = rawValue.toLowerCase().includes("friendly");
   const code = rawValue.replace(/[^a-z0-9]/gi, "_").toUpperCase();
   return (
     <div style={{ marginTop: "0.25rem" }}>
-      {/* Quick mark as friendly */}
-      {isFriendly && (
-        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ marginBottom: "0.5rem" }}>
-          <input type="hidden" name="csrf" value={csrfToken} />
-          <input type="hidden" name="_action" value="mark_friendly" />
-          <input type="hidden" name="redirect_row_id" value={rowId} />
-          <input type="hidden" name="raw_value" value={rawValue} />
-          <button type="submit" style={greenBtnStyle}>Mark as friendly outside formal competition</button>
-        </form>
-      )}
+      {/* Select existing competition or friendly */}
+      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+        display: "grid", gap: "0.5rem",
+        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+        border: "1px solid #dce3e2"
+      }}>
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="_action" value="edit_row" />
+        <input type="hidden" name="row_id" value={rowId} />
 
-      {/* Create formal competition */}
-      <details>
-        <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
-          {isFriendly ? "Create formal competition instead" : "Fix: Create competition"}
+        <label style={labelStyle}>Competition
+          <select name="competitionRaw" defaultValue={rawValue} style={inputStyle} id={`comp-select-${rowId}`}>
+            <option value="">-- Select competition --</option>
+            {competitions.map((c) => (
+              <option key={c.code} value={c.name}>{c.name} ({c.code})</option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+          <input type="checkbox" name="isFriendly" value="1" style={{ transform: "scale(1.2)" }} />
+          This is a friendly (no formal competition)
+        </label>
+
+        <button type="submit" style={greenBtnStyle}>Set competition & revalidate</button>
+      </form>
+
+      {/* Create formal competition (advanced) */}
+      <details style={{ marginTop: "0.5rem" }}>
+        <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a" }}>
+          Create new competition instead
         </summary>
         <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
           marginTop: "0.5rem", display: "grid", gap: "0.5rem",
           padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-          border: "1px solid #dce3e2", maxWidth: "400px"
+          border: "1px solid #dce3e2"
         }}>
           <input type="hidden" name="csrf" value={csrfToken} />
           <input type="hidden" name="_action" value="create_competition" />
@@ -612,13 +761,13 @@ function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
       <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#a53a2d" }}>
         Fix: Create new club
       </summary>
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-        marginTop: "0.5rem", display: "grid", gap: "0.5rem",
-        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-        border: "1px solid #dce3e2", maxWidth: "450px"
-      }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="create_club" />
+        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
+          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
+          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
+          border: "1px solid #dce3e2"
+        }}>
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <input type="hidden" name="_action" value="create_club" />
         <input type="hidden" name="redirect_row_id" value={rowId} />
         <input type="hidden" name="alias" value={rawValue} />
 
@@ -687,7 +836,7 @@ function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
         <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
           marginTop: "0.5rem", display: "grid", gap: "0.5rem",
           padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-          border: "1px solid #dce3e2", maxWidth: "400px"
+          border: "1px solid #dce3e2"
         }}>
           <input type="hidden" name="csrf" value={csrfToken} />
           <input type="hidden" name="_action" value="assign_existing_venue" />
@@ -714,7 +863,7 @@ function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
         <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
           marginTop: "0.5rem", display: "grid", gap: "0.5rem",
           padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-          border: "1px solid #dce3e2", maxWidth: "450px"
+          border: "1px solid #dce3e2"
         }}>
           <input type="hidden" name="csrf" value={csrfToken} />
           <input type="hidden" name="_action" value="create_venue_and_assign" />
@@ -837,13 +986,15 @@ function SkipForm({ rowId, batchId, csrfToken }: {
   );
 }
 
-function RowEditForm({ rowId, batchId, csrfToken, row }: {
+function RowEditForm({ rowId, batchId, csrfToken, row, competitions }: {
   rowId: number; batchId: number; csrfToken: string; row: ImportBatchRow;
+  competitions: { code: string; name: string; kind: string }[];
 }) {
+  const isFriendly = row.competitionResolvedCode === "FRIENDLY" || (row.competitionRaw ?? "").toLowerCase().includes("friendly");
   return (
     <div style={{
       marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
-      border: "1px solid #dce3e2", maxWidth: "400px"
+      border: "1px solid #dce3e2"
     }}>
       <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "grid", gap: "0.35rem" }}>
         <input type="hidden" name="csrf" value={csrfToken} />
@@ -859,12 +1010,21 @@ function RowEditForm({ rowId, batchId, csrfToken, row }: {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
           <label style={labelStyle}>Competition
-            <input name="competitionRaw" defaultValue={row.competitionRaw ?? ""} style={inputStyle} />
+            <select name="competitionRaw" defaultValue={row.competitionRaw ?? ""} style={inputStyle} id={`edit-comp-${rowId}`}>
+              <option value="">-- Select --</option>
+              {competitions.map((c) => (
+                <option key={c.code} value={c.name}>{c.name} ({c.code})</option>
+              ))}
+            </select>
           </label>
           <label style={labelStyle}>Venue
             <input name="venueRaw" defaultValue={row.venueRaw ?? ""} style={inputStyle} />
           </label>
         </div>
+        <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+          <input type="checkbox" name="isFriendly" value="1" defaultChecked={isFriendly} style={{ transform: "scale(1.2)" }} />
+          This is a friendly (no formal competition)
+        </label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
           <label style={labelStyle}>Date
             <input name="kickoffDate" defaultValue={row.kickoffDate ?? ""} style={inputStyle} />

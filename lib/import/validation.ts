@@ -298,13 +298,13 @@ async function resolveVenue(
       return { venueId: venue.id, warnings, isBlocked: false };
     }
     if (homeClubId) {
-      const club = await db.get<{ venue_id: number }>(
-        `SELECT venue_id FROM clubs WHERE id = ?`,
+      const cva = await db.get<{ venue_id: number }>(
+        `SELECT venue_id FROM club_venue_assignments WHERE club_id = ? AND is_primary = 1 AND effective_to IS NULL`,
         [homeClubId]
       );
-      if (club?.venue_id) {
+      if (cva?.venue_id) {
         warnings.push(makeIssue("venue_not_found", `Venue "${venueRaw}" not found. Using home club's primary venue.`, { field: "venue", rawValue: venueRaw }));
-        return { venueId: club.venue_id, warnings, isBlocked: false };
+        return { venueId: cva.venue_id, warnings, isBlocked: false };
       }
     }
     return { venueId: null, warnings: [makeIssue("venue_not_found", `Venue "${venueRaw}" not found and home club has no primary venue.`, { rawValue: venueRaw })], isBlocked: true };
@@ -315,12 +315,12 @@ async function resolveVenue(
   }
 
   if (homeClubId) {
-    const club = await db.get<{ venue_id: number }>(
-      `SELECT venue_id FROM clubs WHERE id = ?`,
+    const cva = await db.get<{ venue_id: number }>(
+      `SELECT venue_id FROM club_venue_assignments WHERE club_id = ? AND is_primary = 1 AND effective_to IS NULL`,
       [homeClubId]
     );
-    if (club?.venue_id) {
-      return { venueId: club.venue_id, warnings, isBlocked: false };
+    if (cva?.venue_id) {
+      return { venueId: cva.venue_id, warnings, isBlocked: false };
     }
   }
 

@@ -41,6 +41,13 @@ function setupTestDb(): AppDatabase {
     INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (5, 'Norwich City', 'ELC', 5);
     INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (6, 'Birmingham City', 'ELC', 6);
 
+    INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (1, 1, 1, '2024-01-01', NULL);
+    INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (2, 3, 1, '2024-01-01', NULL);
+    INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (3, 4, 1, '2024-01-01', NULL);
+    INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (4, 2, 1, '2024-01-01', NULL);
+    INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (5, 5, 1, '2024-01-01', NULL);
+    INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (6, 6, 1, '2024-01-01', NULL);
+
     INSERT INTO club_aliases (id, club_id, alias, normalized_alias, source) VALUES (1, 1, 'Chelsea FC', 'chelsea fc', 'manual');
 
     -- Existing fixtures for identity matching tests
