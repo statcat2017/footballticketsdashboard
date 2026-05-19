@@ -1,7 +1,6 @@
-import { getDatabase } from "@/lib/db/client";
 import { writeAdminAuditLog, buildAdminAuditLogWrite } from "@/lib/admin/audit";
 import { distanceMiles } from "@/lib/distance";
-import type { SqlWrite } from "@/lib/db/adapter";
+import type { AppDatabase, SqlWrite } from "@/lib/db/adapter";
 
 export interface AdminVenueRow {
   id: number;
@@ -67,9 +66,7 @@ export function isValidDate(str: string): boolean {
 const venueSelectColumns = `v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate, v.admin_updated_at,
   v.coordinate_precision, v.coordinates_verified_at, v.coordinates_confidence, v.coordinates_notes`;
 
-export async function getAdminVenueList(options?: { approximateOnly?: boolean }): Promise<AdminVenueListRow[]> {
-  const db = await getDatabase();
-
+export async function getAdminVenueList(db: AppDatabase, options?: { approximateOnly?: boolean }): Promise<AdminVenueListRow[]> {
   return db.all<AdminVenueListRow>(
     `SELECT
       ${venueSelectColumns},
@@ -85,9 +82,7 @@ export async function getAdminVenueList(options?: { approximateOnly?: boolean })
   );
 }
 
-export async function getAdminVenue(venueId: number): Promise<AdminVenueDetailData | null> {
-  const db = await getDatabase();
-
+export async function getAdminVenue(db: AppDatabase, venueId: number): Promise<AdminVenueDetailData | null> {
   const venue = await db.get<AdminVenueRow>(
     `SELECT ${venueSelectColumns}
      FROM venues v WHERE v.id = ?`,
@@ -110,8 +105,7 @@ export async function getAdminVenue(venueId: number): Promise<AdminVenueDetailDa
   return { venue, sharingClubs };
 }
 
-export async function createAdminVenue(input: AdminVenueCreateInput): Promise<number> {
-  const db = await getDatabase();
+export async function createAdminVenue(db: AppDatabase, input: AdminVenueCreateInput): Promise<number> {
   const now = new Date().toISOString();
 
   const result = await db.run(
@@ -147,11 +141,11 @@ export async function createAdminVenue(input: AdminVenueCreateInput): Promise<nu
 }
 
 export async function updateAdminVenue(
+  db: AppDatabase,
   venueId: number,
   input: AdminVenueUpdateInput,
   confirmed: boolean
 ): Promise<AdminVenueUpdateResult> {
-  const db = await getDatabase();
   const now = new Date().toISOString();
 
   const current = await db.get<AdminVenueRow>(
@@ -269,11 +263,11 @@ function buildUpdateStatements(
 }
 
 export async function assignAdminVenue(
+  db: AppDatabase,
   clubId: number,
   venueId: number,
   effectiveFrom: string
 ): Promise<void> {
-  const db = await getDatabase();
   const now = new Date().toISOString();
   const statements: SqlWrite[] = [];
 

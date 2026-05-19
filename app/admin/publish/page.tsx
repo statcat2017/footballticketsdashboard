@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { getPublishableDivisions, getPublishableClubs } from "@/lib/admin/clubs";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,8 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
   const successMessage = typeof sp?.success === "string" ? sp.success : null;
   const errorMessage = typeof sp?.error === "string" ? sp.error : null;
 
-  const divisions = await getPublishableDivisions();
+  const db = await getDatabase();
+  const divisions = await getPublishableDivisions(db);
 
   const selectedDivisionId = (() => {
     const raw = typeof sp?.division_id === "string" && /^\d+$/.test(sp.division_id)
@@ -62,7 +64,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
   })();
 
   const clubs = selectedDivisionId !== undefined
-    ? await getPublishableClubs(selectedDivisionId)
+    ? await getPublishableClubs(db, selectedDivisionId)
     : [];
 
   return (

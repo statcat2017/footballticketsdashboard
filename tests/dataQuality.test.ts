@@ -1,24 +1,11 @@
 import Database from "better-sqlite3";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { applySchema } from "@/lib/db/setup";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import { runDataQualityChecks } from "@/lib/admin/dataQuality";
 import type { AppDatabase } from "@/lib/db/adapter";
-
-const { getDatabase } = vi.hoisted(() => ({
-  getDatabase: vi.fn<() => Promise<AppDatabase>>()
-}));
-
-vi.mock("@/lib/db/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/db/client")>("@/lib/db/client");
-  return { ...actual, getDatabase };
-});
-
-afterEach(() => {
-  getDatabase.mockReset();
-});
 
 function minimalDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -42,9 +29,8 @@ describe("data quality checks", () => {
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES
         (101, 101, 50, '2025-08-01', NULL, 1);
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("no-primary-venue"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Homeless FC");
@@ -55,9 +41,8 @@ describe("data quality checks", () => {
   it("detects venues with blank postcode", async () => {
     const db = minimalDb();
     db.exec(`INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'No Postcode', '', 51.5, -0.1);`);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("blank-postcode"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("No Postcode");
@@ -67,9 +52,8 @@ describe("data quality checks", () => {
   it("detects venues with invalid coordinates", async () => {
     const db = minimalDb();
     db.exec(`INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Bad Coords', 'BC1 1XX', 999, 0);`);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("invalid-coords"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Bad Coords");
@@ -80,9 +64,8 @@ describe("data quality checks", () => {
     const db = minimalDb();
     db.exec(`INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
       (50, 'Uncertain United', 'UU1 1AA', 51.5, -0.1, 'unknown');`);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("imprecise-coords"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Uncertain United");
@@ -93,9 +76,8 @@ describe("data quality checks", () => {
     const db = minimalDb();
     db.exec(`INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
       (50, 'Ground Located Arena', 'GL1 1AA', 51.5, -0.1, 'ground_approximate');`);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("imprecise-coords"));
     expect(match).toHaveLength(0);
   });
@@ -111,9 +93,8 @@ describe("data quality checks", () => {
         (1, 200, 'Same', 'same', 'PL'),
         (2, 201, 'Same', 'same', 'ELC');
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("duplicate-alias"));
     expect(match).toHaveLength(0);
   });
@@ -127,9 +108,8 @@ describe("data quality checks", () => {
         (200, 'Has Tickets', 'PL', 50, 'https://tickets.example.com'),
         (201, 'No Tickets', 'PL', 50, NULL);
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("no-ticket-url"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("No Tickets");
@@ -148,9 +128,8 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
         (100, 1, 1, 10, 100), (101, 1, 1, 10, 101);
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("division-over-size"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Overcrowded Division");
@@ -173,9 +152,8 @@ describe("data quality checks", () => {
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
       INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("division-no-mapping"));
     expect(match).toHaveLength(1);
     expect(match[0].entity).toBe("Unmapped Division");
@@ -191,9 +169,8 @@ describe("data quality checks", () => {
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', NULL);
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("fixture-no-source-url"));
     expect(match).toHaveLength(1);
     expect(match[0].severity).toBe("info");
@@ -208,9 +185,8 @@ describe("data quality checks", () => {
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'assumed', 'scheduled', 'https://example.com');
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("fixture-assumed-kickoff"));
     expect(match).toHaveLength(1);
     expect(match[0].severity).toBe("warning");
@@ -225,9 +201,8 @@ describe("data quality checks", () => {
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("fixture-no-ticket"));
     expect(match.length).toBeGreaterThan(0);
     expect(match[0].severity).toBe("info");
@@ -242,9 +217,8 @@ describe("data quality checks", () => {
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const match = issues.filter((i) => i.id.startsWith("fixture-hidden-location"));
     expect(match).toHaveLength(1);
     expect(match[0].severity).toBe("error");
@@ -265,9 +239,8 @@ describe("data quality checks", () => {
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 200, '2026-05-20T15:00:00Z', 'assumed', 'scheduled', NULL);
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     const errorIndex = issues.findIndex((i) => i.severity === "error");
     const warningIndex = issues.findIndex((i) => i.severity === "warning");
     const infoIndex = issues.findIndex((i) => i.severity === "info");
@@ -298,9 +271,8 @@ describe("data quality checks", () => {
       INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, confidence) VALUES
         (200, 'all_ticket', 2500, 1500, 'https://tickets.example.com', 'verified');
     `);
-    getDatabase.mockResolvedValue(db);
 
-    const issues = await runDataQualityChecks();
+    const issues = await runDataQualityChecks(db);
     expect(issues).toHaveLength(0);
   });
 });

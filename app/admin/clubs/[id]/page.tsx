@@ -2,11 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
-import { getAdminClubDetail } from "@/lib/admin/clubs";
+import { getAdminClubDetail, getKnownCompetitionCodes } from "@/lib/admin/clubs";
 import { getAdminVenueList, nextJuly1st } from "@/lib/admin/venues";
 import { getDatabase } from "@/lib/db/client";
 import { listAliasesForClub } from "@/lib/db/clubMapping";
-import { getKnownCompetitionCodes } from "@/lib/admin/clubs";
 
 export const dynamic = "force-dynamic";
 
@@ -27,17 +26,17 @@ export default async function AdminClubDetailPage(props: {
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
 
-  const data = await getAdminClubDetail(clubId);
+  const db = await getDatabase();
+
+  const data = await getAdminClubDetail(db, clubId);
 
   if (!data) {
     notFound();
   }
 
   const isEditing = edit === "1";
-  const allVenues = await getAdminVenueList();
+  const allVenues = await getAdminVenueList(db);
   const defaultEffectiveFrom = nextJuly1st();
-
-  const db = await getDatabase();
   const aliases = await listAliasesForClub(db, clubId);
   const activeAliases = aliases.filter((a) => !a.retiredAt);
   const retiredAliases = aliases.filter((a) => a.retiredAt);

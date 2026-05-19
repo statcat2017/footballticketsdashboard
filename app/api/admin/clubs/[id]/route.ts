@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { updateAdminClub } from "@/lib/admin/clubs";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -29,8 +30,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
+  const db = await getDatabase();
+
   try {
-    await updateAdminClub(clubId, {
+    await updateAdminClub(db, clubId, {
       name: readString(form.get("name")),
       aliases: readNullableString(form.get("aliases")),
       status: readString(form.get("status")),

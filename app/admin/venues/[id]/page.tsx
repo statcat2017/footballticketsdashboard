@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { getAdminVenue } from "@/lib/admin/venues";
 import { MapEditorWrapper } from "../_components/MapEditorWrapper";
 
@@ -19,7 +20,7 @@ export default async function AdminVenueDetailPage(props: { params: Promise<{ id
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
 
-  const data = await getAdminVenue(venueId);
+  const data = await getAdminVenue(await getDatabase(), venueId);
 
   if (!data) {
     notFound();

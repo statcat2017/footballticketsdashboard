@@ -1,4 +1,3 @@
-import { getDatabase } from "@/lib/db/client";
 import { getLatestSeasonId } from "@/lib/admin/clubs";
 import { findAmbiguousAliases } from "@/lib/db/clubMapping";
 import type { AppDatabase } from "@/lib/db/adapter";
@@ -298,9 +297,7 @@ async function fixturesHiddenByLocation(db: AppDatabase): Promise<DataQualityIss
   }));
 }
 
-export async function runDataQualityChecks(): Promise<DataQualityIssue[]> {
-  const db = await getDatabase();
-
+export async function runDataQualityChecks(db: AppDatabase): Promise<DataQualityIssue[]> {
   const checks = [
     clubsWithNoPrimaryVenue(db),
     venuesWithBlankPostcode(db),

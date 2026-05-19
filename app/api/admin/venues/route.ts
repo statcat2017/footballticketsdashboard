@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { createAdminVenue } from "@/lib/admin/venues";
 
 export async function POST(request: Request) {
@@ -60,8 +61,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const db = await getDatabase();
+
   try {
-    const venueId = await createAdminVenue({
+    const venueId = await createAdminVenue(db, {
       name,
       postcode,
       latitude: latNum,

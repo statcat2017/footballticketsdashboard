@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
+import { getDatabase } from "@/lib/db/client";
 import { getAdminVenueList } from "@/lib/admin/venues";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +25,9 @@ export default async function AdminVenuesPage(props: { searchParams: Promise<{ a
   const { approximate } = await props.searchParams;
   const approximateOnly = approximate === "1";
 
-  const venues = await getAdminVenueList({ approximateOnly });
-  const allVenues = approximateOnly ? await getAdminVenueList() : venues;
+  const db = await getDatabase();
+  const venues = await getAdminVenueList(db, { approximateOnly });
+  const allVenues = approximateOnly ? await getAdminVenueList(db) : venues;
 
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>

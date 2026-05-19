@@ -308,7 +308,7 @@ async function handleCreateClub(
     const isApproximate = form.get("create_venue_is_approximate") === "1" ? 1 : 0;
     const coordinatePrecision = readString(form.get("create_venue_coordinate_precision")) ?? "ground_approximate";
 
-    venueId = await createAdminVenue({
+    venueId = await createAdminVenue(db, {
       name: createVenueName,
       postcode,
       latitude: latNum,
@@ -331,7 +331,7 @@ async function handleCreateClub(
   if (!newClubId) throw new Error("Failed to create club record.");
 
   // Assign venue to the club
-  await assignAdminVenue(newClubId as number, venueId, nextJuly1st());
+  await assignAdminVenue(db, newClubId as number, venueId, nextJuly1st());
 
   await db.writeBatch([
     buildAdminAuditLogWrite({
@@ -457,7 +457,7 @@ async function handleAssignExistingVenue(
     ? effectiveFrom
     : nextJuly1st();
 
-  await assignAdminVenue(clubId, venueId, effective);
+  await assignAdminVenue(db, clubId, venueId, effective);
 
   // Revalidate affected row
   if (redirectRowId) {
@@ -517,7 +517,7 @@ async function handleCreateVenueAndAssign(
     }
   }
 
-  const newVenueId = await createAdminVenue({
+  const newVenueId = await createAdminVenue(db, {
     name,
     postcode,
     latitude: latNum,
@@ -530,7 +530,7 @@ async function handleCreateVenueAndAssign(
     ? effectiveFrom
     : nextJuly1st();
 
-  await assignAdminVenue(clubId, newVenueId, effective);
+  await assignAdminVenue(db, clubId, newVenueId, effective);
 
   if (redirectRowIdParsed) {
     await db.run(
