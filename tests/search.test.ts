@@ -140,7 +140,8 @@ describe("fixture search", () => {
       concessionPricePence: 700,
       sourceUrl: "https://example.com/non-league-day",
       confidence: "verified",
-      isOverride: true
+      isOverride: true,
+      overrideNote: "Non League Day offer"
     });
   });
 

@@ -36,6 +36,7 @@ interface FixtureRow {
   verified_at: string | null;
   price_confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown" | null;
   has_price_override: number;
+  price_override_note: string | null;
   cached_distance_miles: number | null;
   driving_minutes: number | null;
   public_transport_minutes: number | null;
@@ -146,6 +147,7 @@ function queryFixtures(
       COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
       COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
+      fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,
       tc.driving_minutes,
       tc.public_transport_minutes,
@@ -202,6 +204,7 @@ function queryAllHistoricalFixtures(
       COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
       COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
+      fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,
       tc.driving_minutes,
       tc.public_transport_minutes,
@@ -267,7 +270,8 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
       sourceUrl: row.source_url,
       verifiedAt: row.verified_at,
       confidence: row.price_confidence ?? "unknown",
-      isOverride: row.has_price_override === 1
+      isOverride: row.has_price_override === 1,
+      overrideNote: row.price_override_note
     },
     travel: {
       distanceMiles: Math.round(distance * 10) / 10,

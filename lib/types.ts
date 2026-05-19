@@ -15,6 +15,7 @@ export interface PriceSummary {
   verifiedAt: string | null;
   confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown";
   isOverride: boolean;
+  overrideNote: string | null;
 }
 
 export interface TravelSummary {

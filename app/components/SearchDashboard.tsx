@@ -309,6 +309,9 @@ export function SearchDashboard() {
                   <div>
                     <span className={`badge ${ticketState.tone}`}>{ticketState.label}</span>
                     <div className="secondary">{formatPriceLine(result)}</div>
+                    {result.price.overrideNote && (
+                      <div className="secondary price-note">{result.price.overrideNote}</div>
+                    )}
                   </div>
                   <div className="travel-chips">
                     <span className="chip">
