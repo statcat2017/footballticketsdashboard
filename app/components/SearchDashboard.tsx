@@ -235,7 +235,7 @@ export function SearchDashboard() {
       <main className="results" aria-live="polite">
         {state === "ready" && (
           <div className="meta-row">
-            <div><strong>{resultCount} fixtures</strong> within reach · {dateRange}</div>
+            <div><strong>{resultCount} fixtures</strong> within reach{dateRange ? ` · ${dateRange}` : ""}</div>
             <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => setSortKey(event.target.value as typeof sortKey)}>
               <option value="distance">Sort by distance</option>
               <option value="kickoff">Sort by kick-off</option>
