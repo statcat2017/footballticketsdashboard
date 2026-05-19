@@ -2,7 +2,7 @@ export type SourceType = "api_feed" | "agent_scrape" | "url_table_scrape" | "csv
 export type TrustLevel = "trusted" | "moderated" | "untrusted";
 export type ParseStatus = "pending" | "parsing" | "parsed" | "failed";
 export type ApprovalStatus = "pending" | "preview" | "approved" | "partially_approved" | "auto_approved" | "failed";
-export type MatchResult = "insert" | "update" | "skip" | "blocked" | "pending";
+export type MatchResult = "insert" | "update" | "skip" | "blocked" | "pending" | "duplicate_existing_fixture" | "duplicate_pending_batch" | "duplicate_same_batch";
 export type FinalAction = "insert" | "update" | "skip" | "blocked";
 export type FixtureStatus = "scheduled" | "postponed" | "cancelled" | "finished" | "unknown";
 export type Confidence = "verified" | "imported" | "inferred" | "approximate" | "unknown";
@@ -25,7 +25,10 @@ export type IssueCode =
   | "missing_date"
   | "missing_participant"
   | "missing_competition"
-  | "ambiguous_fixture_match";
+  | "ambiguous_fixture_match"
+  | "duplicate_existing_fixture"
+  | "duplicate_pending_batch"
+  | "duplicate_same_batch";
 
 export interface WarningIssue {
   code: IssueCode;

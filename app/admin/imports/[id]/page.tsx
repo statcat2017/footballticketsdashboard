@@ -63,6 +63,9 @@ export default async function AdminImportDetailPage({
   const updateRows = detail.grouped.update ?? [];
   const blockedRows = detail.grouped.blocked ?? [];
   const pendingRows = detail.grouped.pending ?? [];
+  const duplicateFixtureRows = detail.grouped.duplicate_existing_fixture ?? [];
+  const duplicatePendingRows = detail.grouped.duplicate_pending_batch ?? [];
+  const duplicateSameBatchRows = detail.grouped.duplicate_same_batch ?? [];
   const applyableCount = insertRows.length + updateRows.length;
 
   // Fetch data needed for inline forms
@@ -226,6 +229,48 @@ export default async function AdminImportDetailPage({
             />
           ))}
         </section>
+      )}
+
+      {/* Duplicate — already imported */}
+      {duplicateFixtureRows.length > 0 && (
+        <details style={{ marginBottom: "0.75rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "14px", padding: "0.5rem 0", color: "#6f7e7a" }}>
+            Already imported ({duplicateFixtureRows.length})
+          </summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            {duplicateFixtureRows.map((row) => (
+              <DuplicateRow key={row.id} row={row} />
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Duplicate — already in another batch */}
+      {duplicatePendingRows.length > 0 && (
+        <details style={{ marginBottom: "0.75rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "14px", padding: "0.5rem 0", color: "#8a5a00" }}>
+            Already in another batch ({duplicatePendingRows.length})
+          </summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            {duplicatePendingRows.map((row) => (
+              <DuplicateRow key={row.id} row={row} />
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Duplicate — same batch */}
+      {duplicateSameBatchRows.length > 0 && (
+        <details style={{ marginBottom: "0.75rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "14px", padding: "0.5rem 0", color: "#6f7e7a" }}>
+            Duplicate rows in this batch ({duplicateSameBatchRows.length})
+          </summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            {duplicateSameBatchRows.map((row) => (
+              <DuplicateRow key={row.id} row={row} />
+            ))}
+          </div>
+        </details>
       )}
 
       {/* Imported history */}
@@ -1096,6 +1141,21 @@ function FinalizedRow({ row }: { row: ImportBatchRow; batchId?: number }) {
           Skipped{row.finalAction ? "" : ""}
         </span>
       )}
+    </div>
+  );
+}
+
+function DuplicateRow({ row }: { row: ImportBatchRow }) {
+  return (
+    <div style={{
+      border: "1px solid #dce3e2", borderRadius: "6px",
+      padding: "0.5rem 0.75rem", fontSize: "13px",
+      display: "flex", gap: "0.5rem", alignItems: "center",
+      background: "#f5f7f7"
+    }}>
+      <span style={{ fontWeight: 600 }}>{row.homeParticipantRaw ?? "?"} vs {row.awayParticipantRaw ?? "?"}</span>
+      {row.kickoffDate && <span style={{ color: "#6f7e7a" }}>{row.kickoffDate}</span>}
+      {row.competitionRaw && <span style={{ color: "#6f7e7a" }}>{row.competitionRaw}</span>}
     </div>
   );
 }

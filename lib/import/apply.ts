@@ -175,9 +175,10 @@ export async function applyBatchRows(
 
   const allRows = await getBatchRows(db, batchId);
   const activeRows2 = allRows.filter((r) => !r.finalAction);
-  const grouped: Record<string, ImportBatchRow[]> = { insert: [], update: [], skip: [], blocked: [], pending: [] };
+  const grouped: Record<string, ImportBatchRow[]> = {};
   for (const r of activeRows2) {
     const key = r.matchResult ?? "pending";
+    if (!grouped[key]) grouped[key] = [];
     grouped[key].push(r);
   }
   const applyRows: ImportBatchRow[] = [...(grouped.insert ?? []), ...(grouped.update ?? [])];

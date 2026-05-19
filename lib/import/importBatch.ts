@@ -354,16 +354,11 @@ export async function getBatchRowsByMatchResult(
   batchId: number
 ): Promise<Record<string, ImportBatchRow[]>> {
   const rows = await getBatchRows(db, batchId);
-  const grouped: Record<string, ImportBatchRow[]> = {
-    insert: [],
-    update: [],
-    skip: [],
-    blocked: [],
-    pending: [],
-  };
+  const grouped: Record<string, ImportBatchRow[]> = { insert: [], update: [], skip: [], blocked: [], pending: [] };
 
   for (const row of rows) {
     const key = row.matchResult ?? "pending";
+    if (!grouped[key]) grouped[key] = [];
     grouped[key].push(row);
   }
 
