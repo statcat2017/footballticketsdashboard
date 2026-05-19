@@ -7,6 +7,8 @@ import {
 } from "../db/clubMapping.ts";
 import { getBatch, getBatchRows, updateBatchRowOutcome } from "./importBatch.ts";
 import { parseDateField, parseTimeField } from "./adapters/csv.ts";
+import { getCurrentSeasonLabel, isWeekend, getAssumedKickoffTime } from "./shared";
+import { findImportFixtureMatch } from "./fixtureIdentity";
 
 export interface ValidationWarning {
   field?: string;
@@ -103,21 +105,7 @@ export async function validateImportBatch(
   };
 }
 
-async function getCurrentSeasonLabel(db: AppDatabase): Promise<string | undefined> {
-  const season = await db.get<{ label: string }>(
-    `SELECT label FROM fixture_seasons WHERE is_current = 1 LIMIT 1`
-  );
-  return season?.label;
-}
 
-function isWeekend(dateStr: string): boolean {
-  const day = new Date(dateStr + "T00:00:00Z").getUTCDay();
-  return day === 0 || day === 6;
-}
-
-function getAssumedKickoffTime(dateStr: string): string {
-  return isWeekend(dateStr) ? "15:00" : "19:45";
-}
 
 function makeIssue(
   code: IssueCode,
@@ -481,7 +469,7 @@ export async function validateRow(
     };
   }
 
-  const existingFixtureId = await findExistingFixtureId(db, {
+  const existingFixtureId = await findImportFixtureMatch(db, {
     ...row,
     homeParticipantResolvedId: home.clubId,
     awayParticipantResolvedId: away.clubId,
@@ -506,61 +494,4 @@ export async function validateRow(
   };
 }
 
-async function findExistingFixtureId(
-  db: AppDatabase,
-  row: ImportBatchRow,
-  seasonLabel: string | null,
-): Promise<number | null> {
-  if (!row.competitionResolvedCode) return null;
 
-  if (row.homeIsOneOff && row.awayIsOneOff) {
-    const sql = `SELECT id FROM fixtures
-      WHERE competition_code = ? AND season_label = ?
-      AND home_one_off_name = ? AND away_one_off_name = ?`;
-    const params: (string | number | null)[] = [row.competitionResolvedCode, seasonLabel, row.homeParticipantRaw, row.awayParticipantRaw];
-    const result = await db.get<{ id: number }>(sql, params);
-    return result?.id ?? null;
-  }
-
-  if (row.homeIsOneOff && row.awayParticipantResolvedId) {
-    const result = await db.get<{ id: number }>(
-      `SELECT id FROM fixtures
-       WHERE competition_code = ? AND season_label = ?
-       AND home_one_off_name = ? AND away_club_id = ?`,
-      [row.competitionResolvedCode, seasonLabel, row.homeParticipantRaw, row.awayParticipantResolvedId]
-    );
-    return result?.id ?? null;
-  }
-
-  if (row.awayIsOneOff && row.homeParticipantResolvedId) {
-    const result = await db.get<{ id: number }>(
-      `SELECT id FROM fixtures
-       WHERE competition_code = ? AND season_label = ?
-       AND away_one_off_name = ? AND home_club_id = ?`,
-      [row.competitionResolvedCode, seasonLabel, row.awayParticipantRaw, row.homeParticipantResolvedId]
-    );
-    return result?.id ?? null;
-  }
-
-  if (!row.homeParticipantResolvedId || !row.awayParticipantResolvedId) return null;
-
-  let sql = `SELECT id FROM fixtures
-    WHERE home_club_id = ? AND away_club_id = ? AND competition_code = ? AND season_label = ?`;
-  const params: (string | number | null)[] = [
-    row.homeParticipantResolvedId,
-    row.awayParticipantResolvedId,
-    row.competitionResolvedCode,
-    seasonLabel,
-  ];
-
-  if (row.kickoffDate) {
-    sql += ` AND fixture_date = ?`;
-    params.push(row.kickoffDate);
-  }
-
-  const fixtures = await db.all<{ id: number }>(sql, params);
-  if (fixtures.length === 0) return null;
-  if (fixtures.length > 1) return null;
-
-  return fixtures[0].id;
-}

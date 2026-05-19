@@ -3,16 +3,12 @@ import type { ImportBatchRow, RowEditFields, WarningIssue, WarningsPayload } fro
 import { getBatch, getBatchRow, getBatchRows, updateBatchRow, updateBatchStatus } from "./importBatch.ts";
 import { buildWarningsPayload, validateRow } from "./validation.ts";
 import { buildAdminAuditLogWrite } from "../admin/audit.ts";
-import { buildFixtureInsert, buildFixtureUpdate, findExistingFixture } from "./apply.ts";
+import { buildFixtureInsert, buildFixtureUpdate } from "./apply.ts";
+import { getCurrentSeasonLabel } from "./shared";
+import { findImportFixtureMatch } from "./fixtureIdentity";
 
-async function getCurrentSeasonLabel(db: AppDatabase): Promise<string | undefined> {
-  const season = await db.get<{ label: string }>(
-    `SELECT label FROM fixture_seasons WHERE is_current = 1 LIMIT 1`
-  );
-  return season?.label;
-}
 
-interface ApplySingleResult {
+export interface ApplySingleResult {
   row: ImportBatchRow;
   fixtureId: number | null;
 }
@@ -159,7 +155,7 @@ export async function importSingleRow(
   let action: "import_insert" | "import_update";
 
   if (revalidated.matchResult === "update") {
-    const existing = await findExistingFixture(db, revalidated, seasonLabel);
+    const existing = await findImportFixtureMatch(db, revalidated, seasonLabel);
     if (existing) {
       statements.push(buildFixtureUpdate(revalidated, existing.id));
       fixtureId = existing.id;
