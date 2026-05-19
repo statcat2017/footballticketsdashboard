@@ -6,10 +6,17 @@ import { describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { setupDatabase } from "@/lib/db/setup";
+import { SEED_DATA } from "@/lib/db/d1";
 import {
+  MEN_PYRAMID_CLUBS,
   MEN_PYRAMID_DIVISIONS,
   MEN_PYRAMID_EDGES
 } from "@/lib/db/pyramid";
+
+const totalClubs = (() => {
+  const seedNames = new Set(SEED_DATA.clubs.map((c) => c.name));
+  return SEED_DATA.clubs.length + MEN_PYRAMID_CLUBS.filter((pc) => !seedNames.has(pc.name)).length;
+})();
 
 describe("database setup", () => {
   it("creates a SQLite file and can be run repeatedly without duplicating seed rows", () => {
@@ -70,7 +77,7 @@ describe("database setup", () => {
     expect(fs.existsSync(filename)).toBe(true);
     expect(counts).toEqual({
       competitions: 3,
-      clubs: 6,
+      clubs: totalClubs,
       seedFixtures: 4,
       travelRows: 6,
       pyramidTemplates: 1,

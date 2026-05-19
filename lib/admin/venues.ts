@@ -99,11 +99,11 @@ export async function getAdminVenue(venueId: number): Promise<AdminVenueDetailDa
   }
 
   const sharingClubs = await db.all<{ id: number; name: string }>(
-    `SELECT pc.id, pc.name
+    `SELECT c.id, c.name
      FROM club_venue_assignments cva
-     JOIN pyramid_clubs pc ON pc.id = cva.club_id
+     JOIN clubs c ON c.id = cva.club_id
      WHERE cva.venue_id = ? AND cva.is_primary = 1 AND cva.effective_to IS NULL
-     ORDER BY pc.name`,
+     ORDER BY c.name`,
     [venueId]
   );
 
@@ -277,7 +277,7 @@ export async function assignAdminVenue(
   const now = new Date().toISOString();
   const statements: SqlWrite[] = [];
 
-  const club = await db.get<{ id: number }>("SELECT id FROM pyramid_clubs WHERE id = ?", [clubId]);
+  const club = await db.get<{ id: number }>("SELECT id FROM clubs WHERE id = ?", [clubId]);
   if (!club) throw new Error("Club not found.");
 
   const venue = await db.get<{ id: number }>("SELECT id FROM venues WHERE id = ?", [venueId]);

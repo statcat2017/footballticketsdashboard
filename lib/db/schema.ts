@@ -71,27 +71,12 @@ CREATE TABLE IF NOT EXISTS pyramid_season_divisions (
   FOREIGN KEY (division_id, template_id) REFERENCES pyramid_divisions(id, template_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS pyramid_clubs (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
-  aliases TEXT,
-  league_name TEXT,
-  source_url TEXT,
-  verified_at TEXT,
-  status TEXT NOT NULL DEFAULT 'partial' CHECK (status IN ('known', 'partial', 'missing')),
-  admin_updated_at TEXT,
-  coordinate_precision TEXT DEFAULT 'unknown' CHECK (coordinate_precision IN ('exact', 'postcode', 'ground_approximate', 'unknown')),
-  coordinates_verified_at TEXT,
-  coordinates_confidence TEXT DEFAULT 'unknown' CHECK (coordinates_confidence IN ('high', 'medium', 'low', 'unknown')),
-  coordinates_notes TEXT
-);
-
 CREATE TABLE IF NOT EXISTS pyramid_season_memberships (
   id INTEGER PRIMARY KEY,
   season_id INTEGER NOT NULL REFERENCES pyramid_seasons(id) ON DELETE CASCADE,
   template_id INTEGER NOT NULL,
   season_division_id INTEGER NOT NULL REFERENCES pyramid_season_divisions(id) ON DELETE CASCADE,
-  club_id INTEGER NOT NULL REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
+  club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   UNIQUE (season_id, club_id),
   FOREIGN KEY (season_id, template_id) REFERENCES pyramid_seasons(id, template_id) ON DELETE CASCADE,
   FOREIGN KEY (season_division_id, season_id, template_id) REFERENCES pyramid_season_divisions(id, season_id, template_id) ON DELETE CASCADE
@@ -101,7 +86,7 @@ CREATE TABLE IF NOT EXISTS pyramid_movements (
   id INTEGER PRIMARY KEY,
   season_id INTEGER NOT NULL REFERENCES pyramid_seasons(id) ON DELETE CASCADE,
   template_id INTEGER NOT NULL,
-  club_id INTEGER NOT NULL REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
+  club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   from_season_division_id INTEGER NOT NULL REFERENCES pyramid_season_divisions(id) ON DELETE CASCADE,
   to_season_division_id INTEGER NOT NULL REFERENCES pyramid_season_divisions(id) ON DELETE CASCADE,
   movement_type TEXT NOT NULL CHECK (movement_type IN ('promotion', 'relegation')),
@@ -134,14 +119,22 @@ CREATE TABLE IF NOT EXISTS clubs (
   football_data_team_id INTEGER UNIQUE,
   aliases TEXT,
   short_name TEXT,
-  competition_code TEXT NOT NULL REFERENCES competitions(code),
-  venue_id INTEGER NOT NULL REFERENCES venues(id),
+  competition_code TEXT REFERENCES competitions(code),
+  venue_id INTEGER REFERENCES venues(id),
   official_site_url TEXT,
   generic_ticket_url TEXT,
   price_source_url TEXT,
   ground_source_url TEXT,
   coordinates_source_url TEXT,
-  verified_at TEXT
+  verified_at TEXT,
+  status TEXT NOT NULL DEFAULT 'partial' CHECK (status IN ('known', 'partial', 'missing')),
+  source_url TEXT,
+  league_name TEXT,
+  admin_updated_at TEXT,
+  coordinate_precision TEXT DEFAULT 'unknown' CHECK (coordinate_precision IN ('exact', 'postcode', 'ground_approximate', 'unknown')),
+  coordinates_verified_at TEXT,
+  coordinates_confidence TEXT DEFAULT 'unknown' CHECK (coordinates_confidence IN ('high', 'medium', 'low', 'unknown')),
+  coordinates_notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS fixtures (
@@ -219,7 +212,7 @@ CREATE TABLE IF NOT EXISTS travel_cache (
 
 CREATE TABLE IF NOT EXISTS club_venue_assignments (
   id INTEGER PRIMARY KEY,
-  club_id INTEGER NOT NULL REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
+  club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   venue_id INTEGER NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
   effective_from TEXT NOT NULL,
   effective_to TEXT,
@@ -238,13 +231,6 @@ CREATE TABLE IF NOT EXISTS corrections (
   source_url TEXT,
   message TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS club_mappings (
-  id INTEGER PRIMARY KEY,
-  pyramid_club_id INTEGER NOT NULL UNIQUE REFERENCES pyramid_clubs(id) ON DELETE CASCADE,
-  club_id INTEGER NOT NULL UNIQUE REFERENCES clubs(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

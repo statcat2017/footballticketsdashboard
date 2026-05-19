@@ -46,7 +46,7 @@ function createMinimalDb(): AppDatabase {
       (10, 1, 1, 10, 'open'),
       (11, 1, 1, 11, 'open');
 
-    INSERT INTO pyramid_clubs (id, name, status) VALUES
+    INSERT INTO clubs (id, name, status) VALUES
       (100, 'Test Town United', 'known'),
       (101, 'City Athletic', 'known'),
       (102, 'Rovers FC', 'partial');
@@ -323,7 +323,7 @@ describe("admin venue service", () => {
       const db = createMinimalDb();
 
       db.exec(`
-        INSERT INTO pyramid_clubs (id, name, status) VALUES (200, 'New Club', 'known');
+        INSERT INTO clubs (id, name, status) VALUES (200, 'New Club', 'known');
         INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
           (200, 1, 1, 10, 200);
       `);

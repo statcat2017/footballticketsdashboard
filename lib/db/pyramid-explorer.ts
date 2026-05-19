@@ -124,7 +124,7 @@ async function getExplorerDivisions(db: AppDatabase, seasonId: number): Promise<
     `SELECT psd.division_id, pc.id, pc.name
     FROM pyramid_season_memberships pm
     JOIN pyramid_season_divisions psd ON psd.id = pm.season_division_id
-    JOIN pyramid_clubs pc ON pc.id = pm.club_id
+    JOIN clubs pc ON pc.id = pm.club_id
     WHERE pm.season_id = ?
     ORDER BY pc.name`,
     [seasonId]
@@ -159,7 +159,7 @@ async function getClubSearchRows(db: AppDatabase, seasonId: number): Promise<Clu
       d.name AS division_name,
       d.level
     FROM pyramid_season_memberships pm
-    JOIN pyramid_clubs pc ON pc.id = pm.club_id
+    JOIN clubs pc ON pc.id = pm.club_id
     JOIN pyramid_season_divisions psd ON psd.id = pm.season_division_id
     JOIN pyramid_divisions d ON d.id = psd.division_id
     WHERE pm.season_id = ?

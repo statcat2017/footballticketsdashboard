@@ -33,12 +33,8 @@ vi.mock("@/lib/db/client", async () => {
 });
 
 function createPublishTestDb(opts?: {
-  publishExistingClub?: boolean;
   existingClubWrongCompetition?: boolean;
-  existingClubWrongVenue?: boolean;
-  existingClubAlreadyMapped?: boolean;
   noDivisionMapping?: boolean;
-  noVenue?: boolean;
 }): AppDatabase {
   const sqlite = new Database(":memory:");
   sqlite.pragma("foreign_keys = ON");
@@ -50,42 +46,24 @@ function createPublishTestDb(opts?: {
     INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
     INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
     INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-    INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Test Town United', 'known');
-    INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
     INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
   `);
-
-  if (!opts?.noVenue) {
-    db.exec(`
-      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Test Park', 'TE1 1ST', 51.5, -0.1);
-      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (51, 'Other Ground', 'OT1 1AB', 52.0, -0.2);
-      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
-    `);
-  }
-
-  if (!opts?.noDivisionMapping) {
-    db.exec(`INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');`);
-  }
 
   if (opts?.existingClubWrongCompetition) {
     db.exec(`INSERT INTO competitions (code, name, tier) VALUES ('ELC', 'Championship', 2);`);
   }
 
-  if (opts?.publishExistingClub) {
-    const compCode = opts.existingClubWrongCompetition ? "'ELC'" : "'PL'";
-    const vId = opts.existingClubWrongVenue ? "51" : "50";
-    db.exec(
-      `INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Test Town United', ${compCode}, ${vId});`
-    );
-  }
+  const compCode = opts?.existingClubWrongCompetition ? "'ELC'" : "NULL";
 
-  if (opts?.existingClubAlreadyMapped) {
-    db.exec(
-      `INSERT INTO pyramid_clubs (id, name, status) VALUES (99, 'Other FC', 'known');
-       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (200, 1, 1, 10, 99);
-       INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Test Town United', 'PL', 50);
-       INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (99, 200);`
-    );
+  db.exec(`
+    INSERT INTO clubs (id, name, status, competition_code) VALUES (100, 'Test Town United', 'known', ${compCode});
+    INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
+    INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Test Park', 'TE1 1ST', 51.5, -0.1);
+    INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
+  `);
+
+  if (!opts?.noDivisionMapping) {
+    db.exec(`INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');`);
   }
 
   return db;
@@ -96,7 +74,7 @@ describe("admin publish route", () => {
     getDatabase.mockReset();
   });
 
-  it("publishes a new club (inserts clubs, club_mappings, audit)", async () => {
+  it("publishes a club (updates clubs, audit)", async () => {
     const db = createPublishTestDb();
     getDatabase.mockResolvedValue(db);
 
@@ -104,7 +82,7 @@ describe("admin publish route", () => {
 
     const formData = new FormData();
     formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
+    formData.append("club_id", "100");
     const response = await POST(new Request("http://localhost/api/admin/publish/club", {
       method: "POST",
       body: formData
@@ -113,18 +91,14 @@ describe("admin publish route", () => {
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("success=Club");
+    expect(location).toContain("published.");
 
-    const club = await db.get<{ id: number; name: string; competition_code: string; venue_id: number }>(
-      "SELECT id, name, competition_code, venue_id FROM clubs WHERE name = ?", ["Test Town United"]
+    const club = await db.get<{ id: number; name: string; competition_code: string; status: string }>(
+      "SELECT id, name, competition_code, status FROM clubs WHERE id = 100"
     );
     expect(club).toBeDefined();
     expect(club!.competition_code).toBe("PL");
-    expect(club!.venue_id).toBe(50);
-
-    const mapping = await db.get<{ id: number }>(
-      "SELECT id FROM club_mappings WHERE pyramid_club_id = 100"
-    );
-    expect(mapping).toBeDefined();
+    expect(club!.status).toBe("known");
 
     const audit = await db.get<{ action: string; entity_type: string }>(
       "SELECT action, entity_type FROM admin_audit_log WHERE entity_type = 'club' AND action = 'publish'"
@@ -132,15 +106,18 @@ describe("admin publish route", () => {
     expect(audit).toBeDefined();
   });
 
-  it("maps existing public club instead of creating duplicate", async () => {
-    const db = createPublishTestDb({ publishExistingClub: true });
+  it("returns already published when club has correct competition_code and status", async () => {
+    const db = createPublishTestDb();
     getDatabase.mockResolvedValue(db);
+
+    // Pre-set the club to already match
+    db.exec("UPDATE clubs SET competition_code = 'PL' WHERE id = 100");
 
     const { POST } = await import("@/app/api/admin/publish/club/route");
 
     const formData = new FormData();
     formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
+    formData.append("club_id", "100");
     const response = await POST(new Request("http://localhost/api/admin/publish/club", {
       method: "POST",
       body: formData
@@ -148,88 +125,38 @@ describe("admin publish route", () => {
 
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("mapped to existing public club");
+    expect(location).toContain("success");
+    expect(location).toContain("already published");
 
     const clubs = await db.all<{ id: number }>(
       "SELECT id FROM clubs WHERE name = 'Test Town United'"
     );
     expect(clubs).toHaveLength(1);
+  });
 
-    const mapping = await db.get<{ id: number }>(
-      "SELECT id FROM club_mappings WHERE pyramid_club_id = 100"
+  it("updates competition_code when club has a different competition_code", async () => {
+    const db = createPublishTestDb({ existingClubWrongCompetition: true });
+    getDatabase.mockResolvedValue(db);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("success");
+    expect(location).toContain("published");
+
+    const club = await db.get<{ competition_code: string }>(
+      "SELECT competition_code FROM clubs WHERE id = 100"
     );
-    expect(mapping).toBeDefined();
-
-    const audit = await db.get<{ action: string; entity_type: string }>(
-      "SELECT action, entity_type FROM admin_audit_log WHERE entity_type = 'club_mapping' AND action = 'publish'"
-    );
-    expect(audit).toBeDefined();
-  });
-
-  it("blocks when existing public club has wrong competition_code", async () => {
-    const db = createPublishTestDb({
-      publishExistingClub: true,
-      existingClubWrongCompetition: true
-    });
-    getDatabase.mockResolvedValue(db);
-
-    const { POST } = await import("@/app/api/admin/publish/club/route");
-
-    const formData = new FormData();
-    formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
-    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
-      method: "POST",
-      body: formData
-    }));
-
-    expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("error=");
-    expect(location).toContain("competition");
-  });
-
-  it("blocks when existing public club has wrong venue_id", async () => {
-    const db = createPublishTestDb({
-      publishExistingClub: true,
-      existingClubWrongVenue: true
-    });
-    getDatabase.mockResolvedValue(db);
-
-    const { POST } = await import("@/app/api/admin/publish/club/route");
-
-    const formData = new FormData();
-    formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
-    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
-      method: "POST",
-      body: formData
-    }));
-
-    expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("error=");
-    expect(location).toContain("venue");
-  });
-
-  it("blocks when existing public club is already mapped to another pyramid club", async () => {
-    const db = createPublishTestDb({ existingClubAlreadyMapped: true });
-    getDatabase.mockResolvedValue(db);
-
-    const { POST } = await import("@/app/api/admin/publish/club/route");
-
-    const formData = new FormData();
-    formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
-    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
-      method: "POST",
-      body: formData
-    }));
-
-    expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("error=");
-    expect(location).toContain("already mapped");
+    expect(club!.competition_code).toBe("PL");
   });
 
   it("blocks when division has no competition mapping", async () => {
@@ -240,7 +167,7 @@ describe("admin publish route", () => {
 
     const formData = new FormData();
     formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
+    formData.append("club_id", "100");
     const response = await POST(new Request("http://localhost/api/admin/publish/club", {
       method: "POST",
       body: formData
@@ -249,25 +176,6 @@ describe("admin publish route", () => {
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("Publish the competition first");
-  });
-
-  it("blocks when club has no primary venue", async () => {
-    const db = createPublishTestDb({ noVenue: true });
-    getDatabase.mockResolvedValue(db);
-
-    const { POST } = await import("@/app/api/admin/publish/club/route");
-
-    const formData = new FormData();
-    formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
-    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
-      method: "POST",
-      body: formData
-    }));
-
-    expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("Create a venue first");
   });
 });
 
@@ -284,7 +192,7 @@ describe("D1 production compatibility (no transaction API)", () => {
     };
   }
 
-  it("publishes new club via writeBatch when transaction is unavailable", async () => {
+  it("publishes club via writeBatch when transaction is unavailable", async () => {
     const db = createNoTransactionDb();
     getDatabase.mockResolvedValue(db);
 
@@ -292,7 +200,7 @@ describe("D1 production compatibility (no transaction API)", () => {
 
     const formData = new FormData();
     formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
+    formData.append("club_id", "100");
     const response = await POST(new Request("http://localhost/api/admin/publish/club", {
       method: "POST",
       body: formData
@@ -301,22 +209,26 @@ describe("D1 production compatibility (no transaction API)", () => {
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("success=Club");
+    expect(location).toContain("published.");
 
-    const mapping = await db.get<{ id: number }>(
-      "SELECT id FROM club_mappings WHERE pyramid_club_id = 100"
+    const club = await db.get<{ competition_code: string }>(
+      "SELECT competition_code FROM clubs WHERE id = 100"
     );
-    expect(mapping).toBeDefined();
+    expect(club!.competition_code).toBe("PL");
   });
 
-  it("maps existing public club via writeBatch when transaction is unavailable", async () => {
-    const db = createNoTransactionDb({ publishExistingClub: true });
+  it("returns already published via writeBatch when transaction is unavailable", async () => {
+    const db = createNoTransactionDb();
     getDatabase.mockResolvedValue(db);
+
+    // Pre-set the club to already match
+    db.exec("UPDATE clubs SET competition_code = 'PL' WHERE id = 100");
 
     const { POST } = await import("@/app/api/admin/publish/club/route");
 
     const formData = new FormData();
     formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
+    formData.append("club_id", "100");
     const response = await POST(new Request("http://localhost/api/admin/publish/club", {
       method: "POST",
       body: formData
@@ -324,7 +236,7 @@ describe("D1 production compatibility (no transaction API)", () => {
 
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("mapped to existing public club");
+    expect(location).toContain("already published");
 
     const clubs = await db.all<{ id: number }>(
       "SELECT id FROM clubs WHERE name = 'Test Town United'"
@@ -346,7 +258,7 @@ describe("admin publish redirect_division_id", () => {
 
     const formData = new FormData();
     formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
+    formData.append("club_id", "100");
     formData.append("redirect_division_id", "10");
     const response = await POST(new Request("http://localhost/api/admin/publish/club", {
       method: "POST",
@@ -360,14 +272,14 @@ describe("admin publish redirect_division_id", () => {
   });
 
   it("club publish error redirect includes ?division_id when redirect_division_id is provided", async () => {
-    const db = createPublishTestDb({ noVenue: true });
+    const db = createPublishTestDb({ noDivisionMapping: true });
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/admin/publish/club/route");
 
     const formData = new FormData();
     formData.append("csrf", "test-csrf");
-    formData.append("pyramid_club_id", "100");
+    formData.append("club_id", "100");
     formData.append("redirect_division_id", "10");
     const response = await POST(new Request("http://localhost/api/admin/publish/club", {
       method: "POST",
@@ -572,61 +484,14 @@ describe("admin publish clubs tier-10 migration", () => {
   });
 });
 
-describe("getPublishableClubs with division filter", () => {
-  afterEach(() => {
-    getDatabase.mockReset();
-  });
-
-  it("returns only clubs for the specified division", async () => {
-    const mod = await import("@/lib/admin/clubs");
-
-    const sqlite = new Database(":memory:");
-    sqlite.pragma("foreign_keys = ON");
-    applySchema(sqlite);
-    const rawDb = createSqliteAppDatabase(sqlite);
-
-    // Division 10 with club 100 and Division 20 with club 200
-    rawDb.exec(`
-      INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
-      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'div-a', 'Division A', 1, 20);
-      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (20, 1, 'div-b', 'Division B', 2, 20);
-      INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (20, 1, 1, 20, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Town FC', 'known');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (200, 'Other Town', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (200, 1, 1, 20, 200);
-      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Town Park', 'TE1 1ST', 51.5, -0.1);
-      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (99, 'Other Park', 'OT1 1AB', 52.0, -0.2);
-      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
-      INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (200, 200, 99, '2025-08-01', NULL, 1);
-      INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
-      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');
-      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (2, 20, 'PL');
-    `);
-
-    getDatabase.mockResolvedValue(rawDb);
-
-    const allClubs = await mod.getPublishableClubs();
-    expect(allClubs.length).toBeGreaterThanOrEqual(2);
-
-    const filteredClubs = await mod.getPublishableClubs(10);
-    expect(filteredClubs.every((c) => c.divisionId === 10)).toBe(true);
-    expect(filteredClubs.length).toBeLessThan(allClubs.length);
-  });
-});
-
 describe("admin publish clubs bulk route", () => {
   afterEach(() => {
     getDatabase.mockReset();
   });
 
   function createBulkTestDb(opts?: {
-    withExistingClub?: boolean;
-    noCompetitionMapping?: boolean;
-    noVenueForOne?: boolean;
     oneAlreadyPublished?: boolean;
+    noCompetitionMapping?: boolean;
     noTransaction?: boolean;
   }): AppDatabase {
     const sqlite = new Database(":memory:");
@@ -639,13 +504,18 @@ describe("admin publish clubs bulk route", () => {
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
       INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (100, 'Alpha Town', 'known');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (101, 'Beta City', 'known');
-      INSERT INTO pyramid_clubs (id, name, status) VALUES (102, 'Gamma United', 'known');
+      INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
+    `);
+
+    const alphaCompCode = opts?.oneAlreadyPublished ? "'PL'" : "NULL";
+
+    db.exec(`
+      INSERT INTO clubs (id, name, status, competition_code) VALUES (100, 'Alpha Town', 'known', ${alphaCompCode});
+      INSERT INTO clubs (id, name, status, competition_code) VALUES (101, 'Beta City', 'known', NULL);
+      INSERT INTO clubs (id, name, status, competition_code) VALUES (102, 'Gamma United', 'known', NULL);
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (101, 1, 1, 10, 101);
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (102, 1, 1, 10, 102);
-      INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
     `);
 
     if (!opts?.noCompetitionMapping) {
@@ -661,19 +531,6 @@ describe("admin publish clubs bulk route", () => {
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (101, 101, 51, '2025-08-01', NULL, 1);
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (102, 102, 52, '2025-08-01', NULL, 1);
     `);
-
-    if (opts?.noVenueForOne) {
-      db.exec(`UPDATE club_venue_assignments SET effective_to = '2026-01-01' WHERE club_id = 102;`);
-    }
-
-    if (opts?.existingClub) {
-      db.exec(`INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Beta City', 'PL', 51);`);
-    }
-
-    if (opts?.oneAlreadyPublished) {
-      db.exec(`INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (201, 'Alpha Town', 'PL', 50);`);
-      db.exec(`INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (100, 201);`);
-    }
 
     if (opts?.noTransaction) {
       return {
@@ -708,37 +565,11 @@ describe("admin publish clubs bulk route", () => {
     const clubsCount = await db.get<{ c: number }>("SELECT COUNT(*) as c FROM clubs");
     expect(clubsCount!.c).toBe(3);
 
-    const mappings = await db.all<{ id: number }>("SELECT id FROM club_mappings");
-    expect(mappings).toHaveLength(3);
-
     const audit = await db.all<{ id: number }>("SELECT id FROM admin_audit_log");
     expect(audit).toHaveLength(3);
   });
 
-  it("maps existing public clubs when eligible", async () => {
-    const db = createBulkTestDb({ existingClub: true });
-    getDatabase.mockResolvedValue(db);
-
-    const { POST } = await import("@/app/api/admin/publish/clubs/route");
-
-    const formData = new FormData();
-    formData.append("csrf", "test-csrf");
-    formData.append("division_id", "10");
-    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
-      method: "POST",
-      body: formData
-    }));
-
-    expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("Published 3 clubs");
-
-    // Only 1 new club added (the existing club was not re-created)
-    const clubsCount = await db.get<{ c: number }>("SELECT COUNT(*) as c FROM clubs");
-    expect(clubsCount!.c).toBe(3);
-  });
-
-  it("skips clubs already published", async () => {
+  it("publishes clubs and skips already published entries", async () => {
     const db = createBulkTestDb({ oneAlreadyPublished: true });
     getDatabase.mockResolvedValue(db);
 
@@ -756,26 +587,6 @@ describe("admin publish clubs bulk route", () => {
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("Published 2 clubs");
     expect(location).toContain("Already published");
-  });
-
-  it("skips clubs with no primary venue", async () => {
-    const db = createBulkTestDb({ noVenueForOne: true });
-    getDatabase.mockResolvedValue(db);
-
-    const { POST } = await import("@/app/api/admin/publish/clubs/route");
-
-    const formData = new FormData();
-    formData.append("csrf", "test-csrf");
-    formData.append("division_id", "10");
-    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
-      method: "POST",
-      body: formData
-    }));
-
-    expect(response.status).toBe(303);
-    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("Published 2 clubs");
-    expect(location).toContain("No primary venue");
   });
 
   it("rejects when division has no competition mapping", async () => {

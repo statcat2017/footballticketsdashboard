@@ -306,29 +306,28 @@ async function handleCreateClub(
     return redirectTo(request, batchId, { error: "Select an existing venue or provide venue details to create one." });
   }
 
-  // Ensure FRIENDLY competition exists for the club FK
-  const friendlyExists = await db.get<{ code: string }>(
-    `SELECT code FROM competitions WHERE code = 'FRIENDLY'`
-  );
-  if (!friendlyExists) {
-    await db.run(
-      `INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Non-League Friendlies', 10, 'friendly')`
+  // Preflight alias check
+  const trimmedAlias = alias && alias.trim() && alias.trim() !== name ? alias.trim() : null;
+  if (trimmedAlias) {
+    const existingAlias = await db.get<{ club_id: number }>(
+      `SELECT club_id FROM club_mapping WHERE alias = ? AND competition_code IS NULL`,
+      [trimmedAlias]
     );
+    if (existingAlias) {
+      return redirectTo(request, batchId, { error: `Alias "${trimmedAlias}" already exists for club ID ${existingAlias.club_id}.` });
+    }
   }
 
-  // Create club with FRIENDLY as default competition
+  // Create club — competition_code is nullable
   const clubResult = await db.run(
-    `INSERT INTO clubs (name, venue_id, competition_code) VALUES (?, ?, 'FRIENDLY')`,
+    `INSERT INTO clubs (name, venue_id, status) VALUES (?, ?, 'partial')`,
     [name, venueId]
   );
   const newClubId = clubResult.lastInsertRowid;
   if (!newClubId) throw new Error("Failed to create club record.");
 
-  // Also insert into pyramid_clubs so the club appears in admin club pages
-  await db.run(
-    `INSERT OR IGNORE INTO pyramid_clubs (name, status) VALUES (?, 'partial')`,
-    [name]
-  );
+  // Assign venue to club
+  await assignAdminVenue(newClubId as number, venueId, nextJuly1st());
 
   await db.writeBatch([
     buildAdminAuditLogWrite({
@@ -341,8 +340,12 @@ async function handleCreateClub(
   ]);
 
   // Add alias if different from name
-  if (alias && alias.trim() && alias.trim() !== name) {
-    await addAlias(db, newClubId as number, alias.trim(), { source: "import_batch_repair" });
+  if (trimmedAlias) {
+    try {
+      await addAlias(db, newClubId as number, trimmedAlias, { source: "import_batch_repair" });
+    } catch {
+      // Alias failure should not block club creation
+    }
   }
 
   // If we created a venue, update the row's venueRaw so the card shows it

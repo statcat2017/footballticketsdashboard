@@ -4,6 +4,7 @@ import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getLatestSeasonId } from "@/lib/admin/clubs";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import type { SqlWrite } from "@/lib/db/adapter";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -24,17 +25,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
-  const pyramidClubIdStr = form.get("pyramid_club_id");
+  const clubIdStr = form.get("club_id");
   const redirectDivisionIdStr = form.get("redirect_division_id");
 
-  if (typeof pyramidClubIdStr !== "string" || !/^\d+$/.test(pyramidClubIdStr)) {
+  if (typeof clubIdStr !== "string" || !/^\d+$/.test(clubIdStr)) {
     return NextResponse.redirect(
-      new URL("/admin/publish?error=Invalid pyramid club ID.", request.url),
+      new URL("/admin/publish?error=Invalid club ID.", request.url),
       { status: 303 }
     );
   }
 
-  const pyramidClubId = Number(pyramidClubIdStr);
+  const clubId = Number(clubIdStr);
   const db = await getDatabase();
 
   const validRedirectDivId =
@@ -52,135 +53,80 @@ export async function POST(request: Request) {
   }
 
   try {
-    const pyramidClub = await db.get<{ id: number; name: string; aliases: string | null }>(
-      `SELECT id, name, aliases FROM pyramid_clubs WHERE id = ?`,
-      [pyramidClubId]
+    const club = await db.get<{ id: number; name: string; competition_code: string | null; status: string }>(
+      `SELECT id, name, competition_code, status FROM clubs WHERE id = ?`,
+      [clubId]
     );
 
-    if (!pyramidClub) {
-      return redirectWith({ error: "Pyramid club not found." });
-    }
-
-    const existingMapping = await db.get<{ id: number }>(
-      `SELECT id FROM club_mappings WHERE pyramid_club_id = ?`,
-      [pyramidClubId]
-    );
-
-    if (existingMapping) {
-      return redirectWith({ error: "Club already published." });
-    }
-
-    const venue = await db.get<{ id: number; name: string; postcode: string }>(
-      `SELECT v.id, v.name, v.postcode
-       FROM club_venue_assignments cva
-       JOIN venues v ON v.id = cva.venue_id
-       WHERE cva.club_id = ? AND cva.is_primary = 1 AND cva.effective_to IS NULL`,
-      [pyramidClubId]
-    );
-
-    if (!venue) {
-      return redirectWith({ error: "Pyramid club has no primary venue. Create a venue first." });
+    if (!club) {
+      return redirectWith({ error: "Club not found." });
     }
 
     const seasonId = await getLatestSeasonId(db);
 
-    const divisionMapping = await db.get<{ competition_code: string }>(
+    const membership = await db.get<{ competition_code: string | null }>(
       `SELECT dcm.competition_code
        FROM pyramid_season_memberships psm
        JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
-       JOIN division_competition_mappings dcm ON dcm.division_id = psd.division_id
+       LEFT JOIN division_competition_mappings dcm ON dcm.division_id = psd.division_id
        WHERE psm.club_id = ? AND psm.season_id = ?`,
-      [pyramidClubId, seasonId]
+      [clubId, seasonId]
     );
 
-    if (!divisionMapping) {
+    if (!membership) {
+      return redirectWith({ error: "Club has no division membership. Assign it to a division first." });
+    }
+
+    if (!membership.competition_code) {
       return redirectWith({ error: "Division has no competition mapping. Publish the competition first." });
     }
 
-    const existingClub = await db.get<{ id: number; competition_code: string; venue_id: number }>(
-      `SELECT id, competition_code, venue_id FROM clubs WHERE name = ?`,
-      [pyramidClub.name]
-    );
-
-    if (existingClub) {
-      const existingClubMapping = await db.get<{ pyramid_club_id: number }>(
-        `SELECT pyramid_club_id FROM club_mappings WHERE club_id = ?`,
-        [existingClub.id]
-      );
-
-      if (existingClubMapping) {
-        return redirectWith({
-          error: `Public club "${pyramidClub.name}" is already mapped to pyramid club ID ${existingClubMapping.pyramid_club_id}.`
-        });
-      }
-
-      if (existingClub.competition_code !== divisionMapping.competition_code) {
-        return redirectWith({
-          error: `Existing club "${pyramidClub.name}" has competition "${existingClub.competition_code}" but this division maps to "${divisionMapping.competition_code}".`
-        });
-      }
-
-      if (existingClub.venue_id !== venue.id) {
-        return redirectWith({
-          error: `Existing club "${pyramidClub.name}" has venue ID ${existingClub.venue_id} but "${pyramidClub.name}" uses venue ID ${venue.id} ("${venue.name}").`
-        });
-      }
-
-      const after = {
-        name: pyramidClub.name,
-        pyramid_club_id: pyramidClubId,
-        club_id: existingClub.id,
-        note: "mapped to existing public club"
-      };
-
-      await db.writeBatch([
-        {
-          sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
-          params: [pyramidClubId, existingClub.id]
-        },
-        buildAdminAuditLogWrite({
-          action: "publish",
-          entityType: "club_mapping",
-          entityId: existingClub.id,
-          after
-        })
-      ]);
-
-      return redirectWith({ success: `Club "${pyramidClub.name}" mapped to existing public club.` });
+    if (club.status === "known" && club.competition_code === membership.competition_code) {
+      return redirectWith({ success: `Club "${club.name}" is already published.` });
     }
 
-    // Publish new club
-    const clubResult = await db.run(
-      `INSERT INTO clubs (name, aliases, competition_code, venue_id) VALUES (?, ?, ?, ?)`,
-      [pyramidClub.name, pyramidClub.aliases, divisionMapping.competition_code, venue.id]
-    );
-
-    const newClubId = clubResult.lastInsertRowid;
-    if (!newClubId) throw new Error("Failed to create club record.");
-
-    const after = {
-      name: pyramidClub.name,
-      aliases: pyramidClub.aliases,
-      competition_code: divisionMapping.competition_code,
-      venue_id: venue.id,
-      venue_name: venue.name,
-      pyramid_club_id: pyramidClubId
+    const before = {
+      name: club.name,
+      competition_code: club.competition_code,
+      status: club.status
     };
 
-    await db.writeBatch([
+    const setClauses: string[] = [];
+    const setParams: (string | number)[] = [];
+
+    if (club.competition_code !== membership.competition_code) {
+      setClauses.push("competition_code = ?");
+      setParams.push(membership.competition_code);
+    }
+
+    if (club.status !== "known") {
+      setClauses.push("status = 'known'");
+    }
+
+    setClauses.push("admin_updated_at = ?");
+    setParams.push(new Date().toISOString());
+
+    const statements: SqlWrite[] = [
       {
-        sql: `INSERT INTO club_mappings (pyramid_club_id, club_id) VALUES (?, ?)`,
-        params: [pyramidClubId, newClubId]
+        sql: `UPDATE clubs SET ${setClauses.join(", ")} WHERE id = ?`,
+        params: [...setParams, clubId]
       },
       buildAdminAuditLogWrite({
         action: "publish",
         entityType: "club",
-        entityId: newClubId,
-        after
+        entityId: clubId,
+        before,
+        after: {
+          name: club.name,
+          competition_code: membership.competition_code,
+          status: "known"
+        }
       })
-    ]);
+    ];
 
-    return redirectWith({ success: `Club "${pyramidClub.name}" published.` });
+    await db.writeBatch(statements);
+
+    return redirectWith({ success: `Club "${club.name}" published.` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return redirectWith({ error: message });

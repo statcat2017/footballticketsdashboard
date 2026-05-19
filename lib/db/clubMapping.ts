@@ -2,9 +2,10 @@ import type { AppDatabase } from "./adapter.ts";
 
 export interface ClubMappingResult {
   publicClubId: number | null;
-  pyramidClubId: number | null;
-  mappingType: "direct" | "canonical" | "alias" | "source_id" | "one_off" | "ambiguous" | "unknown";
+  mappingType: "direct" | "alias" | "ambiguous" | "unknown";
   displayName: string;
+  status: string | null;
+  competitionCode: string | null;
 }
 
 export interface ClubAlias {
@@ -40,57 +41,28 @@ export async function resolveFixtureParticipant(
 ): Promise<ClubMappingResult> {
   const trimmed = teamName.trim();
   if (!trimmed) {
-    return { publicClubId: null, pyramidClubId: null, mappingType: "unknown", displayName: teamName };
+    return { publicClubId: null, mappingType: "unknown", displayName: teamName, status: null, competitionCode: null };
   }
 
-  // 1. Try canonical match on clubs
-  const directClub = await db.get<{ id: number }>(
-    `SELECT id FROM clubs WHERE name = ?`,
+  // 1. Try direct match on clubs
+  const directClub = await db.get<{ id: number; status: string | null; competition_code: string | null }>(
+    `SELECT id, status, competition_code FROM clubs WHERE name = ?`,
     [trimmed]
   );
   if (directClub) {
-    const pyramid = await db.get<{ pyramid_club_id: number }>(
-      `SELECT pyramid_club_id FROM club_mappings WHERE club_id = ?`,
-      [directClub.id]
-    );
     return {
       publicClubId: directClub.id,
-      pyramidClubId: pyramid?.pyramid_club_id ?? null,
       mappingType: "direct",
-      displayName: trimmed
+      displayName: trimmed,
+      status: directClub.status,
+      competitionCode: directClub.competition_code,
     };
   }
 
-  // 2. Try pyramid club name (needs mapping to public club)
-  const pyramidClub = await db.get<{ id: number; name: string }>(
-    `SELECT id, name FROM pyramid_clubs WHERE name = ?`,
-    [trimmed]
-  );
-  if (pyramidClub) {
-    const mapping = await db.get<{ club_id: number }>(
-      `SELECT club_id FROM club_mappings WHERE pyramid_club_id = ?`,
-      [pyramidClub.id]
-    );
-    if (mapping) {
-      return {
-        publicClubId: mapping.club_id,
-        pyramidClubId: pyramidClub.id,
-        mappingType: "canonical",
-        displayName: pyramidClub.name
-      };
-    }
-    return {
-      publicClubId: null,
-      pyramidClubId: pyramidClub.id,
-      mappingType: "unknown",
-      displayName: pyramidClub.name
-    };
-  }
-
-  // 3. Try scoped alias if competition is known (scoped wins over global)
+  // 2. Try scoped alias if competition is known (scoped wins over global)
   if (options?.competitionCode) {
-    const aliasMatch = await db.get<{ club_id: number; name: string }>(
-      `SELECT c.id AS club_id, c.name
+    const aliasMatch = await db.get<{ club_id: number; name: string; status: string | null; competition_code: string | null }>(
+      `SELECT c.id AS club_id, c.name, c.status, c.competition_code
        FROM clubs c
        JOIN club_aliases ca ON ca.club_id = c.id
        WHERE ca.normalized_alias = ?
@@ -103,16 +75,17 @@ export async function resolveFixtureParticipant(
     if (aliasMatch) {
       return {
         publicClubId: aliasMatch.club_id,
-        pyramidClubId: null,
         mappingType: "alias",
-        displayName: aliasMatch.name
+        displayName: aliasMatch.name,
+        status: aliasMatch.status,
+        competitionCode: aliasMatch.competition_code,
       };
     }
   }
 
-  // 4. Try unscoped aliases
-  const aliasMatch = await db.get<{ club_id: number; name: string }>(
-    `SELECT c.id AS club_id, c.name
+  // 3. Try unscoped aliases
+  const aliasMatch = await db.get<{ club_id: number; name: string; status: string | null; competition_code: string | null }>(
+    `SELECT c.id AS club_id, c.name, c.status, c.competition_code
      FROM clubs c
      JOIN club_aliases ca ON ca.club_id = c.id
      WHERE ca.normalized_alias = ? AND ca.competition_code IS NULL AND ca.retired_at IS NULL`,
@@ -121,13 +94,14 @@ export async function resolveFixtureParticipant(
   if (aliasMatch) {
     return {
       publicClubId: aliasMatch.club_id,
-      pyramidClubId: null,
       mappingType: "alias",
-      displayName: aliasMatch.name
+      displayName: aliasMatch.name,
+      status: aliasMatch.status,
+      competitionCode: aliasMatch.competition_code,
     };
   }
 
-  return { publicClubId: null, pyramidClubId: null, mappingType: "unknown", displayName: trimmed };
+  return { publicClubId: null, mappingType: "unknown", displayName: trimmed, status: null, competitionCode: null };
 }
 
 export async function resolveCompetitionFromDivision(
@@ -168,7 +142,7 @@ export async function resolveCompetitionFromFixture(
 export function normalizeName(value: string): string {
   return value
     .toLowerCase()
-    .replace(/['’']/g, "")
+    .replace(/[''']/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();

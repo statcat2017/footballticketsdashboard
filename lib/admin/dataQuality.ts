@@ -29,15 +29,15 @@ async function clubsWithNoPrimaryVenue(db: AppDatabase): Promise<DataQualityIssu
   if (seasonId === null) return [];
 
   const rows = await db.all<{ id: number; name: string }>(
-    `SELECT pc.id, pc.name
-     FROM pyramid_season_memberships psm
-     JOIN pyramid_clubs pc ON pc.id = psm.club_id
+    `SELECT c.id, c.name
+     FROM clubs c
+     JOIN pyramid_season_memberships psm ON psm.club_id = c.id
      LEFT JOIN club_venue_assignments cva
-       ON cva.club_id = pc.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
      WHERE cva.id IS NULL
        AND psm.season_id = ?
-     GROUP BY pc.id
-     ORDER BY pc.name`,
+     GROUP BY c.id
+     ORDER BY c.name`,
     [seasonId]
   );
 
@@ -50,32 +50,6 @@ async function clubsWithNoPrimaryVenue(db: AppDatabase): Promise<DataQualityIssu
     entityId: r.id,
     summary: "Club has no current primary venue assigned.",
     actionUrl: `/admin/clubs/${r.id}`
-  }));
-}
-
-async function mappedClubsMissingVenueData(db: AppDatabase): Promise<DataQualityIssue[]> {
-  const rows = await db.all<{ pyramid_club_id: number; club_name: string }>(
-    `SELECT cm.pyramid_club_id, c.name AS club_name
-     FROM club_mappings cm
-     JOIN pyramid_clubs pc ON pc.id = cm.pyramid_club_id
-     JOIN clubs c ON c.id = cm.club_id
-     LEFT JOIN venues v ON v.id = c.venue_id
-     WHERE c.venue_id IS NULL
-        OR v.latitude IS NULL
-        OR v.longitude IS NULL
-        OR v.latitude < -90 OR v.latitude > 90
-        OR v.longitude < -180 OR v.longitude > 180`
-  );
-
-  return rows.map((r) => ({
-    id: `mapped-club-no-venue-${r.pyramid_club_id}`,
-    severity: "error",
-    issueType: "Mapped club missing venue data",
-    category: "Mapped Club",
-    entity: r.club_name,
-    entityId: r.pyramid_club_id,
-    summary: "Mapped club is missing required venue data.",
-    actionUrl: `/admin/clubs/${r.pyramid_club_id}`
   }));
 }
 
@@ -231,34 +205,6 @@ async function divisionsWithoutCompetitionMapping(db: AppDatabase): Promise<Data
   }));
 }
 
-async function clubsWithoutPublicMapping(db: AppDatabase): Promise<DataQualityIssue[]> {
-  const seasonId = await tryGetSeasonId(db);
-  if (seasonId === null) return [];
-
-  const rows = await db.all<{ id: number; name: string }>(
-    `SELECT pc.id, pc.name
-     FROM pyramid_season_memberships psm
-     JOIN pyramid_clubs pc ON pc.id = psm.club_id
-     LEFT JOIN club_mappings cm ON cm.pyramid_club_id = pc.id
-     WHERE psm.season_id = ?
-       AND cm.id IS NULL
-     GROUP BY pc.id
-     ORDER BY pc.name`,
-    [seasonId]
-  );
-
-  return rows.map((r) => ({
-    id: `club-no-mapping-${r.id}`,
-    severity: "warning",
-    issueType: "Club not published",
-    category: "Club",
-    entity: r.name,
-    entityId: r.id,
-    summary: "Populated club has no public mapping.",
-    actionUrl: `/admin/publish`
-  }));
-}
-
 async function fixturesMissingSourceUrl(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string }>(
     `SELECT id, source, source_id
@@ -357,7 +303,6 @@ export async function runDataQualityChecks(): Promise<DataQualityIssue[]> {
 
   const checks = [
     clubsWithNoPrimaryVenue(db),
-    mappedClubsMissingVenueData(db),
     venuesWithBlankPostcode(db),
     venuesWithInvalidCoordinates(db),
     venuesImpreciseCoords(db),
@@ -365,7 +310,6 @@ export async function runDataQualityChecks(): Promise<DataQualityIssue[]> {
     clubsWithoutTicketUrl(db),
     divisionsOverMaxSize(db),
     divisionsWithoutCompetitionMapping(db),
-    clubsWithoutPublicMapping(db),
     fixturesMissingSourceUrl(db),
     fixturesWithAssumedKickoff(db),
     fixturesMissingTicketInfo(db),
