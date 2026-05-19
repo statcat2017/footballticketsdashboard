@@ -646,3 +646,68 @@ describe("validateImportBatch — friendly competition", () => {
     expect(rows[0].awayParticipantResolvedId).toBeNull();
   });
 });
+
+describe("duplicate fixture identity", () => {
+  it("blocks import when duplicate fixtures exist for the same match identity", async () => {
+    const db = setupTestDb();
+
+    // Create duplicate existing fixtures for Chelsea vs Arsenal on the same date
+    db.exec(`
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (200, 'dup-a', 'dup-1', 'PL', 1, 2, 1, '2027-05-15', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (201, 'dup-b', 'dup-2', 'PL', 1, 2, 1, '2027-05-15', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+    `);
+
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Chelsea",
+        awayParticipantRaw: "Arsenal",
+        competitionRaw: "PL",
+        kickoffDate: "2027-05-15",
+        kickoffTime: "15:00",
+        venueRaw: "Stamford Bridge",
+      },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].matchResult).toBe("blocked");
+    expect(rows[0].warningsJson).toContain("ambiguous_fixture_match");
+  });
+
+  it("blocks import when duplicate one-off fixtures exist", async () => {
+    const db = setupTestDb();
+
+    // Create duplicate one-off fixtures for Tourists FC vs Chelsea
+    db.exec(`
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (300, 'oneoff-a', 'oo-1', 'PL', 'Tourists FC', 1, 1, '2027-06-01', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 1, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (301, 'oneoff-b', 'oo-2', 'PL', 'Tourists FC', 1, 1, '2027-06-01', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 1, 0, 'imported');
+    `);
+
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Tourists FC",
+        awayParticipantRaw: "Chelsea",
+        competitionRaw: "PL",
+        kickoffDate: "2027-06-01",
+        kickoffTime: "15:00",
+        venueRaw: "Stamford Bridge",
+        homeIsOneOff: true,
+      },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].matchResult).toBe("blocked");
+    expect(rows[0].warningsJson).toContain("ambiguous_fixture_match");
+  });
+});
