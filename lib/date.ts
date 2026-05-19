@@ -52,6 +52,6 @@ export function computeDateRange(filter: string): { dateFrom: string; dateTo: st
     return { dateFrom: toDateString(nextFriday), dateTo: toDateString(nextMonday) };
   }
 
-  // Show upcoming fixtures up to 180 days out (covers pre-season friendlies)
-  return defaultDateRange(today, 180);
+  // Show upcoming fixtures up to 365 days out (current season window)
+  return defaultDateRange(today, 365);
 }
