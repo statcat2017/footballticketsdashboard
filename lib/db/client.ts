@@ -41,6 +41,13 @@ export async function getDatabase(): Promise<AppDatabase> {
 }
 
 async function getCloudflareDatabase(): Promise<AppDatabase | null> {
+  // In local dev, skip the Cloudflare D1 path and use the local SQLite file.
+  // The OpenNext adapter sets up a miniflare D1 emulator during next dev,
+  // but its database has no tables — local dev should use filesystem SQLite.
+  if (process.env.NODE_ENV !== "production") {
+    return null;
+  }
+
   try {
     const context = await getCloudflareContext({ async: true });
     const binding = (context.env as { DB?: D1RootDatabaseLike }).DB;
