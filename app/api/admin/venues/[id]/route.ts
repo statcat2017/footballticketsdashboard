@@ -92,6 +92,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.invalidatedTravelCount > 0) {
       searchParams.set("travelInvalidated", String(result.invalidatedTravelCount));
     }
+    if (result.revalidatedRowCount > 0) {
+      searchParams.set("rowsRevalidated", String(result.revalidatedRowCount));
+    }
 
     const redirectUrl = `/admin/venues/${venueId}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
     return NextResponse.redirect(new URL(redirectUrl, request.url), { status: 303 });

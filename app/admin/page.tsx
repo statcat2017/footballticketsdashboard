@@ -25,21 +25,6 @@ export default async function AdminDashboardPage() {
       </header>
       <section style={{ marginTop: "1.5rem" }}>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-          <Link href="/admin/clubs" style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            border: "1px solid #147a4d",
-            borderRadius: "7px",
-            background: "#147a4d",
-            color: "#fff",
-            padding: "0.5rem 1rem",
-            fontSize: "14px",
-            fontWeight: 700,
-            textDecoration: "none"
-          }}>
-            Browse clubs &rarr;
-          </Link>
           <Link href="/admin/venues" style={{
             display: "inline-flex",
             alignItems: "center",
@@ -98,7 +83,7 @@ export default async function AdminDashboardPage() {
             fontWeight: 700,
             textDecoration: "none"
           }}>
-            Publish page &rarr;
+            Clubs & Divisions &rarr;
           </Link>
           <Link href="/admin/imports/sources" style={{
             display: "inline-flex",
