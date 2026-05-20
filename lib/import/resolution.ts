@@ -380,3 +380,28 @@ export async function getRowActions(
     [batchId]
   );
 }
+
+export async function revalidatePendingRowsForVenue(
+  db: AppDatabase,
+  venueId: number,
+  clubIds: number[],
+): Promise<number> {
+  if (clubIds.length === 0) return 0;
+
+  const placeholders = clubIds.map(() => "?").join(", ");
+  const rows = await db.all<{ id: number }>(
+    `SELECT id FROM import_batch_rows
+     WHERE final_action IS NULL
+       AND home_participant_resolved_id IN (${placeholders})
+       AND (venue_resolved_id = ? OR venue_resolved_id IS NULL)`,
+    [...clubIds, venueId]
+  );
+
+  let revalidatedCount = 0;
+  for (const row of rows) {
+    await validateRowById(db, row.id);
+    revalidatedCount++;
+  }
+
+  return revalidatedCount;
+}

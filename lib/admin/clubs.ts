@@ -468,3 +468,179 @@ export function getKnownCompetitionCodes(): string[] {
   return Array.from(new Set(Object.values(KNOWN_COMPETITION_MAP)));
 }
 
+export interface CompetitionClubRow {
+  id: number;
+  name: string;
+  status: string;
+  venueName: string | null;
+  venueId: number | null;
+  hasTicketUrl: boolean;
+  isPublished: boolean;
+}
+
+export interface CompetitionSummary {
+  id: number;
+  name: string;
+  level: number;
+  code: string | null;
+  isPublished: boolean;
+  totalClubs: number;
+  missingVenueCount: number;
+  missingTicketUrlCount: number;
+  clubs: CompetitionClubRow[];
+}
+
+export interface TierGroup {
+  tier: number;
+  competitions: CompetitionSummary[];
+}
+
+export interface AllCompetitionsData {
+  seasonLabel: string;
+  tiers: TierGroup[];
+  unassignedClubs: Array<{
+    id: number;
+    name: string;
+    status: string;
+    venueName: string | null;
+  }>;
+}
+
+export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllCompetitionsData> {
+  const seasonId = await getLatestSeasonId(db);
+  const season = await db.get<{ season_label: string }>(
+    "SELECT season_label FROM pyramid_seasons WHERE id = ?",
+    [seasonId]
+  );
+
+  const rows = await db.all<{
+    competition_id: number;
+    competition_name: string;
+    competition_level: number;
+    competition_code: string | null;
+    club_id: number;
+    club_name: string;
+    club_status: string;
+    venue_name: string | null;
+    generic_ticket_url: string | null;
+  }>(
+    `SELECT
+      d.id AS competition_id,
+      d.name AS competition_name,
+      d.level AS competition_level,
+      dcm.competition_code,
+      c.id AS club_id,
+      c.name AS club_name,
+      c.status AS club_status,
+      v.name AS venue_name,
+      c.generic_ticket_url
+    FROM pyramid_season_memberships psm
+    JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
+    JOIN pyramid_divisions d ON d.id = psd.division_id
+    JOIN clubs c ON c.id = psm.club_id
+    LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
+    LEFT JOIN club_venue_assignments cva
+      ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+    LEFT JOIN venues v ON v.id = cva.venue_id
+    WHERE psm.season_id = ?
+    ORDER BY d.level, d.name, c.name`,
+    [seasonId]
+  );
+
+  const unassignedRows = await db.all<{
+    id: number;
+    name: string;
+    status: string;
+    venue_name: string | null;
+  }>(
+    `SELECT c.id, c.name, c.status, v.name AS venue_name
+    FROM clubs c
+    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = c.id AND psm.season_id = ?
+    LEFT JOIN club_venue_assignments cva ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+    LEFT JOIN venues v ON v.id = cva.venue_id
+    WHERE psm.id IS NULL
+    ORDER BY c.name`,
+    [seasonId]
+  );
+
+  const compMap = new Map<number, {
+    id: number;
+    name: string;
+    level: number;
+    code: string | null;
+    clubs: Array<{
+      id: number;
+      name: string;
+      status: string;
+      venueName: string | null;
+      venueId: number | null;
+      hasTicketUrl: boolean;
+      isPublished: boolean;
+    }>;
+  }>();
+
+  for (const row of rows) {
+    let comp = compMap.get(row.competition_id);
+    if (!comp) {
+      comp = {
+        id: row.competition_id,
+        name: row.competition_name,
+        level: row.competition_level,
+        code: row.competition_code,
+        clubs: [],
+      };
+      compMap.set(row.competition_id, comp);
+    }
+    comp.clubs.push({
+      id: row.club_id,
+      name: row.club_name,
+      status: row.club_status,
+      venueName: row.venue_name,
+      venueId: row.club_id,
+      hasTicketUrl: !!row.generic_ticket_url,
+      isPublished: row.competition_code !== null && row.club_status === "known",
+    });
+  }
+
+  const summaries: CompetitionSummary[] = Array.from(compMap.values()).map((comp) => {
+    const missingVenue = comp.clubs.filter((c) => !c.venueName).length;
+    const missingTicket = comp.clubs.filter((c) => !c.hasTicketUrl).length;
+    return {
+      id: comp.id,
+      name: comp.name,
+      level: comp.level,
+      code: comp.code,
+      isPublished: comp.code !== null,
+      totalClubs: comp.clubs.length,
+      missingVenueCount: missingVenue,
+      missingTicketUrlCount: missingTicket,
+      clubs: comp.clubs,
+    };
+  });
+
+  const tierMap = new Map<number, CompetitionSummary[]>();
+  for (const s of summaries) {
+    let tier = tierMap.get(s.level);
+    if (!tier) {
+      tier = [];
+      tierMap.set(s.level, tier);
+    }
+    tier.push(s);
+  }
+
+  const tiers: TierGroup[] = Array.from(tierMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([tier, competitions]) => ({ tier, competitions }));
+
+  return {
+    seasonLabel: season?.season_label ?? "",
+    tiers,
+    unassignedClubs: unassignedRows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      status: r.status,
+      venueName: r.venue_name,
+    })),
+  };
+}
+

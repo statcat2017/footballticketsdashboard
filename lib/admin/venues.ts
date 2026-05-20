@@ -1,6 +1,7 @@
 import { writeAdminAuditLog, buildAdminAuditLogWrite } from "@/lib/admin/audit";
 import { distanceMiles } from "@/lib/distance";
 import type { AppDatabase, SqlWrite } from "@/lib/db/adapter";
+import { revalidatePendingRowsForVenue } from "@/lib/import/resolution.ts";
 
 export interface AdminVenueRow {
   id: number;
@@ -49,6 +50,7 @@ export interface AdminVenueUpdateInput {
 
 export interface AdminVenueUpdateResult {
   invalidatedTravelCount: number;
+  revalidatedRowCount: number;
 }
 
 export function nextJuly1st(): string {
@@ -197,7 +199,16 @@ export async function updateAdminVenue(
   if (coordsChanged && distanceMoved > 1) {
     invalidatedTravelCount = results[0].changes;
   }
-  return { invalidatedTravelCount };
+
+  const assignedClubs = await db.all<{ club_id: number }>(
+    `SELECT club_id FROM club_venue_assignments
+     WHERE venue_id = ? AND is_primary = 1 AND effective_to IS NULL`,
+    [venueId]
+  );
+  const clubIds = assignedClubs.map((r) => r.club_id);
+  const revalidatedRowCount = await revalidatePendingRowsForVenue(db, venueId, clubIds);
+
+  return { invalidatedTravelCount, revalidatedRowCount };
 }
 
 function buildUpdateStatements(
