@@ -20,6 +20,12 @@ Build a simple web app that shows nearby upcoming football fixtures, where they 
 - Never commit or push directly to `main`. Always open a PR for review.
 - If a branch already exists for the task, check it out and work there.
 
+## Absolute Rules
+
+- Never merge any pull request under any circumstances. Only `statcat2017` may merge.
+- Never use `--admin` or any admin override flag on `gh pr merge` or any other command to bypass branch protections or review requirements.
+- If the user asks you to deploy, push the branch and notify them that a PR is ready for review. Do not merge or deploy without explicit approval.
+
 ## Issue Resolution
 
 When resolving a GitHub issue:
