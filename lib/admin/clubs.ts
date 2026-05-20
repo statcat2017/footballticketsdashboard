@@ -478,7 +478,7 @@ export interface CompetitionClubRow {
 }
 
 export interface CompetitionSummary {
-  id: number;
+  id: number | null;
   name: string;
   level: number;
   code: string | null;
@@ -513,36 +513,41 @@ export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllC
   );
 
   const rows = await db.all<{
-    competition_id: number;
+    competition_code: string;
     competition_name: string;
-    competition_level: number;
-    competition_code: string | null;
-    club_id: number;
-    club_name: string;
-    club_status: string;
+    competition_tier: number;
+    division_id: number | null;
+    has_mapping: number;
+    club_id: number | null;
+    club_name: string | null;
+    club_status: string | null;
+    club_competition_code: string | null;
     venue_name: string | null;
     generic_ticket_url: string | null;
   }>(
     `SELECT
-      d.id AS competition_id,
-      d.name AS competition_name,
-      d.level AS competition_level,
-      dcm.competition_code,
-      c.id AS club_id,
-      c.name AS club_name,
-      c.status AS club_status,
+      c.code AS competition_code,
+      c.name AS competition_name,
+      c.tier AS competition_tier,
+      d.id AS division_id,
+      CASE WHEN dcm.id IS NOT NULL THEN 1 ELSE 0 END AS has_mapping,
+      cl.id AS club_id,
+      cl.name AS club_name,
+      cl.status AS club_status,
+      cl.competition_code AS club_competition_code,
       v.name AS venue_name,
-      c.generic_ticket_url
-    FROM pyramid_season_memberships psm
-    JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    JOIN clubs c ON c.id = psm.club_id
-    LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
+      cl.generic_ticket_url
+    FROM competitions c
+    LEFT JOIN division_competition_mappings dcm ON dcm.competition_code = c.code
+    LEFT JOIN pyramid_divisions d ON d.id = dcm.division_id
+    LEFT JOIN pyramid_season_divisions psd ON psd.division_id = d.id AND psd.season_id = ?
+    LEFT JOIN pyramid_season_memberships psm ON psm.season_division_id = psd.id
+    LEFT JOIN clubs cl ON cl.id = psm.club_id
     LEFT JOIN club_venue_assignments cva
-      ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+      ON cva.club_id = cl.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE psm.season_id = ?
-    ORDER BY d.level, d.name, c.name`,
+    WHERE c.kind != 'friendly'
+    ORDER BY c.tier, c.name, cl.name`,
     [seasonId]
   );
 
@@ -562,41 +567,45 @@ export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllC
     [seasonId]
   );
 
-  const compMap = new Map<number, {
-    id: number;
+  const compMap = new Map<string, {
+    id: number | null;
     name: string;
     level: number;
-    code: string | null;
-    clubs: Array<{
-    id: number;
-    name: string;
-    status: string;
-    venueName: string | null;
-    hasTicketUrl: boolean;
+    code: string;
     isPublished: boolean;
+    clubs: Array<{
+      id: number;
+      name: string;
+      status: string;
+      venueName: string | null;
+      hasTicketUrl: boolean;
+      isPublished: boolean;
     }>;
   }>();
 
   for (const row of rows) {
-    let comp = compMap.get(row.competition_id);
+    let comp = compMap.get(row.competition_code);
     if (!comp) {
       comp = {
-        id: row.competition_id,
+        id: row.division_id,
         name: row.competition_name,
-        level: row.competition_level,
+        level: row.competition_tier,
         code: row.competition_code,
+        isPublished: row.has_mapping === 1,
         clubs: [],
       };
-      compMap.set(row.competition_id, comp);
+      compMap.set(row.competition_code, comp);
     }
-    comp.clubs.push({
-      id: row.club_id,
-      name: row.club_name,
-      status: row.club_status,
-      venueName: row.venue_name,
-      hasTicketUrl: !!row.generic_ticket_url,
-      isPublished: row.competition_code !== null && row.club_status === "known",
-    });
+    if (row.club_id !== null) {
+      comp.clubs.push({
+        id: row.club_id,
+        name: row.club_name!,
+        status: row.club_status!,
+        venueName: row.venue_name,
+        hasTicketUrl: !!row.generic_ticket_url,
+        isPublished: row.club_competition_code !== null && row.club_status === "known",
+      });
+    }
   }
 
   const summaries: CompetitionSummary[] = Array.from(compMap.values()).map((comp) => {
@@ -606,8 +615,8 @@ export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllC
       id: comp.id,
       name: comp.name,
       level: comp.level,
-      code: comp.code,
-      isPublished: comp.code !== null,
+      code: comp.isPublished ? comp.code : null,
+      isPublished: comp.isPublished,
       totalClubs: comp.clubs.length,
       missingVenueCount: missingVenue,
       missingTicketUrlCount: missingTicket,
