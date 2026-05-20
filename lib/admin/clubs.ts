@@ -334,7 +334,6 @@ export interface PublishableDivision {
   id: number;
   name: string;
   level: number;
-  clubCount: number;
   isPublished: boolean;
   competitionCode: string | null;
 }
@@ -350,51 +349,40 @@ export interface PublishableClub {
 
 export async function getPublishableDivisions(db: AppDatabase): Promise<PublishableDivision[]> {
   const rows = await db.all<{
-    id: number; name: string; level: number; clubCount: number; competition_code: string | null;
+    id: number; name: string; level: number; competition_code: string | null;
   }>(
-    `SELECT
-      d.id, d.name, d.level,
-      COUNT(da.id) AS clubCount,
-      dcm.competition_code
+    `SELECT d.id, d.name, d.level, dcm.competition_code
     FROM pyramid_divisions d
-    LEFT JOIN division_assignments da ON da.division_id = d.id
     LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
-    GROUP BY d.id
-    HAVING clubCount > 0
+    WHERE EXISTS (
+      SELECT 1 FROM division_assignments da WHERE da.division_id = d.id
+    )
     ORDER BY d.level, d.name`
   );
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
     level: row.level,
-    clubCount: row.clubCount,
     isPublished: row.competition_code !== null,
     competitionCode: row.competition_code
   }));
 }
 
-export async function getPublishableClubs(db: AppDatabase, divisionId?: number): Promise<PublishableClub[]> {
-  let sql = `SELECT
-      c.id, c.name,
-      d.id AS division_id,
-      d.name AS division_name,
-      v.name AS venue_name,
+export async function getPublishableClubs(db: AppDatabase, divisionId: number): Promise<PublishableClub[]> {
+  const rows = await db.all<{
+    id: number; name: string; division_id: number; division_name: string; venue_name: string | null; is_published: number;
+  }>(
+    `SELECT c.id, c.name, d.id AS division_id, d.name AS division_name, v.name AS venue_name,
       c.competition_code IS NOT NULL AND c.status = 'known' AS is_published
     FROM division_assignments da
     JOIN pyramid_divisions d ON d.id = da.division_id
     JOIN clubs c ON c.id = da.club_id
-    LEFT JOIN club_venue_assignments cva
-      ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-    LEFT JOIN venues v ON v.id = cva.venue_id`;
-  const params: (string | number)[] = [];
-  if (divisionId !== undefined) {
-    sql += ` WHERE d.id = ?`;
-    params.push(divisionId);
-  }
-  sql += ` ORDER BY d.level, d.name, c.name`;
-  const rows = await db.all<{
-    id: number; name: string; division_id: number; division_name: string; venue_name: string | null; is_published: number;
-  }>(sql, params);
+    LEFT JOIN club_venue_assignments cva ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+    LEFT JOIN venues v ON v.id = cva.venue_id
+    WHERE d.id = ?
+    ORDER BY d.level, d.name, c.name`,
+    [divisionId]
+  );
   return rows.map((row) => ({
     id: row.id,
     name: row.name,

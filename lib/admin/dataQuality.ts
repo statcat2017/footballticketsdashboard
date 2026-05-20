@@ -19,10 +19,10 @@ async function clubsWithNoPrimaryVenue(db: AppDatabase): Promise<DataQualityIssu
     `SELECT c.id, c.name
      FROM clubs c
      JOIN division_assignments da ON da.club_id = c.id
-     LEFT JOIN club_venue_assignments cva
-       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-     WHERE cva.id IS NULL
-     GROUP BY c.id
+     WHERE NOT EXISTS (
+       SELECT 1 FROM club_venue_assignments cva
+       WHERE cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+     )
      ORDER BY c.name`
   );
 
