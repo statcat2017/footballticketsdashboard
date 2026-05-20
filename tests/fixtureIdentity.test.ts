@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
-import { findImportFixtureMatch } from "@/lib/import/fixtureIdentity";
+import { findImportFixtureCandidateMatches, findImportFixtureMatch } from "@/lib/import/fixtureIdentity";
 import type { ImportBatchRow } from "@/lib/import/types";
 
 function setupTestDb(): AppDatabase {
@@ -210,5 +210,47 @@ describe("findImportFixtureMatch", () => {
     expect(match.kind).toBe("ambiguous");
     if (match.kind !== "ambiguous") return;
     expect(match.count).toBe(2);
+  });
+});
+
+describe("findImportFixtureCandidateMatches", () => {
+  it("returns displayable candidates using resolved fixture identity fields", async () => {
+    const db = setupTestDb();
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      homeParticipantResolvedId: 1,
+      awayParticipantResolvedId: 2,
+      competitionResolvedCode: "PL",
+      kickoffDate: "2026-05-20",
+    }), "2025-26");
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      id: 100,
+      homeName: "Chelsea",
+      awayName: "Arsenal",
+      venueName: "V",
+      fixtureDate: "2026-05-20",
+      status: "scheduled",
+    });
+  });
+
+  it("can suggest matches when one club is still unresolved but date and competition are available", async () => {
+    const db = setupTestDb();
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      awayParticipantResolvedId: 2,
+      competitionResolvedCode: "PL",
+      kickoffDate: "2026-05-20",
+    }), "2025-26");
+
+    expect(candidates.map((candidate) => candidate.id)).toEqual([100]);
+  });
+
+  it("does not return broad suggestions without an identity field beyond competition and season", async () => {
+    const db = setupTestDb();
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      competitionResolvedCode: "PL",
+    }), "2025-26");
+
+    expect(candidates).toEqual([]);
   });
 });

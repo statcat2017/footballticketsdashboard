@@ -5,6 +5,7 @@ import { getDatabase } from "@/lib/db/client";
 import { getBatchDetail, getImportPreviewCounts, getImportUpdatePreviews } from "@/lib/admin/imports";
 import type { ImportUpdatePreview } from "@/lib/admin/imports";
 import type { ImportBatchRow, WarningIssue } from "@/lib/import/types";
+import { findImportFixtureCandidateMatches, type FixtureCandidateMatch } from "@/lib/import/fixtureIdentity";
 import { MapEditorWrapper } from "@/app/admin/venues/_components/MapEditorWrapper";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,11 @@ export default async function AdminImportDetailPage({
   const competitions = await db.all<{ code: string; name: string; kind: string }>(
     `SELECT code, name, kind FROM competitions ORDER BY name`
   );
+  const possibleMatches = new Map<number, FixtureCandidateMatch[]>();
+  await Promise.all(blockedRows.map(async (row) => {
+    const candidates = await findImportFixtureCandidateMatches(db, row, batch.seasonLabel, 5);
+    if (candidates.length > 0) possibleMatches.set(row.id, candidates);
+  }));
 
   // Fetch acknowledged issue keys so ticket acknowledgement has visible effect
   const resolutions = await db.all<{ issue_key: string; row_id: number | null }>(
@@ -146,6 +152,7 @@ export default async function AdminImportDetailPage({
               clubs={clubs}
               venues={venues}
               competitions={competitions}
+              possibleMatches={possibleMatches.get(row.id) ?? []}
               acknowledgedKeys={acknowledgedKeys}
               acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
@@ -173,6 +180,7 @@ export default async function AdminImportDetailPage({
                   clubs={clubs}
                   venues={venues}
                   competitions={competitions}
+                  possibleMatches={possibleMatches.get(row.id) ?? []}
                   acknowledgedKeys={acknowledgedKeys}
                   acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
                 />
@@ -193,6 +201,7 @@ export default async function AdminImportDetailPage({
                   clubs={clubs}
                   venues={venues}
                   competitions={competitions}
+                  possibleMatches={possibleMatches.get(row.id) ?? []}
                   acknowledgedKeys={acknowledgedKeys}
                   acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
                   updatePreview={updatePreviews.get(row.id)}
@@ -225,6 +234,7 @@ export default async function AdminImportDetailPage({
               clubs={clubs}
               venues={venues}
               competitions={competitions}
+              possibleMatches={possibleMatches.get(row.id) ?? []}
               acknowledgedKeys={acknowledgedKeys}
               acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
             />
@@ -372,7 +382,7 @@ function SummaryBadge({ count, label, bg, fg }: { count: number; label: string; 
   );
 }
 
-function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competitions, acknowledgedKeys, acknowledgedRowKeys, updatePreview }: {
+function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competitions, possibleMatches, acknowledgedKeys, acknowledgedRowKeys, updatePreview }: {
   row: ImportBatchRow;
   csrfToken: string;
   batchId: number;
@@ -380,6 +390,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
   competitions: { code: string; name: string; kind: string }[];
+  possibleMatches?: FixtureCandidateMatch[];
   acknowledgedKeys: Set<string>;
   acknowledgedRowKeys: Set<string>;
   updatePreview?: ImportUpdatePreview;
@@ -590,6 +601,10 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
         </div>
       )}
 
+      {mode === "blocked" && possibleMatches.length > 0 && (
+        <PossibleMatchesSection candidates={possibleMatches} />
+      )}
+
       {/* Inline repair forms for blocked items */}
       {showRepairForms && (
         <div style={{ padding: "0 1rem 0.75rem", borderTop: "1px solid #f0f1f1" }}>
@@ -728,6 +743,44 @@ function parseWarnings(json: string | null): WarningIssue[] {
     const parsed = JSON.parse(json) as { issues?: WarningIssue[] };
     return parsed.issues ?? [];
   } catch { return []; }
+}
+
+function PossibleMatchesSection({ candidates }: { candidates: FixtureCandidateMatch[] }) {
+  return (
+    <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid #f0f1f1", background: "#fafbfb" }}>
+      <h3 style={{ margin: "0 0 0.5rem", fontSize: "13px", color: "#34413e" }}>Possible matches</h3>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+        <thead>
+          <tr style={{ color: "#6f7e7a", textAlign: "left" }}>
+            <th style={{ padding: "0.25rem 0.5rem 0.25rem 0" }}>Fixture</th>
+            <th style={{ padding: "0.25rem 0.5rem" }}>Venue</th>
+            <th style={{ padding: "0.25rem 0.5rem" }}>Date</th>
+            <th style={{ padding: "0.25rem 0" }}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {candidates.map((candidate) => (
+            <tr key={candidate.id} style={{ borderTop: "1px solid #eef1f1" }}>
+              <td style={{ padding: "0.35rem 0.5rem 0.35rem 0", fontWeight: 600, color: "#17221f" }}>
+                #{candidate.id} {candidate.homeName} vs {candidate.awayName}
+              </td>
+              <td style={{ padding: "0.35rem 0.5rem", color: "#34413e" }}>{candidate.venueName ?? "-"}</td>
+              <td style={{ padding: "0.35rem 0.5rem", color: "#34413e" }}>{formatCandidateKickoff(candidate)}</td>
+              <td style={{ padding: "0.35rem 0", color: "#34413e" }}>{candidate.status ?? "-"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p style={{ margin: "0.5rem 0 0", fontSize: "12px", color: "#6f7e7a" }}>
+        Suggestions use the same fixture identity fields as import matching. Choosing an existing fixture is a follow-up because the current repair route only edits/imports/skips rows.
+      </p>
+    </div>
+  );
+}
+
+function formatCandidateKickoff(candidate: FixtureCandidateMatch): string {
+  if (!candidate.fixtureDate) return "-";
+  return candidate.kickoffTime ? `${candidate.fixtureDate} ${candidate.kickoffTime}` : candidate.fixtureDate;
 }
 
 /* ── Issue Repair Forms ── */

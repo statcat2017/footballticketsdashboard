@@ -6,6 +6,16 @@ export type FixtureMatchResult =
   | { kind: "ambiguous"; count: number }
   | { kind: "none" };
 
+export interface FixtureCandidateMatch {
+  id: number;
+  homeName: string;
+  awayName: string;
+  venueName: string | null;
+  fixtureDate: string | null;
+  kickoffTime: string | null;
+  status: string | null;
+}
+
 export async function findImportFixtureMatch(
   db: AppDatabase,
   row: ImportBatchRow,
@@ -76,4 +86,64 @@ export async function findImportFixtureMatch(
     id: fixture.id as number,
     before,
   };
+}
+
+export async function findImportFixtureCandidateMatches(
+  db: AppDatabase,
+  row: ImportBatchRow,
+  seasonLabel: string | null,
+  limit = 5,
+): Promise<FixtureCandidateMatch[]> {
+  if (!row.competitionResolvedCode) return [];
+
+  const where = [`f.competition_code = ?`, `f.season_label = ?`];
+  const params: (string | number | null)[] = [row.competitionResolvedCode, seasonLabel];
+  let identityFieldCount = 0;
+
+  if (row.homeIsOneOff && row.homeParticipantRaw) {
+    where.push(`f.home_one_off_name = ?`);
+    params.push(row.homeParticipantRaw);
+    identityFieldCount++;
+  } else if (row.homeParticipantResolvedId) {
+    where.push(`f.home_club_id = ?`);
+    params.push(row.homeParticipantResolvedId);
+    identityFieldCount++;
+  }
+
+  if (row.awayIsOneOff && row.awayParticipantRaw) {
+    where.push(`f.away_one_off_name = ?`);
+    params.push(row.awayParticipantRaw);
+    identityFieldCount++;
+  } else if (row.awayParticipantResolvedId) {
+    where.push(`f.away_club_id = ?`);
+    params.push(row.awayParticipantResolvedId);
+    identityFieldCount++;
+  }
+
+  if (row.kickoffDate) {
+    where.push(`f.fixture_date = ?`);
+    params.push(row.kickoffDate);
+    identityFieldCount++;
+  }
+
+  if (identityFieldCount === 0) return [];
+
+  return db.all<FixtureCandidateMatch>(
+    `SELECT
+       f.id,
+       COALESCE(h.name, f.home_one_off_name, 'Unknown') AS homeName,
+       COALESCE(a.name, f.away_one_off_name, 'Unknown') AS awayName,
+       v.name AS venueName,
+       f.fixture_date AS fixtureDate,
+       f.kickoff_time AS kickoffTime,
+       f.status
+     FROM fixtures f
+     LEFT JOIN clubs h ON h.id = f.home_club_id
+     LEFT JOIN clubs a ON a.id = f.away_club_id
+     LEFT JOIN venues v ON v.id = f.venue_id
+     WHERE ${where.join(" AND ")}
+     ORDER BY f.fixture_date IS NULL, f.fixture_date ASC, f.id ASC
+     LIMIT ?`,
+    [...params, Math.max(1, limit)],
+  );
 }
