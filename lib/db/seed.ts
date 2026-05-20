@@ -8,11 +8,9 @@ import {
   MEN_PYRAMID_DIVISIONS,
   MEN_PYRAMID_EDGES,
   MEN_PYRAMID_MEMBERSHIPS,
-  MEN_PYRAMID_MOVEMENTS,
   MEN_PYRAMID_SEASON_DIVISIONS,
   MEN_PYRAMID_SEASONS,
-  MEN_PYRAMID_TEMPLATE,
-  validatePyramidSeason
+  MEN_PYRAMID_TEMPLATE
 } from "./pyramid.ts";
 
 export function seedDatabase(db: SqliteDatabase): void {
@@ -70,20 +68,6 @@ export function seedDatabase(db: SqliteDatabase): void {
     `);
     for (const season of MEN_PYRAMID_SEASONS) {
       insertPyramidSeason.run(season.id, season.template_id, season.season_label);
-    }
-
-    const insertPyramidSeasonDivision = db.prepare(`
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status, locked_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        season_id = excluded.season_id,
-        template_id = excluded.template_id,
-        division_id = excluded.division_id,
-        status = excluded.status,
-        locked_at = excluded.locked_at
-    `);
-    for (const seasonDivision of MEN_PYRAMID_SEASON_DIVISIONS) {
-      insertPyramidSeasonDivision.run(seasonDivision.id, seasonDivision.season_id, seasonDivision.template_id, seasonDivision.division_id, seasonDivision.status, seasonDivision.locked_at);
     }
 
     const insertVenue = db.prepare(`
@@ -222,19 +206,6 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertClubVenueAssignment.run(a.id, translateClubId(a.club_id), a.venue_id, a.effective_from, a.effective_to, a.is_primary);
     }
 
-    const insertPyramidMembership = db.prepare(`
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        season_id = excluded.season_id,
-        template_id = excluded.template_id,
-        season_division_id = excluded.season_division_id,
-        club_id = excluded.club_id
-    `);
-    for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
-      insertPyramidMembership.run(membership.id, membership.season_id, membership.template_id, membership.season_division_id, translateClubId(membership.club_id));
-    }
-
     const insertDivisionAssignment = db.prepare(`
       INSERT OR IGNORE INTO division_assignments (club_id, division_id)
       VALUES (?, ?)
@@ -247,42 +218,6 @@ export function seedDatabase(db: SqliteDatabase): void {
         if (!seasonDivision) continue;
         insertDivisionAssignment.run(translateClubId(membership.club_id), seasonDivision.division_id);
       }
-    }
-
-    const insertPyramidMovement = db.prepare(`
-      INSERT INTO pyramid_movements (
-        id, season_id, template_id, club_id, from_season_division_id, to_season_division_id,
-        movement_type, note, created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        season_id = excluded.season_id,
-        template_id = excluded.template_id,
-        club_id = excluded.club_id,
-        from_season_division_id = excluded.from_season_division_id,
-        to_season_division_id = excluded.to_season_division_id,
-        movement_type = excluded.movement_type,
-        note = excluded.note,
-        created_at = excluded.created_at
-    `);
-    for (const movement of MEN_PYRAMID_MOVEMENTS) {
-      insertPyramidMovement.run(
-        movement.id,
-        movement.season_id,
-        movement.template_id,
-        translateClubId(movement.club_id),
-        movement.from_season_division_id,
-        movement.to_season_division_id,
-        movement.movement_type,
-        movement.note,
-        movement.created_at
-      );
-    }
-
-    const pyramidIssues = validatePyramidSeason(MEN_PYRAMID_DIVISIONS, MEN_PYRAMID_SEASON_DIVISIONS, MEN_PYRAMID_MEMBERSHIPS, MEN_PYRAMID_MOVEMENTS);
-
-    if (pyramidIssues.length > 0) {
-      throw new Error(`Invalid pyramid seed data: ${pyramidIssues.map((issue) => issue.message).join("; ")}`);
     }
 
     const insertPrice = db.prepare(`
