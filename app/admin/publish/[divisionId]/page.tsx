@@ -4,8 +4,9 @@ import { notFound } from "next/navigation";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
-import { getDivisionDetail } from "@/lib/admin/divisionAssignments";
+import { getDivisionDetail, getPromoteTargets, getRelegateTargets, getMigrateTargets, getClubsInDivision } from "@/lib/admin/divisionAssignments";
 import { ClubAutocomplete } from "@/app/components/admin/ClubAutocomplete";
+import { ClubMovementButtons } from "@/app/components/admin/ClubMovementButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -146,6 +147,20 @@ export default async function DivisionDetailPage(props: {
       AND c.id NOT IN (SELECT club_id FROM friendly_only_clubs)
     ORDER BY c.name`
   );
+
+  const promoteTargets = await getPromoteTargets(db, divId);
+  const relegateTargets = await getRelegateTargets(db, divId);
+  const migrateTargets = await getMigrateTargets(db, divId);
+
+  const allTargetDivisionIds = new Set<number>();
+  promoteTargets.forEach((d) => allTargetDivisionIds.add(d.id));
+  relegateTargets.forEach((d) => allTargetDivisionIds.add(d.id));
+  migrateTargets.forEach((d) => allTargetDivisionIds.add(d.id));
+
+  const allClubsByDivision: Record<number, { id: number; name: string }[]> = {};
+  for (const divId of allTargetDivisionIds) {
+    allClubsByDivision[divId] = await getClubsInDivision(db, divId);
+  }
 
   const clubCount = detail.clubCount;
   const maxSize = detail.maxSize;
@@ -410,6 +425,17 @@ export default async function DivisionDetailPage(props: {
                       </td>
                       <td style={{ padding: "0.6rem 1rem" }}>
                         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                          <ClubMovementButtons
+                            clubId={club.id}
+                            clubName={club.name}
+                            currentDivisionLevel={detail.level}
+                            csrfToken={csrfToken}
+                            redirectDivisionId={divId}
+                            promoteTargets={promoteTargets}
+                            relegateTargets={relegateTargets}
+                            migrateTargets={migrateTargets}
+                            allClubsByDivision={allClubsByDivision}
+                          />
                           {!club.isPublished && club.venueName && detail.isPublished && !club.isFriendlyOnly && (
                             <form method="post" action="/api/admin/publish/club">
                               <input type="hidden" name="csrf" value={csrfToken} />
