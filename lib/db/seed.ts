@@ -18,6 +18,8 @@ import {
 export function seedDatabase(db: SqliteDatabase): void {
   const divisionDisplayOrder = computeDivisionDisplayOrder();
   const edgeAllocationType = computeEdgeAllocationType();
+  const latestPyramidSeasonId = Math.max(...MEN_PYRAMID_SEASONS.map((s) => s.id));
+  const seasonDivisionById = new Map(MEN_PYRAMID_SEASON_DIVISIONS.map((d) => [d.id, d]));
 
   const seed = db.transaction(() => {
     const insertPyramidTemplate = db.prepare(`
@@ -231,6 +233,20 @@ export function seedDatabase(db: SqliteDatabase): void {
     `);
     for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
       insertPyramidMembership.run(membership.id, membership.season_id, membership.template_id, membership.season_division_id, translateClubId(membership.club_id));
+    }
+
+    const insertDivisionAssignment = db.prepare(`
+      INSERT OR IGNORE INTO division_assignments (club_id, division_id)
+      VALUES (?, ?)
+    `);
+    const assignmentCount = db.prepare("SELECT COUNT(*) AS count FROM division_assignments").get() as { count: number };
+    if (assignmentCount.count === 0) {
+      for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
+        if (membership.season_id !== latestPyramidSeasonId) continue;
+        const seasonDivision = seasonDivisionById.get(membership.season_division_id);
+        if (!seasonDivision) continue;
+        insertDivisionAssignment.run(translateClubId(membership.club_id), seasonDivision.division_id);
+      }
     }
 
     const insertPyramidMovement = db.prepare(`

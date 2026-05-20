@@ -1,8 +1,11 @@
 import Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { applySchema } from "@/lib/db/setup";
+import { applySchema, setupDatabase } from "@/lib/db/setup";
+import { seedDatabase } from "@/lib/db/seed";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import {
   getDivisionAssignments,
@@ -17,7 +20,7 @@ function createMinimalDb(): AppDatabase {
   applySchema(sqlite);
   const db = createSqliteAppDatabase(sqlite);
 
-  db.exec(`
+  sqlite.exec(`
     INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
 
     INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES
@@ -31,7 +34,9 @@ function createMinimalDb(): AppDatabase {
 
     INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES
       (10, 1, 1, 10, 'open'),
-      (11, 1, 1, 11, 'open');
+      (11, 1, 1, 11, 'open'),
+      (12, 1, 1, 12, 'open'),
+      (13, 1, 1, 13, 'open');
 
     INSERT INTO competitions (code, name, tier, kind) VALUES
       ('PL', 'Premier League', 1, 'league');
@@ -49,9 +54,9 @@ function createMinimalDb(): AppDatabase {
       (103, 1, 1, 12, 103);
   `);
 
-  db.exec("INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10), (102, 11), (103, 12)");
+  sqlite.exec("INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10), (102, 11), (103, 12)");
 
-  db.exec(`
+  sqlite.exec(`
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES
       (50, 'Test Park', 'TE1 1ST', 51.5, -0.1),
       (51, 'City Ground', 'CT1 2AB', 52.0, -0.2);
@@ -65,6 +70,136 @@ function createMinimalDb(): AppDatabase {
 }
 
 describe("getDivisionAssignments", () => {
+  it("fresh setup seeds current division assignments from pyramid memberships", async () => {
+    const sqlite = setupDatabase(":memory:");
+    const db = createSqliteAppDatabase(sqlite);
+
+    try {
+      const assignmentCount = await db.get<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM division_assignments"
+      );
+      expect(assignmentCount!.count).toBeGreaterThan(0);
+
+      const data = await getDivisionAssignments(db);
+      expect(data.divisions.some((d) => d.clubCount > 0)).toBe(true);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("021 and 022 recover a dropped division_assignments table and backfill idempotently", () => {
+    const sqlite = new Database(":memory:");
+    sqlite.pragma("foreign_keys = ON");
+    applySchema(sqlite);
+
+    try {
+      sqlite.exec(`
+        INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
+        INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
+        INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
+        INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
+        INSERT INTO clubs (id, name, status) VALUES (100, 'Backfill FC', 'known');
+        INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
+      `);
+
+      sqlite.exec("DROP TABLE division_assignments");
+
+      const indexMigrationSql = fs.readFileSync(
+        path.join(process.cwd(), "lib", "db", "migrations", "021-division-assignments-index.sql"),
+        "utf8"
+      );
+      const backfillMigrationSql = fs.readFileSync(
+        path.join(process.cwd(), "lib", "db", "migrations", "022-backfill-division-assignments.sql"),
+        "utf8"
+      );
+
+      sqlite.exec(indexMigrationSql);
+      sqlite.exec(backfillMigrationSql);
+      sqlite.exec(backfillMigrationSql);
+
+      const assignment = sqlite.prepare(
+        "SELECT club_id, division_id FROM division_assignments WHERE club_id = 100"
+      ).get() as { club_id: number; division_id: number } | undefined;
+      const count = sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM division_assignments WHERE club_id = 100"
+      ).get() as { count: number };
+
+      expect(assignment).toEqual({ club_id: 100, division_id: 10 });
+      expect(count.count).toBe(1);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("020 does not recreate unassigned clubs when assignments already exist", () => {
+    const sqlite = new Database(":memory:");
+    sqlite.pragma("foreign_keys = ON");
+    applySchema(sqlite);
+
+    try {
+      sqlite.exec(`
+        INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
+        INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
+        INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
+        INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
+        INSERT INTO clubs (id, name, status) VALUES
+          (100, 'Assigned FC', 'known'),
+          (101, 'Manually Unassigned FC', 'known');
+        INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
+          (100, 1, 1, 10, 100),
+          (101, 1, 1, 10, 101);
+        INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
+      `);
+
+      const migrationSql = fs.readFileSync(
+        path.join(process.cwd(), "lib", "db", "migrations", "020-division-assignments.sql"),
+        "utf8"
+      );
+
+      sqlite.exec(migrationSql);
+
+      const recreated = sqlite.prepare(
+        "SELECT club_id FROM division_assignments WHERE club_id = 101"
+      ).get();
+      const count = sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM division_assignments"
+      ).get() as { count: number };
+
+      expect(recreated).toBeUndefined();
+      expect(count.count).toBe(1);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("seed reruns do not recreate an individually unassigned club when assignments already exist", () => {
+    const sqlite = setupDatabase(":memory:");
+
+    try {
+      const initial = sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM division_assignments"
+      ).get() as { count: number };
+      const assignment = sqlite.prepare(
+        "SELECT club_id FROM division_assignments ORDER BY club_id LIMIT 1"
+      ).get() as { club_id: number };
+
+      sqlite.prepare("DELETE FROM division_assignments WHERE club_id = ?").run(assignment.club_id);
+      seedDatabase(sqlite);
+
+      const deletedAssignment = sqlite.prepare(
+        "SELECT club_id FROM division_assignments WHERE club_id = ?"
+      ).get(assignment.club_id);
+      const after = sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM division_assignments"
+      ).get() as { count: number };
+
+      expect(deletedAssignment).toBeUndefined();
+      expect(after.count).toBe(initial.count - 1);
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("lists all pyramid divisions levels 1-10, including empty divisions", async () => {
     const db = createMinimalDb();
 
@@ -114,6 +249,31 @@ describe("getDivisionAssignments", () => {
     const unassignedNames = data.unassignedClubs.map((c) => c.name);
     expect(unassignedNames).toContain("Unassigned FC");
   });
+
+  it("hides friendly-only clubs from assignment lists", async () => {
+    const db = createMinimalDb();
+    db.exec(`
+      INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
+      INSERT INTO clubs (id, name, status, competition_code) VALUES
+        (200, 'Friendly Code FC', 'partial', 'FRIENDLY'),
+        (201, 'Friendly Fixture FC', 'partial', NULL),
+        (202, 'League Fixture FC', 'partial', NULL);
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, venue_id,
+        fixture_date, status, is_demo_data, is_historical, away_one_off, away_one_off_name
+      ) VALUES
+        ('test', 'friendly-only', 'FRIENDLY', 201, 50, '2025-08-01', 'scheduled', 0, 0, 1, 'Friendly Opponent'),
+        ('test', 'friendly-mixed', 'FRIENDLY', 202, 50, '2025-08-01', 'scheduled', 0, 0, 1, 'Friendly Opponent'),
+        ('test', 'league-mixed', 'PL', 202, 50, '2025-08-02', 'scheduled', 0, 0, 1, 'League Opponent');
+    `);
+
+    const data = await getDivisionAssignments(db);
+
+    const unassignedNames = data.unassignedClubs.map((c) => c.name);
+    expect(unassignedNames).not.toContain("Friendly Code FC");
+    expect(unassignedNames).not.toContain("Friendly Fixture FC");
+    expect(unassignedNames).toContain("League Fixture FC");
+  });
 });
 
 describe("assignClubToDivision", () => {
@@ -142,6 +302,11 @@ describe("assignClubToDivision", () => {
     const first = data.divisions.find((d) => d.id === 11);
     expect(premier!.clubs.map((c) => c.name)).not.toContain("Test Town United");
     expect(first!.clubs.map((c) => c.name)).toContain("Test Town United");
+
+    const club = await db.get<{ competition_code: string | null }>(
+      "SELECT competition_code FROM clubs WHERE id = ?", [100]
+    );
+    expect(club!.competition_code).toBeNull();
   });
 
   it("clears clubs.competition_code when assigning", async () => {
@@ -177,6 +342,15 @@ describe("assignClubToDivision", () => {
     const data = await getDivisionAssignments(db);
     const tier9 = data.divisions.find((d) => d.id === 12);
     expect(tier9!.clubCount).toBe(18);
+  });
+
+  it("does not warn when assigning a club to its current full division", async () => {
+    const db = createMinimalDb();
+    db.exec("UPDATE pyramid_divisions SET max_size = 2 WHERE id = 10");
+
+    const result = await assignClubToDivision(db, 100, 10, "test-admin");
+
+    expect(result.warning).toBeUndefined();
   });
 
   it("throws for non-existent club", async () => {

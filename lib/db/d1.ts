@@ -608,6 +608,10 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     await db.exec("ALTER TABLE venues ADD COLUMN is_approximate INTEGER NOT NULL DEFAULT 0 CHECK (is_approximate IN (0, 1))");
   }
 
+  const existingAssignments = await db.get<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM division_assignments"
+  );
+
   const pyramidIssues = validatePyramidSeason(MEN_PYRAMID_DIVISIONS, MEN_PYRAMID_SEASON_DIVISIONS, MEN_PYRAMID_MEMBERSHIPS, MEN_PYRAMID_MOVEMENTS);
 
   if (pyramidIssues.length > 0) {
@@ -616,6 +620,8 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
 
   const divisionDisplayOrder = computeDivisionDisplayOrder();
   const edgeAllocationType = computeEdgeAllocationType();
+  const latestPyramidSeasonId = Math.max(...MEN_PYRAMID_SEASONS.map((s) => s.id));
+  const seasonDivisionById = new Map(MEN_PYRAMID_SEASON_DIVISIONS.map((d) => [d.id, d]));
   const statements: D1PreparedStatement[] = [];
   const add = (sql: string, params: Array<string | number | null>) => {
     statements.push(binding.prepare(sql).bind(...params));
@@ -737,6 +743,18 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
       "INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET season_id = excluded.season_id, template_id = excluded.template_id, season_division_id = excluded.season_division_id, club_id = excluded.club_id",
       [membership.id, membership.season_id, membership.template_id, membership.season_division_id, translateClubId(membership.club_id)]
     );
+  }
+
+  if (!existingAssignments || existingAssignments.count === 0) {
+    for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
+      if (membership.season_id !== latestPyramidSeasonId) continue;
+      const seasonDivision = seasonDivisionById.get(membership.season_division_id);
+      if (!seasonDivision) continue;
+      add(
+        "INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (?, ?)",
+        [translateClubId(membership.club_id), seasonDivision.division_id]
+      );
+    }
   }
 
   for (const movement of MEN_PYRAMID_MOVEMENTS) {

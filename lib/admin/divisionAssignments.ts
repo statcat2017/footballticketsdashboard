@@ -1,5 +1,5 @@
-import type { AppDatabase } from "@/lib/db/adapter";
-import { writeAdminAuditLog } from "@/lib/admin/audit";
+import type { AppDatabase, SqlWrite } from "@/lib/db/adapter";
+import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 
 export interface DivisionAssignedClub {
   id: number;
@@ -63,7 +63,7 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
       d.display_order,
       dcm.competition_code,
       CASE WHEN dcm.id IS NOT NULL THEN 1 ELSE 0 END AS is_published,
-      da.club_id,
+      c.id AS club_id,
       c.name AS club_name,
       c.status AS club_status,
       v.name AS venue_name,
@@ -72,6 +72,26 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
     FROM pyramid_divisions d
     LEFT JOIN division_assignments da ON da.division_id = d.id
     LEFT JOIN clubs c ON c.id = da.club_id
+      AND NOT EXISTS (
+        SELECT 1 FROM competitions comp
+        WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
+      )
+      AND NOT (
+        EXISTS (
+          SELECT 1
+          FROM fixtures f
+          JOIN competitions comp ON comp.code = f.competition_code
+          WHERE comp.kind = 'friendly'
+            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM fixtures f
+          JOIN competitions comp ON comp.code = f.competition_code
+          WHERE comp.kind != 'friendly'
+            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+        )
+      )
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
@@ -92,6 +112,26 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
     WHERE da.id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM competitions comp
+        WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
+      )
+      AND NOT (
+        EXISTS (
+          SELECT 1
+          FROM fixtures f
+          JOIN competitions comp ON comp.code = f.competition_code
+          WHERE comp.kind = 'friendly'
+            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM fixtures f
+          JOIN competitions comp ON comp.code = f.competition_code
+          WHERE comp.kind != 'friendly'
+            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+        )
+      )
     ORDER BY c.name`
   );
 
@@ -160,20 +200,20 @@ export async function assignClubToDivision(
   );
   if (!division) throw new Error(`Division ${divisionId} not found.`);
 
+  const existingAssignment = await db.get<{ id: number; division_id: number }>(
+    "SELECT id, division_id FROM division_assignments WHERE club_id = ?",
+    [clubId]
+  );
+
   const currentCount = await db.get<{ count: number }>(
     "SELECT COUNT(*) AS count FROM division_assignments WHERE division_id = ?",
     [divisionId]
   );
 
   let warning: string | undefined;
-  if (currentCount && currentCount.count >= division.max_size) {
+  if (existingAssignment?.division_id !== divisionId && currentCount && currentCount.count >= division.max_size) {
     warning = `Division "${division.name}" is at capacity (${division.max_size} clubs).`;
   }
-
-  const existingAssignment = await db.get<{ id: number; division_id: number }>(
-    "SELECT id, division_id FROM division_assignments WHERE club_id = ?",
-    [clubId]
-  );
 
   const now = new Date().toISOString();
 
@@ -182,30 +222,33 @@ export async function assignClubToDivision(
     : null;
   const after = { club_id: clubId, division_id: divisionId };
 
-  if (existingAssignment) {
-    await db.run(
-      "UPDATE division_assignments SET division_id = ?, admin_updated_at = ? WHERE id = ?",
-      [divisionId, now, existingAssignment.id]
-    );
-  } else {
-    await db.run(
-      "INSERT INTO division_assignments (club_id, division_id, admin_updated_at) VALUES (?, ?, ?)",
-      [clubId, divisionId, now]
-    );
-  }
+  const statements: SqlWrite[] = existingAssignment
+    ? [{
+      sql: "UPDATE division_assignments SET division_id = ?, admin_updated_at = ? WHERE id = ?",
+      params: [divisionId, now, existingAssignment.id]
+    }]
+    : [{
+      sql: "INSERT INTO division_assignments (club_id, division_id, admin_updated_at) VALUES (?, ?, ?)",
+      params: [clubId, divisionId, now]
+    }];
 
   if (club.competition_code !== null) {
-    await db.run("UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?", [now, clubId]);
+    statements.push({
+      sql: "UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?",
+      params: [now, clubId]
+    });
   }
 
-  await writeAdminAuditLog(db, {
+  statements.push(buildAdminAuditLogWrite({
     action: existingAssignment ? "update" : "create",
     entityType: "division_assignment",
     entityId: clubId,
     actor,
     before,
     after,
-  });
+  }));
+
+  await db.writeBatch(statements);
 
   return { warning };
 }
@@ -238,18 +281,26 @@ export async function unassignClub(
 
   const now = new Date().toISOString();
 
-  await db.run("DELETE FROM division_assignments WHERE club_id = ?", [clubId]);
+  const statements: SqlWrite[] = [{
+    sql: "DELETE FROM division_assignments WHERE club_id = ?",
+    params: [clubId]
+  }];
 
   if (club.competition_code !== null) {
-    await db.run("UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?", [now, clubId]);
+    statements.push({
+      sql: "UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?",
+      params: [now, clubId]
+    });
   }
 
-  await writeAdminAuditLog(db, {
+  statements.push(buildAdminAuditLogWrite({
     action: "delete",
     entityType: "division_assignment",
     entityId: clubId,
     actor,
     before: { club_id: clubId, division_id: existing.division_id },
     after: null,
-  });
+  }));
+
+  await db.writeBatch(statements);
 }

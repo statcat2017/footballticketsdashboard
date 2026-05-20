@@ -20,4 +20,5 @@ SELECT
 FROM pyramid_season_memberships psm
 JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
 JOIN pyramid_divisions d ON d.id = psd.division_id
-WHERE psm.season_id = (SELECT id FROM pyramid_seasons ORDER BY id DESC LIMIT 1);
+WHERE psm.season_id = (SELECT id FROM pyramid_seasons ORDER BY id DESC LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM division_assignments);

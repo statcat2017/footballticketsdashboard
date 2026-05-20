@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { applySchema } from "@/lib/db/setup";
@@ -58,6 +59,7 @@ function createPublishTestDb(opts?: {
   db.exec(`
     INSERT INTO clubs (id, name, status, competition_code) VALUES (100, 'Test Town United', 'known', ${compCode});
     INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
+    INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Test Park', 'TE1 1ST', 51.5, -0.1);
     INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
   `);
@@ -176,6 +178,118 @@ describe("admin publish route", () => {
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("Publish the competition first");
+  });
+
+  it("publishes from division_assignments rather than season memberships", async () => {
+    const db = createPublishTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    db.exec(`
+      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (11, 1, 'current', 'Current Division', 2, 20);
+      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (11, 1, 1, 11, 'open');
+      INSERT INTO competitions (code, name, tier) VALUES ('CUR', 'Current League', 2);
+      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (2, 11, 'CUR');
+      UPDATE division_assignments SET division_id = 11 WHERE club_id = 100;
+    `);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const club = await db.get<{ competition_code: string }>(
+      "SELECT competition_code FROM clubs WHERE id = 100"
+    );
+    expect(club!.competition_code).toBe("CUR");
+  });
+
+  it("does not publish friendly-only assigned clubs", async () => {
+    const db = createPublishTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    db.exec(`
+      INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, venue_id,
+        fixture_date, status, is_demo_data, is_historical, away_one_off, away_one_off_name
+      ) VALUES (
+        'test', 'friendly-only', 'FRIENDLY', 100, 50,
+        '2025-08-01', 'scheduled', 0, 0, 1, 'Friendly Opponent'
+      );
+    `);
+
+    const { POST } = await import("@/app/api/admin/publish/club/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("club_id", "100");
+    const response = await POST(new Request("http://localhost/api/admin/publish/club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Friendly clubs cannot be published");
+
+    const club = await db.get<{ competition_code: string | null }>(
+      "SELECT competition_code FROM clubs WHERE id = 100"
+    );
+    expect(club!.competition_code).toBeNull();
+  });
+});
+
+describe("admin publish page messages", () => {
+  afterEach(() => {
+    getDatabase.mockReset();
+  });
+
+  it("renders warning query parameter", async () => {
+    const db = createPublishTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    const { default: AdminPublishPage } = await import("@/app/admin/publish/page");
+    const html = renderToStaticMarkup(await AdminPublishPage({
+      searchParams: Promise.resolve({ warning: "Division is at capacity." })
+    }));
+
+    expect(html).toContain("Division is at capacity.");
+  });
+
+  it("assignment route redirects with warning while saving over-capacity assignment", async () => {
+    const db = createPublishTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    await db.exec(`
+      UPDATE pyramid_divisions SET max_size = 1 WHERE id = 10;
+      INSERT INTO clubs (id, name, status) VALUES (200, 'Overflow FC', 'known');
+    `);
+
+    const { POST } = await import("@/app/api/admin/assign-club/route");
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("club_id", "200");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/assign-club", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("warning=");
+    expect(location).toContain("at capacity");
+
+    const assignment = await db.get<{ division_id: number }>(
+      "SELECT division_id FROM division_assignments WHERE club_id = 200"
+    );
+    expect(assignment?.division_id).toBe(10);
   });
 });
 
@@ -516,6 +630,9 @@ describe("admin publish clubs bulk route", () => {
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (101, 1, 1, 10, 101);
       INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (102, 1, 1, 10, 102);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (101, 10);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (102, 10);
     `);
 
     if (!opts?.noCompetitionMapping) {
@@ -606,6 +723,75 @@ describe("admin publish clubs bulk route", () => {
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
     expect(location).toContain("Publish the competition first");
+  });
+
+  it("bulk publishes only clubs assigned to the division_assignments division", async () => {
+    const db = createBulkTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    db.exec(`
+      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (11, 1, 'other', 'Other Division', 2, 20);
+      UPDATE division_assignments SET division_id = 11 WHERE club_id = 102;
+    `);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Published 2 clubs");
+
+    const gamma = await db.get<{ competition_code: string | null }>(
+      "SELECT competition_code FROM clubs WHERE id = 102"
+    );
+    expect(gamma!.competition_code).toBeNull();
+  });
+
+  it("bulk publish skips friendly assigned clubs", async () => {
+    const db = createBulkTestDb();
+    getDatabase.mockResolvedValue(db);
+
+    db.exec(`
+      INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
+      UPDATE clubs SET competition_code = 'FRIENDLY' WHERE id = 102;
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, venue_id,
+        fixture_date, status, is_demo_data, is_historical, away_one_off, away_one_off_name
+      ) VALUES (
+        'test', 'friendly-only', 'FRIENDLY', 101, 51,
+        '2025-08-01', 'scheduled', 0, 0, 1, 'Friendly Opponent'
+      );
+    `);
+
+    const { POST } = await import("@/app/api/admin/publish/clubs/route");
+
+    const formData = new FormData();
+    formData.append("csrf", "test-csrf");
+    formData.append("division_id", "10");
+    const response = await POST(new Request("http://localhost/api/admin/publish/clubs", {
+      method: "POST",
+      body: formData
+    }));
+
+    expect(response.status).toBe(303);
+    const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
+    expect(location).toContain("Published 1 club");
+
+    const beta = await db.get<{ competition_code: string | null }>(
+      "SELECT competition_code FROM clubs WHERE id = 101"
+    );
+    const gamma = await db.get<{ competition_code: string | null }>(
+      "SELECT competition_code FROM clubs WHERE id = 102"
+    );
+    expect(beta!.competition_code).toBeNull();
+    expect(gamma!.competition_code).toBe("FRIENDLY");
   });
 
   it("redirect preserves division_id", async () => {

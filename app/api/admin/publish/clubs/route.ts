@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
-import { getLatestSeasonId } from "@/lib/admin/clubs";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 import type { SqlWrite } from "@/lib/db/adapter";
 
@@ -53,8 +52,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const seasonId = await getLatestSeasonId(db);
-
     const divisionMapping = await db.get<{ competition_code: string }>(
       `SELECT dcm.competition_code
        FROM division_competition_mappings dcm
@@ -73,12 +70,31 @@ export async function POST(request: Request) {
       status: string;
     }>(
       `SELECT c.id, c.name, c.competition_code, c.status
-       FROM pyramid_season_memberships psm
-       JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
-       JOIN clubs c ON c.id = psm.club_id
-       WHERE psd.division_id = ? AND psm.season_id = ?
+       FROM division_assignments da
+       JOIN clubs c ON c.id = da.club_id
+       WHERE da.division_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM competitions comp
+           WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
+         )
+         AND NOT (
+           EXISTS (
+             SELECT 1
+             FROM fixtures f
+             JOIN competitions comp ON comp.code = f.competition_code
+             WHERE comp.kind = 'friendly'
+               AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM fixtures f
+             JOIN competitions comp ON comp.code = f.competition_code
+             WHERE comp.kind != 'friendly'
+               AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+           )
+         )
        ORDER BY c.name`,
-      [divisionId, seasonId]
+      [divisionId]
     );
 
     if (clubs.length === 0) {
