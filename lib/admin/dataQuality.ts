@@ -2,17 +2,43 @@ import { findAmbiguousAliases } from "@/lib/db/clubMapping";
 import type { AppDatabase } from "@/lib/db/adapter";
 
 export type DataQualitySeverity = "error" | "warning" | "info";
+export type DataQualityCategory = "Alias" | "Club" | "Division" | "Fixture" | "Venue";
 
 export interface DataQualityIssue {
   id: string;
   severity: DataQualitySeverity;
   issueType: string;
-  category: string;
+  category: DataQualityCategory;
   entity: string;
   entityId: number;
   summary: string;
   actionUrl: string | null;
 }
+
+export interface DataQualityRunOptions {
+  categories?: readonly DataQualityCategory[];
+  summaryOnly?: false;
+}
+
+export interface DataQualitySummaryOptions {
+  categories?: readonly DataQualityCategory[];
+  summaryOnly: true;
+}
+
+export interface DataQualitySummary {
+  total: number;
+  bySeverity: Record<DataQualitySeverity, number>;
+  byCategory: Record<DataQualityCategory, number>;
+  byIssueType: Record<string, number>;
+}
+
+interface DataQualityCheck {
+  categories: readonly DataQualityCategory[];
+  run: (db: AppDatabase) => Promise<DataQualityIssue[]>;
+}
+
+const severityOrder: DataQualitySeverity[] = ["error", "warning", "info"];
+const dataQualityCategories: DataQualityCategory[] = ["Alias", "Club", "Division", "Fixture", "Venue"];
 
 async function clubsWithNoPrimaryVenue(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; name: string }>(
@@ -271,29 +297,64 @@ async function fixturesHiddenByLocation(db: AppDatabase): Promise<DataQualityIss
   }));
 }
 
-export async function runDataQualityChecks(db: AppDatabase): Promise<DataQualityIssue[]> {
-  const checks = [
-    clubsWithNoPrimaryVenue(db),
-    venuesWithBlankPostcode(db),
-    venuesWithInvalidCoordinates(db),
-    venuesImpreciseCoords(db),
-    duplicateClubAliases(db),
-    clubsWithoutTicketUrl(db),
-    divisionsOverMaxSize(db),
-    divisionsWithoutCompetitionMapping(db),
-    fixturesMissingSourceUrl(db),
-    fixturesWithAssumedKickoff(db),
-    fixturesMissingTicketInfo(db),
-    fixturesHiddenByLocation(db),
-  ];
+const dataQualityChecks: DataQualityCheck[] = [
+  { categories: ["Club"], run: clubsWithNoPrimaryVenue },
+  { categories: ["Venue"], run: venuesWithBlankPostcode },
+  { categories: ["Venue"], run: venuesWithInvalidCoordinates },
+  { categories: ["Venue"], run: venuesImpreciseCoords },
+  { categories: ["Alias"], run: duplicateClubAliases },
+  { categories: ["Club"], run: clubsWithoutTicketUrl },
+  { categories: ["Division"], run: divisionsOverMaxSize },
+  { categories: ["Division"], run: divisionsWithoutCompetitionMapping },
+  { categories: ["Fixture"], run: fixturesMissingSourceUrl },
+  { categories: ["Fixture"], run: fixturesWithAssumedKickoff },
+  { categories: ["Fixture"], run: fixturesMissingTicketInfo },
+  { categories: ["Fixture"], run: fixturesHiddenByLocation },
+];
 
-  const results = await Promise.all(checks);
-  return results.flat().sort((a, b) => {
-    const order = ["error", "warning", "info"];
-    const sevDiff = order.indexOf(a.severity) - order.indexOf(b.severity);
+function sortDataQualityIssues(issues: DataQualityIssue[]): DataQualityIssue[] {
+  return issues.sort((a, b) => {
+    const sevDiff = severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity);
     if (sevDiff !== 0) return sevDiff;
     const typeDiff = a.issueType.localeCompare(b.issueType);
     if (typeDiff !== 0) return typeDiff;
     return a.category.localeCompare(b.category) || a.summary.localeCompare(b.summary);
   });
+}
+
+function buildDataQualitySummary(issues: DataQualityIssue[]): DataQualitySummary {
+  const bySeverity: Record<DataQualitySeverity, number> = { error: 0, warning: 0, info: 0 };
+  const byCategory = Object.fromEntries(dataQualityCategories.map((category) => [category, 0])) as Record<DataQualityCategory, number>;
+  const byIssueType: Record<string, number> = {};
+
+  for (const issue of issues) {
+    bySeverity[issue.severity]++;
+    byCategory[issue.category]++;
+    byIssueType[issue.issueType] = (byIssueType[issue.issueType] ?? 0) + 1;
+  }
+
+  return { total: issues.length, bySeverity, byCategory, byIssueType };
+}
+
+function selectDataQualityChecks(categories?: readonly DataQualityCategory[]): DataQualityCheck[] {
+  if (!categories || categories.length === 0) return dataQualityChecks;
+
+  const selectedCategories = new Set(categories);
+  return dataQualityChecks.filter((check) => check.categories.some((category) => selectedCategories.has(category)));
+}
+
+export async function runDataQualityChecks(db: AppDatabase, options?: DataQualityRunOptions): Promise<DataQualityIssue[]>;
+export async function runDataQualityChecks(db: AppDatabase, options: DataQualitySummaryOptions): Promise<DataQualitySummary>;
+export async function runDataQualityChecks(
+  db: AppDatabase,
+  options?: DataQualityRunOptions | DataQualitySummaryOptions
+): Promise<DataQualityIssue[] | DataQualitySummary> {
+  const results = await Promise.all(selectDataQualityChecks(options?.categories).map((check) => check.run(db)));
+  const issues = sortDataQualityIssues(results.flat());
+
+  if (options?.summaryOnly) {
+    return buildDataQualitySummary(issues);
+  }
+
+  return issues;
 }

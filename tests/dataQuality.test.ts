@@ -241,6 +241,73 @@ describe("data quality checks", () => {
     expect(warningIndex).toBeLessThan(infoIndex);
   });
 
+  it("keeps default behavior when no options are supplied", async () => {
+    const db = minimalDb();
+    db.exec(`
+      INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
+        (50, 'Broken Ground', 'BG1 1XX', 999, 0, 'exact');
+      INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
+      INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES
+        (200, 'Tickets FC', 'PL', 50, 'https://tickets.example.com'),
+        (201, 'Away FC', 'PL', 50, 'https://tickets.example.com');
+      INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
+        (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
+      INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, confidence) VALUES
+        (200, 'all_ticket', 2500, 1500, 'https://tickets.example.com', 'verified');
+    `);
+
+    const defaultIssues = await runDataQualityChecks(db);
+    const explicitDefaultIssues = await runDataQualityChecks(db, {});
+
+    expect(explicitDefaultIssues).toEqual(defaultIssues);
+    expect(defaultIssues.map((issue) => issue.id)).toContain("invalid-coords-50");
+    expect(defaultIssues.map((issue) => issue.id)).toContain("fixture-hidden-location-1");
+  });
+
+  it("filters checks by category", async () => {
+    const db = minimalDb();
+    db.exec(`
+      INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
+        (50, 'Broken Ground', 'BG1 1XX', 999, 0, 'exact');
+      INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
+      INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES
+        (200, 'Tickets FC', 'PL', 50, 'https://tickets.example.com'),
+        (201, 'Away FC', 'PL', 50, 'https://tickets.example.com');
+      INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
+        (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
+      INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, confidence) VALUES
+        (200, 'all_ticket', 2500, 1500, 'https://tickets.example.com', 'verified');
+    `);
+
+    const issues = await runDataQualityChecks(db, { categories: ["Fixture"] });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].id).toBe("fixture-hidden-location-1");
+    expect(issues[0].category).toBe("Fixture");
+  });
+
+  it("returns summary counts", async () => {
+    const db = minimalDb();
+    db.exec(`
+      INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
+        (50, 'No Postcode', '', 51.5, -0.1, 'exact'),
+        (51, 'Bad Coords', 'BC1 1XX', 999, 0, 'exact'),
+        (52, 'Unknown Coords', 'UC1 1XX', 51.5, -0.1, 'unknown');
+    `);
+
+    const summary = await runDataQualityChecks(db, { categories: ["Venue"], summaryOnly: true });
+
+    expect(summary.total).toBe(3);
+    expect(summary.bySeverity).toEqual({ error: 1, warning: 2, info: 0 });
+    expect(summary.byCategory.Venue).toBe(3);
+    expect(summary.byCategory.Fixture).toBe(0);
+    expect(summary.byIssueType).toEqual({
+      "Blank venue postcode": 1,
+      "Imprecise venue coordinates": 1,
+      "Invalid venue coordinates": 1,
+    });
+  });
+
   it("returns empty array when no issues exist", async () => {
     const db = minimalDb();
     db.exec(`
