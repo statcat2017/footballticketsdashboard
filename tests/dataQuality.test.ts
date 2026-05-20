@@ -1,18 +1,9 @@
-import Database from "better-sqlite3";
-
 import { describe, expect, it } from "vitest";
 
-import { applySchema } from "@/lib/db/setup";
-import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import { runDataQualityChecks } from "@/lib/admin/dataQuality";
-import type { AppDatabase } from "@/lib/db/adapter";
+import { createTestAppDatabase } from "./adminFixtures";
 
-function minimalDb(): AppDatabase {
-  const sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  applySchema(sqlite);
-  return createSqliteAppDatabase(sqlite);
-}
+const minimalDb = createTestAppDatabase;
 
 describe("data quality checks", () => {
   it("detects clubs with no primary venue", async () => {
