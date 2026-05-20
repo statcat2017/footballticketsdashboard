@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { setupDatabase } from "@/lib/db/setup";
-import { SEED_DATA } from "@/lib/db/d1";
+import { SEED_DATA } from "@/lib/db/seed-data";
 import {
   MEN_PYRAMID_CLUBS,
   MEN_PYRAMID_DIVISIONS,

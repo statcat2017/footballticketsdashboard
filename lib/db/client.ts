@@ -2,7 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 
 import { createSqliteAppDatabase, type AppDatabase, type D1RootDatabaseLike } from "./adapter.ts";
-import { createD1Database } from "./d1.ts";
+import { createD1Database } from "./seed-data.ts";
 import { defaultDatabasePath, setupDatabase } from "./setup.ts";
 
 let database: AppDatabase | null = null;
