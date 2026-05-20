@@ -37,7 +37,6 @@ describe("database setup", () => {
         (SELECT COUNT(*) FROM pyramid_divisions) as pyramidDivisions,
         (SELECT COUNT(*) FROM pyramid_edges) as pyramidEdges,
         (SELECT COUNT(*) FROM pyramid_seasons) as pyramidSeasons,
-        (SELECT COUNT(*) FROM pyramid_season_divisions) as pyramidSeasonDivisions,
         (SELECT COUNT(*) FROM admin_audit_log) as adminAuditRows
     `).get() as {
       competitions: number;
@@ -48,16 +47,8 @@ describe("database setup", () => {
       pyramidDivisions: number;
       pyramidEdges: number;
       pyramidSeasons: number;
-      pyramidSeasonDivisions: number;
       adminAuditRows: number;
     };
-
-    const pyramidDivision = second.prepare(`
-      SELECT status, locked_at
-      FROM pyramid_season_divisions
-      ORDER BY id
-      LIMIT 1
-    `).get() as { status: string; locked_at: string | null };
 
     const divisionDisplayOrders = second.prepare(`
       SELECT COUNT(*) as count, COUNT(display_order) as withOrder
@@ -84,10 +75,8 @@ describe("database setup", () => {
       pyramidDivisions: 52,
       pyramidEdges: 129,
       pyramidSeasons: 1,
-      pyramidSeasonDivisions: 52,
       adminAuditRows: 0
     });
-    expect(pyramidDivision).toEqual({ status: "open", locked_at: null });
     expect(divisionDisplayOrders.count).toBe(52);
     expect(divisionDisplayOrders.withOrder).toBe(52);
     expect(edgeAllocationTypes.total).toBe(129);

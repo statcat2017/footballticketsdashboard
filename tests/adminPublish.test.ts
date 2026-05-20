@@ -46,7 +46,6 @@ function createPublishTestDb(opts?: {
     INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
     INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
     INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-    INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
     INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
   `);
 
@@ -58,7 +57,6 @@ function createPublishTestDb(opts?: {
 
   db.exec(`
     INSERT INTO clubs (id, name, status, competition_code) VALUES (100, 'Test Town United', 'known', ${compCode});
-    INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
     INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Test Park', 'TE1 1ST', 51.5, -0.1);
     INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (100, 100, 50, '2025-08-01', NULL, 1);
@@ -186,7 +184,6 @@ describe("admin publish route", () => {
 
     db.exec(`
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (11, 1, 'current', 'Current Division', 2, 20);
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (11, 1, 1, 11, 'open');
       INSERT INTO competitions (code, name, tier) VALUES ('CUR', 'Current League', 2);
       INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (2, 11, 'CUR');
       UPDATE division_assignments SET division_id = 11 WHERE club_id = 100;
@@ -429,7 +426,6 @@ describe("admin publish competition route", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'test-div', '${divName}', ${level}, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
     `);
 
     if (opts?.existingCompetition) {
@@ -617,7 +613,6 @@ describe("admin publish clubs bulk route", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
       INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
     `);
 
@@ -627,9 +622,6 @@ describe("admin publish clubs bulk route", () => {
       INSERT INTO clubs (id, name, status, competition_code) VALUES (100, 'Alpha Town', 'known', ${alphaCompCode});
       INSERT INTO clubs (id, name, status, competition_code) VALUES (101, 'Beta City', 'known', NULL);
       INSERT INTO clubs (id, name, status, competition_code) VALUES (102, 'Gamma United', 'known', NULL);
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (101, 1, 1, 10, 101);
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (102, 1, 1, 10, 102);
       INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
       INSERT INTO division_assignments (club_id, division_id) VALUES (101, 10);
       INSERT INTO division_assignments (club_id, division_id) VALUES (102, 10);

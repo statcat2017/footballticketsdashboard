@@ -29,19 +29,15 @@ function createMinimalDb(): AppDatabase {
     INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES
       (1, 1, '2025-26');
 
-    INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES
-      (10, 1, 1, 10, 'open'),
-      (11, 1, 1, 11, 'open');
-
     INSERT INTO clubs (id, name, status) VALUES
       (100, 'Test Town United', 'known'),
       (101, 'City Athletic', 'known'),
       (102, 'Rovers FC', 'partial');
 
-    INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-      (100, 1, 1, 10, 100),
-      (101, 1, 1, 10, 101),
-      (102, 1, 1, 11, 102);
+    INSERT INTO division_assignments (club_id, division_id) VALUES
+      (100, 10),
+      (101, 10),
+      (102, 11);
 
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES
       (50, 'Test Park', 'TE1 1ST', 51.5, -0.1),
@@ -296,9 +292,8 @@ describe("admin venue service", () => {
       const db = createMinimalDb();
 
       db.exec(`
-        INSERT INTO clubs (id, name, status) VALUES (200, 'New Club', 'known');
-        INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-          (200, 1, 1, 10, 200);
+      INSERT INTO clubs (id, name, status) VALUES (200, 'New Club', 'known');
+      INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
       `);
 
       await assignAdminVenue(db, 200, 50, "2026-07-01");

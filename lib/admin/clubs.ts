@@ -19,7 +19,6 @@ export interface AdminClubRow {
 }
 
 export interface AdminDivisionGroup {
-  season_division_id: number;
   division_id: number;
   division_name: string;
   division_level: number;
@@ -27,14 +26,12 @@ export interface AdminDivisionGroup {
 }
 
 export interface AdminClubListData {
-  season_label: string;
+  seasonLabel: string;
   divisions: AdminDivisionGroup[];
   unassignedClubs: AdminClubRow[];
 }
 
 interface ClubDivisionRow {
-  season_label: string;
-  season_division_id: number;
   division_id: number;
   division_name: string;
   division_level: number;
@@ -119,24 +116,13 @@ interface SharingClubRow {
   name: string;
 }
 
-export async function getLatestSeasonId(db: AppDatabase): Promise<number> {
-  const row = await db.get<{ id: number }>("SELECT id FROM pyramid_seasons ORDER BY id DESC LIMIT 1");
-
-  if (!row) {
-    throw new Error("No pyramid seasons found.");
-  }
-
-  return row.id;
-}
-
 export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListData> {
-  const seasonId = await getLatestSeasonId(db);
-  const season = await db.get<{ season_label: string }>("SELECT season_label FROM pyramid_seasons WHERE id = ?", [seasonId]);
+  const season = await db.get<{ season_label: string }>(
+    "SELECT season_label FROM pyramid_seasons ORDER BY id DESC LIMIT 1"
+  );
 
   const rows = await db.all<ClubDivisionRow>(
     `SELECT
-      ps.season_label,
-      psd.id AS season_division_id,
       d.id AS division_id,
       d.name AS division_name,
       d.level AS division_level,
@@ -146,45 +132,39 @@ export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListDa
       v.id AS venue_id,
       v.name AS venue_name,
       v.postcode AS venue_postcode
-    FROM pyramid_season_memberships psm
-    JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    JOIN pyramid_seasons ps ON ps.id = psm.season_id
-    JOIN clubs c ON c.id = psm.club_id
+    FROM division_assignments da
+    JOIN pyramid_divisions d ON d.id = da.division_id
+    JOIN clubs c ON c.id = da.club_id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE psm.season_id = ?
-    ORDER BY d.level, d.name, c.name`,
-    [seasonId]
+    ORDER BY d.level, d.name, c.name`
   );
 
   const unassignedRows = await db.all<AdminClubRow>(
     `SELECT c.id AS club_id, c.name AS club_name, c.status AS club_status,
       v.id AS venue_id, v.name AS venue_name, v.postcode AS venue_postcode
     FROM clubs c
-    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = c.id AND psm.season_id = ?
+    LEFT JOIN division_assignments da ON da.club_id = c.id
     LEFT JOIN club_venue_assignments cva ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE psm.id IS NULL
-    ORDER BY c.name`,
-    [seasonId]
+    WHERE da.id IS NULL
+    ORDER BY c.name`
   );
 
   const divisions = new Map<number, AdminDivisionGroup>();
 
   for (const row of rows) {
-    let group = divisions.get(row.season_division_id);
+    let group = divisions.get(row.division_id);
 
     if (!group) {
       group = {
-        season_division_id: row.season_division_id,
         division_id: row.division_id,
         division_name: row.division_name,
         division_level: row.division_level,
         clubs: []
       };
-      divisions.set(row.season_division_id, group);
+      divisions.set(row.division_id, group);
     }
 
     group.clubs.push({
@@ -198,32 +178,31 @@ export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListDa
   }
 
   return {
-    season_label: season?.season_label ?? "",
+    seasonLabel: season?.season_label ?? "",
     divisions: Array.from(divisions.values()),
     unassignedClubs: unassignedRows
   };
 }
 
 export async function getAdminClubDetail(db: AppDatabase, clubId: number): Promise<AdminClubDetailData | null> {
-  const seasonId = await getLatestSeasonId(db);
+  const season = await db.get<{ season_label: string }>(
+    "SELECT season_label FROM pyramid_seasons ORDER BY id DESC LIMIT 1"
+  );
 
   const clubRow = await db.get<ClubDetailRow>(
     `SELECT
       c.id, c.name, c.aliases, c.status, c.source_url, c.verified_at,
       d.id AS division_id, d.name AS division_name, d.level AS division_level,
-      ps.season_label,
       v.id AS venue_id, v.name AS venue_name, v.postcode AS venue_postcode,
       v.latitude, v.longitude, v.is_approximate
     FROM clubs c
-    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = c.id AND psm.season_id = ?
-    LEFT JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id AND psm.season_id = psd.season_id
-    LEFT JOIN pyramid_divisions d ON d.id = psd.division_id
-    LEFT JOIN pyramid_seasons ps ON ps.id = psm.season_id
+    LEFT JOIN division_assignments da ON da.club_id = c.id
+    LEFT JOIN pyramid_divisions d ON d.id = da.division_id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
     WHERE c.id = ?`,
-    [seasonId, clubId]
+    [clubId]
   );
 
   if (!clubRow) {
@@ -273,10 +252,10 @@ export async function getAdminClubDetail(db: AppDatabase, clubId: number): Promi
       source_url: clubRow.source_url,
       verified_at: clubRow.verified_at
     },
-    season: clubRow.season_label
+    season: clubRow.division_id
       ? {
-          label: clubRow.season_label,
-          division_id: clubRow.division_id!,
+          label: season?.season_label ?? "",
+          division_id: clubRow.division_id,
           division_name: clubRow.division_name!,
           division_level: clubRow.division_level!
         }
@@ -370,22 +349,19 @@ export interface PublishableClub {
 }
 
 export async function getPublishableDivisions(db: AppDatabase): Promise<PublishableDivision[]> {
-  const seasonId = await getLatestSeasonId(db);
   const rows = await db.all<{
     id: number; name: string; level: number; clubCount: number; competition_code: string | null;
   }>(
     `SELECT
       d.id, d.name, d.level,
-      COUNT(psm.id) AS clubCount,
+      COUNT(da.id) AS clubCount,
       dcm.competition_code
-    FROM pyramid_season_divisions psd
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    JOIN pyramid_season_memberships psm ON psm.season_division_id = psd.id
+    FROM pyramid_divisions d
+    LEFT JOIN division_assignments da ON da.division_id = d.id
     LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
-    WHERE psd.season_id = ?
     GROUP BY d.id
-    ORDER BY d.level, d.name`,
-    [seasonId]
+    HAVING clubCount > 0
+    ORDER BY d.level, d.name`
   );
   return rows.map((row) => ({
     id: row.id,
@@ -398,24 +374,21 @@ export async function getPublishableDivisions(db: AppDatabase): Promise<Publisha
 }
 
 export async function getPublishableClubs(db: AppDatabase, divisionId?: number): Promise<PublishableClub[]> {
-  const seasonId = await getLatestSeasonId(db);
   let sql = `SELECT
       c.id, c.name,
       d.id AS division_id,
       d.name AS division_name,
       v.name AS venue_name,
       c.competition_code IS NOT NULL AND c.status = 'known' AS is_published
-    FROM pyramid_season_memberships psm
-    JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    JOIN clubs c ON c.id = psm.club_id
+    FROM division_assignments da
+    JOIN pyramid_divisions d ON d.id = da.division_id
+    JOIN clubs c ON c.id = da.club_id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-    LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE psm.season_id = ?`;
-  const params: (string | number)[] = [seasonId];
+    LEFT JOIN venues v ON v.id = cva.venue_id`;
+  const params: (string | number)[] = [];
   if (divisionId !== undefined) {
-    sql += ` AND d.id = ?`;
+    sql += ` WHERE d.id = ?`;
     params.push(divisionId);
   }
   sql += ` ORDER BY d.level, d.name, c.name`;
@@ -450,6 +423,39 @@ const KNOWN_COMPETITION_MAP: Record<string, string> = {
   "Isthmian League Division One South Central": "ISM_SC",
   "Isthmian League Division One South East": "ISM_SE",
   "Northern Premier League Division One Midlands": "NPL_M",
+  "North West Counties League Premier Division": "NWCF_P",
+  "North West Counties League Division One North": "NWCF_1N",
+  "North West Counties League Division One South": "NWCF_1S",
+  "Combined Counties League Premier Division North": "CC_PN",
+  "Combined Counties League Premier Division South": "CC_PS",
+  "Combined Counties League Division One": "CC_D1",
+  "Eastern Counties League Premier Division": "ECL_P",
+  "Eastern Counties League Division One North": "ECL_1N",
+  "Eastern Counties League Division One South": "ECL_1S",
+  "Essex Senior League": "ESL",
+  "Hellenic League Premier Division": "HLL_P",
+  "Hellenic League Division One": "HLL_D1",
+  "Midland League Premier Division": "MID_P",
+  "Midland League Division One": "MID_D1",
+  "Northern Counties East League Premier Division": "NCE_P",
+  "Northern Counties East League Division One": "NCE_D1",
+  "Northern League Division One": "NLG_D1",
+  "Northern League Division Two": "NLG_D2",
+  "Southern Counties East League Premier Division": "SCE_P",
+  "Southern Counties East League Division One": "SCE_D1",
+  "Southern Combination League Premier Division": "SCB_P",
+  "Southern Combination League Division One": "SCB_D1",
+  "Spartan South Midlands League Premier Division": "SSM_P",
+  "Spartan South Midlands League Division One": "SSM_D1",
+  "United Counties League Premier Division North": "UCL_PN",
+  "United Counties League Premier Division South": "UCL_PS",
+  "United Counties League Division One": "UCL_D1",
+  "Wessex League Premier Division": "WEX_P",
+  "Wessex League Division One": "WEX_D1",
+  "Western League Premier Division": "WES_P",
+  "Western League Division One": "WES_D1",
+  "South West Peninsula League Premier Division East": "SWP_PE",
+  "South West Peninsula League Premier Division West": "SWP_PW",
 };
 
 export function divisionCodeFromName(name: string): string {
@@ -506,10 +512,8 @@ export interface AllCompetitionsData {
 }
 
 export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllCompetitionsData> {
-  const seasonId = await getLatestSeasonId(db);
   const season = await db.get<{ season_label: string }>(
-    "SELECT season_label FROM pyramid_seasons WHERE id = ?",
-    [seasonId]
+    "SELECT season_label FROM pyramid_seasons ORDER BY id DESC LIMIT 1"
   );
 
   const rows = await db.all<{
@@ -540,15 +544,13 @@ export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllC
     FROM competitions c
     LEFT JOIN division_competition_mappings dcm ON dcm.competition_code = c.code
     LEFT JOIN pyramid_divisions d ON d.id = dcm.division_id
-    LEFT JOIN pyramid_season_divisions psd ON psd.division_id = d.id AND psd.season_id = ?
-    LEFT JOIN pyramid_season_memberships psm ON psm.season_division_id = psd.id
-    LEFT JOIN clubs cl ON cl.id = psm.club_id
+    LEFT JOIN division_assignments da ON da.division_id = d.id
+    LEFT JOIN clubs cl ON cl.id = da.club_id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = cl.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
     WHERE c.kind != 'friendly'
-    ORDER BY c.tier, c.name, cl.name`,
-    [seasonId]
+    ORDER BY c.tier, c.name, cl.name`
   );
 
   const unassignedRows = await db.all<{
@@ -559,12 +561,11 @@ export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllC
   }>(
     `SELECT c.id, c.name, c.status, v.name AS venue_name
     FROM clubs c
-    LEFT JOIN pyramid_season_memberships psm ON psm.club_id = c.id AND psm.season_id = ?
+    LEFT JOIN division_assignments da ON da.club_id = c.id
     LEFT JOIN club_venue_assignments cva ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE psm.id IS NULL
-    ORDER BY c.name`,
-    [seasonId]
+    WHERE da.id IS NULL
+    ORDER BY c.name`
   );
 
   const compMap = new Map<string, {

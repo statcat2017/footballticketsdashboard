@@ -25,22 +25,8 @@ vi.mock("@/lib/db/pyramid", () => ({
   MEN_PYRAMID_MEMBERSHIPS: [
     { id: 1, season_id: 1, template_id: 1, season_division_id: 1, club_id: 1 }
   ],
-  MEN_PYRAMID_MOVEMENTS: [
-    {
-      id: 1,
-      season_id: 1,
-      template_id: 1,
-      club_id: 1,
-      from_season_division_id: 1,
-      to_season_division_id: 1,
-      movement_type: "promotion",
-      note: null,
-      created_at: "2026-05-10T00:00:00.000Z"
-    }
-  ],
   computeDivisionDisplayOrder: () => new Map([[1, 1]]),
-  computeEdgeAllocationType: () => new Map(),
-  validatePyramidSeason: vi.fn(() => [])
+  computeEdgeAllocationType: () => new Map()
 }));
 
 import { initializeD1Database } from "@/lib/db/d1";
@@ -55,21 +41,14 @@ describe("D1 initialization", () => {
     await initializeD1Database(binding);
 
     const clubsIndex = operations.findIndex((operation) => operation.includes("INSERT INTO clubs "));
-    const membershipIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_season_memberships "));
     const assignmentIndex = operations.findIndex((operation) => operation.includes("INSERT OR IGNORE INTO division_assignments "));
-    const movementIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_movements "));
     const batchIndex = operations.findIndex((operation) => operation.startsWith("batch:"));
     const schemaExec = operations.find((operation) => operation.startsWith("exec:"));
 
     expect(schemaExec).toContain("CREATE TABLE IF NOT EXISTS division_assignments");
     expect(clubsIndex).toBeGreaterThan(-1);
-    expect(membershipIndex).toBeGreaterThan(-1);
     expect(assignmentIndex).toBeGreaterThan(-1);
-    expect(movementIndex).toBeGreaterThan(-1);
-    expect(clubsIndex).toBeLessThan(membershipIndex);
-    expect(membershipIndex).toBeLessThan(assignmentIndex);
-    expect(assignmentIndex).toBeLessThan(movementIndex);
-    expect(clubsIndex).toBeLessThan(movementIndex);
+    expect(clubsIndex).toBeLessThan(assignmentIndex);
     expect(batchIndex).toBe(operations.length - 1);
     const totalPrepares = operations.filter((operation) => operation.startsWith("prepare:"));
     const batchPrepares = totalPrepares.filter((op) => (

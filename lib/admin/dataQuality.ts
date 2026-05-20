@@ -1,4 +1,3 @@
-import { getLatestSeasonId } from "@/lib/admin/clubs";
 import { findAmbiguousAliases } from "@/lib/db/clubMapping";
 import type { AppDatabase } from "@/lib/db/adapter";
 
@@ -15,29 +14,16 @@ export interface DataQualityIssue {
   actionUrl: string | null;
 }
 
-async function tryGetSeasonId(db: AppDatabase): Promise<number | null> {
-  try {
-    return await getLatestSeasonId(db);
-  } catch {
-    return null;
-  }
-}
-
 async function clubsWithNoPrimaryVenue(db: AppDatabase): Promise<DataQualityIssue[]> {
-  const seasonId = await tryGetSeasonId(db);
-  if (seasonId === null) return [];
-
   const rows = await db.all<{ id: number; name: string }>(
     `SELECT c.id, c.name
      FROM clubs c
-     JOIN pyramid_season_memberships psm ON psm.club_id = c.id
+     JOIN division_assignments da ON da.club_id = c.id
      LEFT JOIN club_venue_assignments cva
        ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
      WHERE cva.id IS NULL
-       AND psm.season_id = ?
      GROUP BY c.id
-     ORDER BY c.name`,
-    [seasonId]
+     ORDER BY c.name`
   );
 
   return rows.map((r) => ({
@@ -148,19 +134,13 @@ async function clubsWithoutTicketUrl(db: AppDatabase): Promise<DataQualityIssue[
 }
 
 async function divisionsOverMaxSize(db: AppDatabase): Promise<DataQualityIssue[]> {
-  const seasonId = await tryGetSeasonId(db);
-  if (seasonId === null) return [];
-
   const rows = await db.all<{ id: number; name: string; club_count: number; max_size: number }>(
-    `SELECT d.id, d.name, COUNT(psm.id) AS club_count, d.max_size
-     FROM pyramid_season_divisions psd
-     JOIN pyramid_divisions d ON d.id = psd.division_id
-     JOIN pyramid_season_memberships psm ON psm.season_division_id = psd.id
-     WHERE psd.season_id = ?
+    `SELECT d.id, d.name, COUNT(da.id) AS club_count, d.max_size
+     FROM pyramid_divisions d
+     JOIN division_assignments da ON da.division_id = d.id
      GROUP BY d.id
      HAVING club_count > d.max_size
-     ORDER BY d.name`,
-    [seasonId]
+     ORDER BY d.name`
   );
 
   return rows.map((r) => ({
@@ -176,20 +156,14 @@ async function divisionsOverMaxSize(db: AppDatabase): Promise<DataQualityIssue[]
 }
 
 async function divisionsWithoutCompetitionMapping(db: AppDatabase): Promise<DataQualityIssue[]> {
-  const seasonId = await tryGetSeasonId(db);
-  if (seasonId === null) return [];
-
   const rows = await db.all<{ id: number; name: string }>(
     `SELECT d.id, d.name
-     FROM pyramid_season_divisions psd
-     JOIN pyramid_divisions d ON d.id = psd.division_id
-     JOIN pyramid_season_memberships psm ON psm.season_division_id = psd.id
+     FROM pyramid_divisions d
+     JOIN division_assignments da ON da.division_id = d.id
      LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
-     WHERE psd.season_id = ?
-       AND dcm.id IS NULL
+     WHERE dcm.id IS NULL
      GROUP BY d.id
-     ORDER BY d.name`,
-    [seasonId]
+     ORDER BY d.name`
   );
 
   return rows.map((r) => ({
