@@ -70,6 +70,7 @@ Add `lib/import/apply.ts`:
 - Look up existing fixture by `(home_participant, away_participant, competition, season)`.
 - Use `(home_club_id, away_club_id, competition_code, season_label)` for mapped clubs.
 - For one-off participants, use `(home_one_off_name, away_one_off_name, competition_code, season_label)`.
+- Keep this lookup centralized in `findImportFixtureMatch()` so adapters do not duplicate fixture identity SQL.
 - If match found → validation marks the row `update` and apply updates the existing fixture.
 - If no match → validation marks the row `insert` and apply inserts a new fixture.
 
