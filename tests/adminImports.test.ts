@@ -6,8 +6,8 @@ import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
 import { createSource, createBatch, addBatchRows } from "@/lib/import";
 import { getBatchRows } from "@/lib/import/importBatch";
-import { getSeasons, getRecentBatches, getBatchDetail, getSources } from "@/lib/admin/imports";
-import type { NormalizedFixtureRow } from "@/lib/import";
+import { getSeasons, getRecentBatches, getBatchDetail, getSources, getImportPreviewCounts } from "@/lib/admin/imports";
+import type { ImportBatchRow, NormalizedFixtureRow } from "@/lib/import";
 
 vi.mock("@/lib/admin/auth", async () => {
   const actual = await vi.importActual<typeof import("@/lib/admin/auth")>("@/lib/admin/auth");
@@ -183,5 +183,69 @@ describe("repairs route - create_venue_and_assign cross-batch protection", () =>
     // Batch B's row should not have been mutated
     const rowsBAfter = await getBatchRows(db, batchB.id);
     expect(rowsBAfter[0].venueRaw).toBeNull();
+  });
+});
+
+function previewRow(id: number, matchResult: ImportBatchRow["matchResult"]): ImportBatchRow {
+  return {
+    id,
+    batchId: 1,
+    rowIndex: id,
+    homeParticipantRaw: "Home",
+    awayParticipantRaw: "Away",
+    homeParticipantResolvedId: null,
+    awayParticipantResolvedId: null,
+    homeIsOneOff: false,
+    awayIsOneOff: false,
+    competitionRaw: null,
+    competitionResolvedCode: null,
+    venueRaw: null,
+    venueResolvedId: null,
+    kickoffDate: null,
+    kickoffTime: null,
+    status: null,
+    ticketUrl: null,
+    adultPricePence: null,
+    concessionPricePence: null,
+    sourceUrl: null,
+    evidenceJson: null,
+    confidence: "unknown",
+    matchResult,
+    warningsJson: null,
+    finalAction: null,
+    finalFixtureId: null,
+    createdAt: "2026-05-21T00:00:00.000Z",
+  };
+}
+
+describe("getImportPreviewCounts", () => {
+  it("keeps insert and update preview counts separate", () => {
+    const counts = getImportPreviewCounts({
+      insert: [previewRow(1, "insert"), previewRow(2, "insert")],
+      update: [previewRow(3, "update")],
+      blocked: [previewRow(4, "blocked")],
+      pending: [previewRow(5, null)],
+    });
+
+    expect(counts).toEqual({
+      insert: 2,
+      update: 1,
+      blocked: 1,
+      skipped: 0,
+      pending: 1,
+    });
+  });
+
+  it("counts explicit skips and duplicate rows as skipped preview rows", () => {
+    const counts = getImportPreviewCounts({
+      skip: [previewRow(1, "skip")],
+      duplicate_existing_fixture: [previewRow(2, "duplicate_existing_fixture")],
+      duplicate_pending_batch: [previewRow(3, "duplicate_pending_batch")],
+      duplicate_same_batch: [previewRow(4, "duplicate_same_batch")],
+    });
+
+    expect(counts.skipped).toBe(4);
+    expect(counts.insert).toBe(0);
+    expect(counts.update).toBe(0);
   });
 });
