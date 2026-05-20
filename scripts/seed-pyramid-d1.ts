@@ -19,6 +19,7 @@ function esc(v: unknown): string {
 
 const divisionDisplayOrder = computeDivisionDisplayOrder();
 const edgeAllocationType = computeEdgeAllocationType();
+const latestSeasonId = Math.max(...MEN_PYRAMID_SEASONS.map((s) => s.id));
 const seasonDivisionById = new Map(MEN_PYRAMID_SEASON_DIVISIONS.map((d) => [d.id, d]));
 
 const lines: string[] = [];
@@ -51,8 +52,9 @@ for (const a of CLUB_VENUE_ASSIGNMENTS) {
   lines.push(`INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (${a.id}, ${a.club_id}, ${a.venue_id}, ${esc(a.effective_from)}, ${esc(a.effective_to)}, ${a.is_primary}) ON CONFLICT(id) DO UPDATE SET club_id = excluded.club_id, venue_id = excluded.venue_id, effective_from = excluded.effective_from, effective_to = excluded.effective_to, is_primary = excluded.is_primary;`);
 }
 
-// Division assignments (derived from memberships)
+// Division assignments (derived from latest-season memberships only)
 for (const m of MEN_PYRAMID_MEMBERSHIPS) {
+  if (m.season_id !== latestSeasonId) continue;
   const sd = seasonDivisionById.get(m.season_division_id);
   if (sd) {
     lines.push(`INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (${m.club_id}, ${sd.division_id});`);

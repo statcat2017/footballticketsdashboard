@@ -59,7 +59,7 @@ describe("admin club browser", () => {
 
     const result = await getAdminClubList(db);
 
-    expect(result.season_label).toBe("2025-26");
+    expect(result.seasonLabel).toBe("2025-26");
     expect(result.divisions).toHaveLength(2);
 
     const premier = result.divisions.find((d) => d.division_name === "Premier Division");

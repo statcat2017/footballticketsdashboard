@@ -738,6 +738,26 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     }
   }
 
+  // Lightweight validation: no duplicate club assignments, all refs exist
+  const dupes = await db.get<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM division_assignments GROUP BY club_id HAVING COUNT(*) > 1"
+  );
+  if (dupes && dupes.count > 0) {
+    throw new Error("division_assignments has duplicate club entries.");
+  }
+  const badClubs = await db.get<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM division_assignments da LEFT JOIN clubs c ON c.id = da.club_id WHERE c.id IS NULL"
+  );
+  if (badClubs && badClubs.count > 0) {
+    throw new Error("division_assignments references non-existent clubs.");
+  }
+  const badDivs = await db.get<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM division_assignments da LEFT JOIN pyramid_divisions d ON d.id = da.division_id WHERE d.id IS NULL"
+  );
+  if (badDivs && badDivs.count > 0) {
+    throw new Error("division_assignments references non-existent divisions.");
+  }
+
   for (const p of SEED_DATA.club_ticket_prices) {
     add(
       "INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(club_id) DO UPDATE SET sale_mode = excluded.sale_mode, adult_price_pence = excluded.adult_price_pence, concession_price_pence = excluded.concession_price_pence, source_url = excluded.source_url, verified_at = excluded.verified_at, confidence = excluded.confidence",

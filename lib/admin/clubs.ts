@@ -19,7 +19,6 @@ export interface AdminClubRow {
 }
 
 export interface AdminDivisionGroup {
-  season_division_id: number;
   division_id: number;
   division_name: string;
   division_level: number;
@@ -27,14 +26,12 @@ export interface AdminDivisionGroup {
 }
 
 export interface AdminClubListData {
-  season_label: string;
+  seasonLabel: string;
   divisions: AdminDivisionGroup[];
   unassignedClubs: AdminClubRow[];
 }
 
 interface ClubDivisionRow {
-  season_label: string;
-  season_division_id: number;
   division_id: number;
   division_name: string;
   division_level: number;
@@ -162,7 +159,6 @@ export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListDa
 
     if (!group) {
       group = {
-        season_division_id: row.division_id,
         division_id: row.division_id,
         division_name: row.division_name,
         division_level: row.division_level,
@@ -182,7 +178,7 @@ export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListDa
   }
 
   return {
-    season_label: season?.season_label ?? "",
+    seasonLabel: season?.season_label ?? "",
     divisions: Array.from(divisions.values()),
     unassignedClubs: unassignedRows
   };
