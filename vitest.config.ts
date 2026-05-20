@@ -4,19 +4,15 @@ import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const aliasConfig = {
-  resolve: {
-    alias: {
-      "@": __dirname
-    }
-  }
+const alias = {
+  "@": __dirname
 };
 
 export default defineConfig({
   test: {
     projects: [
       {
-        ...aliasConfig,
+        resolve: { alias },
         test: {
           name: "node",
           environment: "node",
@@ -24,11 +20,12 @@ export default defineConfig({
         }
       },
       {
-        ...aliasConfig,
+        resolve: { alias },
         test: {
           name: "components",
           environment: "jsdom",
           include: ["tests/**/*.test.tsx"],
+          setupFiles: ["./tests/setup.ts"],
           exclude: ["tests/**/*.test.ts"]
         }
       }
