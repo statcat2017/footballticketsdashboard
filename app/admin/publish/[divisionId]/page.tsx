@@ -410,7 +410,7 @@ export default async function DivisionDetailPage(props: {
                       </td>
                       <td style={{ padding: "0.6rem 1rem" }}>
                         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                          {!club.isPublished && club.venueName && detail.isPublished && (
+                          {!club.isPublished && club.venueName && detail.isPublished && !club.isFriendlyOnly && (
                             <form method="post" action="/api/admin/publish/club">
                               <input type="hidden" name="csrf" value={csrfToken} />
                               <input type="hidden" name="club_id" value={club.id} />
@@ -434,9 +434,14 @@ export default async function DivisionDetailPage(props: {
                               No venue
                             </span>
                           )}
-                          {!club.isPublished && club.venueName && !detail.isPublished && (
+                          {!club.isPublished && club.venueName && !detail.isPublished && !club.isFriendlyOnly && (
                             <span style={{ fontSize: "12px", color: "#a76800", fontWeight: 600 }}>
                               Unmapped
+                            </span>
+                          )}
+                          {club.isFriendlyOnly && !club.isPublished && (
+                            <span style={{ fontSize: "12px", color: "#a76800", fontWeight: 600 }}>
+                              Cannot publish friendly-only club
                             </span>
                           )}
                           <form method="post" action="/api/admin/unassign-club" style={{ display: "inline" }}>
