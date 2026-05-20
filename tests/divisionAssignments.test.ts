@@ -12,6 +12,12 @@ import {
   getDivisionDetail,
   assignClubToDivision,
   unassignClub,
+  moveClubWithSwap,
+  unassignClubFromTier10,
+  getPromoteTargets,
+  getRelegateTargets,
+  getMigrateTargets,
+  getClubsInDivision,
 } from "@/lib/admin/divisionAssignments";
 import type { AppDatabase } from "@/lib/db/adapter";
 
@@ -28,7 +34,14 @@ function createMinimalDb(): AppDatabase {
       (10, 1, 'premier', 'Premier Division', 1, 20),
       (11, 1, 'first', 'First Division', 2, 24),
       (12, 1, 'tier9-div', 'Tier Nine Division', 9, 16),
-      (13, 1, 'tier10-div', 'Tier Ten Division', 10, 16);
+      (13, 1, 'tier10-div', 'Tier Ten Division', 10, 16),
+      (14, 1, 'premier-b', 'Premier B Division', 1, 20);
+
+    INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type) VALUES
+      (1, 11, 10, 'promotion'),
+      (2, 10, 11, 'relegation'),
+      (3, 13, 12, 'promotion'),
+      (4, 12, 13, 'relegation');
 
     INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES
       (1, 1, '2025-26');
@@ -46,16 +59,18 @@ function createMinimalDb(): AppDatabase {
       (100, 'Test Town United', 'known', 'PL'),
       (101, 'City Athletic', 'known', 'PL'),
       (102, 'Rovers FC', 'partial', NULL),
-      (103, 'Tier Nine Club', 'known', NULL);
+      (103, 'Tier Nine Club', 'known', NULL),
+      (104, 'Tier Ten Club', 'known', NULL);
 
     INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
       (100, 1, 1, 10, 100),
       (101, 1, 1, 10, 101),
       (102, 1, 1, 11, 102),
-      (103, 1, 1, 12, 103);
+      (103, 1, 1, 12, 103),
+      (104, 1, 1, 13, 104);
   `);
 
-  sqlite.exec("INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10), (102, 11), (103, 12)");
+  sqlite.exec("INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10), (102, 11), (103, 12), (104, 13)");
 
   sqlite.exec(`
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES
@@ -214,10 +229,10 @@ describe("getDivisionAssignments", () => {
 
     const tier9 = data.divisions.find((d) => d.id === 12);
     expect(tier9).toBeDefined();
-    // Division 13 (Tier Ten) has no clubs assigned
     const tier10 = data.divisions.find((d) => d.id === 13);
     expect(tier10).toBeDefined();
-    expect(tier10!.clubCount).toBe(0);
+    expect(tier10!.clubCount).toBe(1);
+    expect(tier10!.clubs[0].name).toBe("Tier Ten Club");
   });
 
   it("shows assigned clubs under their current division", async () => {
@@ -525,5 +540,241 @@ describe("unassignClub", () => {
     );
     expect(audit).not.toBeNull();
     expect(audit!.entity_id).toBe("100");
+  });
+});
+
+describe("club movement helpers", () => {
+  describe("getPromoteTargets", () => {
+    it("returns divisions connected by promotion edges", async () => {
+      const db = createMinimalDb();
+      const targets = await getPromoteTargets(db, 11);
+      expect(targets).toHaveLength(1);
+      expect(targets[0].id).toBe(10);
+      expect(targets[0].name).toBe("Premier Division");
+    });
+
+    it("returns empty array when no promotion edges exist", async () => {
+      const db = createMinimalDb();
+      const targets = await getPromoteTargets(db, 10);
+      expect(targets).toHaveLength(0);
+    });
+  });
+
+  describe("getRelegateTargets", () => {
+    it("returns divisions connected by relegation edges", async () => {
+      const db = createMinimalDb();
+      const targets = await getRelegateTargets(db, 10);
+      expect(targets).toHaveLength(1);
+      expect(targets[0].id).toBe(11);
+    });
+
+    it("returns empty array when no relegation edges exist", async () => {
+      const db = createMinimalDb();
+      const targets = await getRelegateTargets(db, 13);
+      expect(targets).toHaveLength(0);
+    });
+  });
+
+  describe("getMigrateTargets", () => {
+    it("returns other divisions at the same level", async () => {
+      const db = createMinimalDb();
+      const targets = await getMigrateTargets(db, 10);
+      expect(targets.length).toBeGreaterThanOrEqual(1);
+      expect(targets.some((t) => t.id === 14)).toBe(true);
+      expect(targets.every((t) => t.id !== 10)).toBe(true);
+    });
+
+    it("returns empty array when no other divisions at same level", async () => {
+      const db = createMinimalDb();
+      const targets = await getMigrateTargets(db, 14);
+      expect(targets.length).toBeGreaterThanOrEqual(1);
+      expect(targets.some((t) => t.id === 10)).toBe(true);
+    });
+  });
+
+  describe("getClubsInDivision", () => {
+    it("returns clubs assigned to a division", async () => {
+      const db = createMinimalDb();
+      const clubs = await getClubsInDivision(db, 10);
+      expect(clubs).toHaveLength(2);
+      expect(clubs.map((c) => c.name)).toContain("Test Town United");
+      expect(clubs.map((c) => c.name)).toContain("City Athletic");
+    });
+
+    it("returns empty array for division with no clubs", async () => {
+      const db = createMinimalDb();
+      db.exec("DELETE FROM division_assignments WHERE club_id = 104");
+      const clubs = await getClubsInDivision(db, 13);
+      expect(clubs).toHaveLength(0);
+    });
+  });
+});
+
+describe("moveClubWithSwap", () => {
+  it("moves a club to a new division without swap", async () => {
+    const db = createMinimalDb();
+
+    await moveClubWithSwap(db, 102, 10, null, "promote", "test-admin");
+
+    const assignment = await db.get<{ division_id: number }>(
+      "SELECT division_id FROM division_assignments WHERE club_id = 102"
+    );
+    expect(assignment!.division_id).toBe(10);
+  });
+
+  it("swaps two clubs between divisions", async () => {
+    const db = createMinimalDb();
+
+    await moveClubWithSwap(db, 102, 10, 100, "promote", "test-admin");
+
+    const club102 = await db.get<{ division_id: number }>(
+      "SELECT division_id FROM division_assignments WHERE club_id = 102"
+    );
+    const club100 = await db.get<{ division_id: number }>(
+      "SELECT division_id FROM division_assignments WHERE club_id = 100"
+    );
+    expect(club102!.division_id).toBe(10);
+    expect(club100!.division_id).toBe(11);
+  });
+
+  it("allows swap into a full target division", async () => {
+    const db = createMinimalDb();
+    db.exec("UPDATE pyramid_divisions SET max_size = 2 WHERE id = 10");
+    db.exec(`
+      INSERT INTO clubs (id, name, status) VALUES (200, 'Fill Club 1', 'known'), (201, 'Fill Club 2', 'known');
+      INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10), (201, 10);
+    `);
+
+    await moveClubWithSwap(db, 200, 11, 102, "relegate", "test-admin");
+
+    const club200 = await db.get<{ division_id: number }>(
+      "SELECT division_id FROM division_assignments WHERE club_id = 200"
+    );
+    expect(club200!.division_id).toBe(11);
+  });
+
+  it("rejects no-swap move into a full target division", async () => {
+    const db = createMinimalDb();
+    db.exec("UPDATE pyramid_divisions SET max_size = 2 WHERE id = 10");
+    db.exec(`
+      INSERT INTO clubs (id, name, status) VALUES (200, 'Fill Club 1', 'known'), (201, 'Fill Club 2', 'known');
+      INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10), (201, 10);
+    `);
+
+    db.exec("INSERT INTO clubs (id, name, status) VALUES (300, 'Overflow FC', 'known')");
+    db.exec("INSERT INTO division_assignments (club_id, division_id) VALUES (300, 11)");
+
+    await expect(
+      moveClubWithSwap(db, 300, 10, null, "promote", "test-admin")
+    ).rejects.toThrow("at capacity");
+  });
+
+  it("rejects cross-direction movement (promote to higher level number)", async () => {
+    const db = createMinimalDb();
+
+    await expect(
+      moveClubWithSwap(db, 100, 11, null, "promote", "test-admin")
+    ).rejects.toThrow("must be a lower level");
+  });
+
+  it("rejects migrate to different level", async () => {
+    const db = createMinimalDb();
+
+    await expect(
+      moveClubWithSwap(db, 100, 11, null, "migrate", "test-admin")
+    ).rejects.toThrow("must be the same level");
+  });
+
+  it("rejects relegate to lower level number", async () => {
+    const db = createMinimalDb();
+
+    await expect(
+      moveClubWithSwap(db, 102, 10, null, "relegate", "test-admin")
+    ).rejects.toThrow("must be a higher level");
+  });
+
+  it("throws for non-existent club", async () => {
+    const db = createMinimalDb();
+    await expect(
+      moveClubWithSwap(db, 99999, 10, null, "promote", "test-admin")
+    ).rejects.toThrow("not found");
+  });
+
+  it("throws when club is not assigned", async () => {
+    const db = createMinimalDb();
+    db.exec("INSERT INTO clubs (id, name, status) VALUES (300, 'Lone FC', 'known')");
+    await expect(
+      moveClubWithSwap(db, 300, 10, null, "promote", "test-admin")
+    ).rejects.toThrow("not assigned to any division");
+  });
+
+  it("throws when swap club is not in target division", async () => {
+    const db = createMinimalDb();
+    await expect(
+      moveClubWithSwap(db, 102, 10, 102, "promote", "test-admin")
+    ).rejects.toThrow("not in the target division");
+  });
+
+  it("clears competition_code on movement", async () => {
+    const db = createMinimalDb();
+
+    await moveClubWithSwap(db, 102, 10, null, "promote", "test-admin");
+
+    const club = await db.get<{ competition_code: string | null }>(
+      "SELECT competition_code FROM clubs WHERE id = 102"
+    );
+    expect(club!.competition_code).toBeNull();
+  });
+
+  it("writes an audit log entry", async () => {
+    const db = createMinimalDb();
+
+    await moveClubWithSwap(db, 102, 10, null, "promote", "test-admin");
+
+    const audit = await db.get<{ entity_type: string; entity_id: string }>(
+      "SELECT entity_type, entity_id FROM admin_audit_log WHERE entity_type = 'club_movement'"
+    );
+    expect(audit).not.toBeNull();
+    expect(audit!.entity_id).toBe("102");
+  });
+});
+
+describe("unassignClubFromTier10", () => {
+  it("unassigns a club at tier 10", async () => {
+    const db = createMinimalDb();
+
+    await unassignClubFromTier10(db, 104, "test-admin");
+
+    const assignment = await db.get(
+      "SELECT * FROM division_assignments WHERE club_id = 104"
+    );
+    expect(assignment).toBeUndefined();
+  });
+
+  it("throws when club is not at tier 10", async () => {
+    const db = createMinimalDb();
+    await expect(
+      unassignClubFromTier10(db, 100, "test-admin")
+    ).rejects.toThrow("not at tier 10");
+  });
+
+  it("throws when club is not assigned", async () => {
+    const db = createMinimalDb();
+    db.exec("INSERT INTO clubs (id, name, status) VALUES (300, 'Lone FC', 'known')");
+    await expect(
+      unassignClubFromTier10(db, 300, "test-admin")
+    ).rejects.toThrow("not assigned to any division");
+  });
+
+  it("writes an audit log entry", async () => {
+    const db = createMinimalDb();
+
+    await unassignClubFromTier10(db, 104, "test-admin");
+
+    const audit = await db.get<{ entity_type: string; entity_id: string }>(
+      "SELECT entity_type, entity_id FROM admin_audit_log WHERE entity_type = 'club_relegation_unassigned'"
+    );
+    expect(audit).not.toBeNull();
+    expect(audit!.entity_id).toBe("104");
   });
 });
