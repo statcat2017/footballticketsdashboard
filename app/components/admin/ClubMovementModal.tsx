@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 interface DivisionOption {
   id: number;
@@ -19,7 +19,7 @@ interface ClubMovementModalProps {
   currentDivisionLevel: number;
   movementType: "promote" | "relegate" | "migrate";
   targetDivisions: DivisionOption[];
-  clubsInTargetDivision: ClubOption[];
+  allClubsByDivision: Record<number, ClubOption[]>;
   csrfToken: string;
   redirectDivisionId: number;
   onClose: () => void;
@@ -31,15 +31,22 @@ export function ClubMovementModal({
   currentDivisionLevel,
   movementType,
   targetDivisions,
-  clubsInTargetDivision,
+  allClubsByDivision,
   csrfToken,
   redirectDivisionId,
   onClose,
 }: ClubMovementModalProps) {
+  const singleTargetId = targetDivisions.length === 1 ? String(targetDivisions[0].id) : "";
   const [step, setStep] = useState<1 | 2>(1);
-  const [selectedTargetDivisionId, setSelectedTargetDivisionId] = useState("");
+  const [selectedTargetDivisionId, setSelectedTargetDivisionId] = useState(singleTargetId);
   const [selectedSwapClubId, setSelectedSwapClubId] = useState("");
   const [swapMode, setSwapMode] = useState<"swap" | "none">("swap");
+
+  const activeTargetId = selectedTargetDivisionId || singleTargetId;
+  const clubsInTargetDivision = useMemo(
+    () => (activeTargetId ? allClubsByDivision[Number(activeTargetId)] ?? [] : []),
+    [activeTargetId, allClubsByDivision]
+  );
 
   const handleTargetDivisionInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,7 +65,7 @@ export function ClubMovementModal({
   );
 
   const handleContinue = () => {
-    if (!selectedTargetDivisionId) return;
+    if (targetDivisions.length > 1 && !selectedTargetDivisionId) return;
     setStep(2);
   };
 
@@ -231,7 +238,7 @@ export function ClubMovementModal({
             <input type="hidden" name="csrf" value={csrfToken} />
             <input type="hidden" name="club_id" value={clubId} />
             <input type="hidden" name="movement_type" value={movementType} />
-            <input type="hidden" name="target_division_id" value={selectedTargetDivisionId} />
+            <input type="hidden" name="target_division_id" value={activeTargetId} />
             <input type="hidden" name="redirect_division_id" value={redirectDivisionId} />
             <p style={{ fontSize: "14px", color: "#6f7e7a", marginBottom: "0.75rem" }}>
               Select a club to swap with, or move without swapping:

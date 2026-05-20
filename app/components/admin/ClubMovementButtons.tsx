@@ -42,20 +42,12 @@ export function ClubMovementButtons({
     targets: DivisionOption[];
   } | null>(null);
 
-  const [modalClubs, setModalClubs] = useState<ClubOption[]>([]);
-
   const handleOpen = (type: "promote" | "relegate" | "migrate", targets: DivisionOption[]) => {
     setActiveMovement({ type, targets });
-    if (targets.length === 1) {
-      setModalClubs(allClubsByDivision[targets[0].id] ?? []);
-    } else if (targets.length > 1) {
-      setModalClubs([]);
-    }
   };
 
   const handleClose = () => {
     setActiveMovement(null);
-    setModalClubs([]);
   };
 
   const hasPromote = promoteTargets.length > 0;
@@ -137,7 +129,7 @@ export function ClubMovementButtons({
           currentDivisionLevel={currentDivisionLevel}
           movementType={activeMovement.type}
           targetDivisions={activeMovement.targets}
-          clubsInTargetDivision={modalClubs}
+          allClubsByDivision={allClubsByDivision}
           csrfToken={csrfToken}
           redirectDivisionId={redirectDivisionId}
           onClose={handleClose}

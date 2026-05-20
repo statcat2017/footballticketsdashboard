@@ -54,29 +54,11 @@ export async function POST(request: Request) {
   const db = await getDatabase();
 
   try {
-    if (movementType === "relegate" && targetDivisionIdRaw === "" || targetDivisionIdRaw === null || targetDivisionIdRaw === undefined) {
-      const targetDivisionId = typeof targetDivisionIdRaw === "string" ? Number(targetDivisionIdRaw) : NaN;
-      if (Number.isInteger(targetDivisionId) && targetDivisionId > 0) {
-        const result = await moveClubWithSwap(
-          db,
-          clubId,
-          targetDivisionId,
-          swapClubIdRaw === "" ? null : (typeof swapClubIdRaw === "string" ? Number(swapClubIdRaw) : null),
-          movementType as "promote" | "relegate" | "migrate",
-          session.actor
-        );
-        const params = new URLSearchParams();
-        if (result.warning) params.set("warning", result.warning);
-        else params.set("success", "Club relegated.");
-        const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
-        return NextResponse.redirect(
-          new URL(`${redirectPath}?${params.toString()}`, request.url),
-          { status: 303 }
-        );
-      }
+    const isEmptyTarget = targetDivisionIdRaw === "" || targetDivisionIdRaw === null || targetDivisionIdRaw === undefined;
 
+    if (movementType === "relegate" && isEmptyTarget) {
       await unassignClubFromTier10(db, clubId, session.actor);
-      const params = new URLSearchParams("success=Club unassigned (relegated below tier 10).");
+      const params = new URLSearchParams("success=Club+unassigned+(relegated+below+tier+10).");
       const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
       return NextResponse.redirect(
         new URL(`${redirectPath}?${params.toString()}`, request.url),
@@ -94,11 +76,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const swapClubId = typeof swapClubIdRaw === "string" && swapClubIdRaw !== ""
+      ? Number(swapClubIdRaw)
+      : null;
+
     const result = await moveClubWithSwap(
       db,
       clubId,
       targetDivisionId,
-      swapClubIdRaw === "" ? null : (typeof swapClubIdRaw === "string" ? Number(swapClubIdRaw) : null),
+      swapClubId,
       movementType as "promote" | "relegate" | "migrate",
       session.actor
     );

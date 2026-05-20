@@ -433,12 +433,14 @@ export async function moveClubWithSwap(
     throw new Error("Club is already in that division.");
   }
 
-  const targetCount = await db.get<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM division_assignments WHERE division_id = ?",
-    [targetDivisionId]
-  );
-  if (targetCount && targetCount.count >= targetDivision.max_size) {
-    throw new Error(`Target division "${targetDivision.name}" is at capacity (${targetDivision.max_size} clubs).`);
+  if (movementType === "promote" && targetDivision.level >= currentDivision.level) {
+    throw new Error(`Promote target "${targetDivision.name}" (level ${targetDivision.level}) must be a lower level than current (level ${currentDivision.level}).`);
+  }
+  if (movementType === "relegate" && targetDivision.level <= currentDivision.level) {
+    throw new Error(`Relegate target "${targetDivision.name}" (level ${targetDivision.level}) must be a higher level than current (level ${currentDivision.level}).`);
+  }
+  if (movementType === "migrate" && targetDivision.level !== currentDivision.level) {
+    throw new Error(`Migrate target "${targetDivision.name}" (level ${targetDivision.level}) must be the same level as current (level ${currentDivision.level}).`);
   }
 
   let swapClub: { id: number; name: string; division_id: number } | undefined;
@@ -456,6 +458,16 @@ export async function moveClubWithSwap(
     }
     if (swapClub.id === clubId) {
       throw new Error("Cannot swap a club with itself.");
+    }
+  }
+
+  if (swapClubId === null) {
+    const targetCount = await db.get<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM division_assignments WHERE division_id = ?",
+      [targetDivisionId]
+    );
+    if (targetCount && targetCount.count >= targetDivision.max_size) {
+      throw new Error(`Target division "${targetDivision.name}" is at capacity (${targetDivision.max_size} clubs).`);
     }
   }
 
