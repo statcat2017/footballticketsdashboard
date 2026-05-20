@@ -1,3 +1,5 @@
+@import "leaflet/dist/leaflet.css";
+
 :root {
   --green: #147a4d;
   --green-dark: #0e5737;
@@ -416,4 +418,230 @@ select {
   border-color: #f0beb7;
   color: var(--red);
   background: var(--red-soft);
+}
+
+/* ── Divisions Page ─────────────────────────────────────────── */
+
+.divisions-page {
+  min-height: 100vh;
+  background: #ffffff;
+}
+
+.divisions-header {
+  padding: 24px 28px 16px;
+}
+
+.divisions-header h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.divisions-header p {
+  margin: 0;
+  color: var(--grey-500);
+  font-size: 14px;
+}
+
+.division-group {
+  padding: 0 28px 24px;
+}
+
+.division-group-title {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--grey-500);
+}
+
+.division-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.division-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid var(--grey-200);
+  border-radius: 8px;
+  background: #ffffff;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.division-card:hover {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.division-card-name {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.division-card-count {
+  font-size: 13px;
+  color: var(--grey-500);
+}
+
+/* ── Division Detail ────────────────────────────────────────── */
+
+.division-detail-header {
+  padding: 24px 28px 16px;
+}
+
+.division-detail-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--grey-500);
+  margin-bottom: 8px;
+}
+
+.division-detail-breadcrumb a {
+  color: var(--grey-500);
+  text-decoration: none;
+}
+
+.division-detail-breadcrumb a:hover {
+  color: var(--green);
+}
+
+.division-detail-header h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.division-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--grey-500);
+}
+
+.level-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid var(--grey-300);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--grey-700);
+  background: var(--grey-50);
+}
+
+.division-detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 28px 32px;
+}
+
+@media (max-width: 900px) {
+  .division-detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.division-club-table-wrapper {
+  border: 1px solid var(--grey-200);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.division-club-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.division-club-table thead {
+  background: var(--grey-25);
+  border-bottom: 1px solid var(--grey-200);
+}
+
+.division-club-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--grey-500);
+}
+
+.division-club-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--grey-200);
+  vertical-align: middle;
+}
+
+.division-club-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.club-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.club-row:hover {
+  background: var(--grey-50);
+}
+
+.club-row.highlighted {
+  background: var(--green-soft);
+}
+
+.club-link {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.club-link:hover {
+  color: var(--green);
+}
+
+.text-muted {
+  color: var(--grey-500);
+}
+
+.grounds-map-container {
+  border: 1px solid var(--grey-200);
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 500px;
+  position: sticky;
+  top: 16px;
+}
+
+.grounds-map-inner {
+  width: 100%;
+  height: 500px;
+}
+
+.grounds-map-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--grey-500);
+  font-size: 14px;
+}
+
+.division-empty {
+  padding: 48px 28px;
+  text-align: center;
+  color: var(--grey-500);
+  font-size: 14px;
 }
