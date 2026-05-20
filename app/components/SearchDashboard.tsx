@@ -202,7 +202,8 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         <div className="nav-links">
           {showAdminLink && <a href="/admin">Admin</a>}
           <a href="#" className="active">Fixtures</a>
-          <a href="#">Grounds</a>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a href="/divisions">Divisions</a>
           <a href="/pyramid">Pyramid</a>
           <a href="#">About</a>
           <a href="#">Contact</a>
