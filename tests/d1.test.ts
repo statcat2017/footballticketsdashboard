@@ -56,17 +56,26 @@ describe("D1 initialization", () => {
 
     const clubsIndex = operations.findIndex((operation) => operation.includes("INSERT INTO clubs "));
     const membershipIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_season_memberships "));
+    const assignmentIndex = operations.findIndex((operation) => operation.includes("INSERT OR IGNORE INTO division_assignments "));
     const movementIndex = operations.findIndex((operation) => operation.includes("INSERT INTO pyramid_movements "));
     const batchIndex = operations.findIndex((operation) => operation.startsWith("batch:"));
+    const schemaExec = operations.find((operation) => operation.startsWith("exec:"));
 
+    expect(schemaExec).toContain("CREATE TABLE IF NOT EXISTS division_assignments");
     expect(clubsIndex).toBeGreaterThan(-1);
     expect(membershipIndex).toBeGreaterThan(-1);
+    expect(assignmentIndex).toBeGreaterThan(-1);
     expect(movementIndex).toBeGreaterThan(-1);
     expect(clubsIndex).toBeLessThan(membershipIndex);
+    expect(membershipIndex).toBeLessThan(assignmentIndex);
+    expect(assignmentIndex).toBeLessThan(movementIndex);
     expect(clubsIndex).toBeLessThan(movementIndex);
     expect(batchIndex).toBe(operations.length - 1);
     const totalPrepares = operations.filter((operation) => operation.startsWith("prepare:"));
-    const batchPrepares = totalPrepares.filter((op) => !op.includes("pragma_table_info"));
+    const batchPrepares = totalPrepares.filter((op) => (
+      !op.includes("pragma_table_info") &&
+      !op.includes("SELECT COUNT(*) AS count FROM division_assignments")
+    ));
 
     expect(batchSizes).toEqual([batchPrepares.length]);
   });

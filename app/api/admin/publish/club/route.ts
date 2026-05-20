@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
-import { getLatestSeasonId } from "@/lib/admin/clubs";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 import type { SqlWrite } from "@/lib/db/adapter";
 
@@ -62,26 +61,56 @@ export async function POST(request: Request) {
       return redirectWith({ error: "Club not found." });
     }
 
-    const seasonId = await getLatestSeasonId(db);
-
-    const membership = await db.get<{ competition_code: string | null }>(
-      `SELECT dcm.competition_code
-       FROM pyramid_season_memberships psm
-       JOIN pyramid_season_divisions psd ON psd.id = psm.season_division_id
-       LEFT JOIN division_competition_mappings dcm ON dcm.division_id = psd.division_id
-       WHERE psm.club_id = ? AND psm.season_id = ?`,
-      [clubId, seasonId]
+    const friendlyClub = await db.get<{ id: number }>(
+      `SELECT c.id
+       FROM clubs c
+       WHERE c.id = ?
+         AND (
+           EXISTS (
+             SELECT 1 FROM competitions comp
+             WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
+           )
+           OR (
+             EXISTS (
+               SELECT 1
+               FROM fixtures f
+               JOIN competitions comp ON comp.code = f.competition_code
+               WHERE comp.kind = 'friendly'
+                 AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+             )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM fixtures f
+               JOIN competitions comp ON comp.code = f.competition_code
+               WHERE comp.kind != 'friendly'
+                 AND (f.home_club_id = c.id OR f.away_club_id = c.id)
+             )
+           )
+         )`,
+      [clubId]
     );
 
-    if (!membership) {
-      return redirectWith({ error: "Club has no division membership. Assign it to a division first." });
+    if (friendlyClub) {
+      return redirectWith({ error: "Friendly clubs cannot be published to pyramid competitions." });
     }
 
-    if (!membership.competition_code) {
+    const assignment = await db.get<{ competition_code: string | null }>(
+      `SELECT dcm.competition_code
+       FROM division_assignments da
+       LEFT JOIN division_competition_mappings dcm ON dcm.division_id = da.division_id
+       WHERE da.club_id = ?`,
+      [clubId]
+    );
+
+    if (!assignment) {
+      return redirectWith({ error: "Club has no division assignment. Assign it to a division first." });
+    }
+
+    if (!assignment.competition_code) {
       return redirectWith({ error: "Division has no competition mapping. Publish the competition first." });
     }
 
-    if (club.status === "known" && club.competition_code === membership.competition_code) {
+    if (club.status === "known" && club.competition_code === assignment.competition_code) {
       return redirectWith({ success: `Club "${club.name}" is already published.` });
     }
 
@@ -94,9 +123,9 @@ export async function POST(request: Request) {
     const setClauses: string[] = [];
     const setParams: (string | number)[] = [];
 
-    if (club.competition_code !== membership.competition_code) {
+    if (club.competition_code !== assignment.competition_code) {
       setClauses.push("competition_code = ?");
-      setParams.push(membership.competition_code);
+      setParams.push(assignment.competition_code);
     }
 
     if (club.status !== "known") {
@@ -118,7 +147,7 @@ export async function POST(request: Request) {
         before,
         after: {
           name: club.name,
-          competition_code: membership.competition_code,
+          competition_code: assignment.competition_code,
           status: "known"
         }
       })

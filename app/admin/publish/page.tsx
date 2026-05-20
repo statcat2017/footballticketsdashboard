@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
@@ -42,7 +43,7 @@ function StatusBadge({ published }: { published: boolean }) {
   );
 }
 
-function StatPill({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+function StatPill({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
   const color = warn ? "#a53a2d" : "#6f7e7a";
   const bg = warn ? "#fde9e5" : "#eef1f1";
   return (
@@ -68,6 +69,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
   const sp = await props.searchParams;
   const successMessage = typeof sp?.success === "string" ? sp.success : null;
   const errorMessage = typeof sp?.error === "string" ? sp.error : null;
+  const warningMessage = typeof sp?.warning === "string" ? sp.warning : null;
 
   const db = await getDatabase();
   const data = await getDivisionAssignments(db);
@@ -110,6 +112,20 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
           fontWeight: 600
         }}>
           {errorMessage}
+        </div>
+      )}
+      {warningMessage && (
+        <div style={{
+          padding: "0.75rem 1rem",
+          marginBottom: "1rem",
+          borderRadius: "7px",
+          background: "#fff4d6",
+          color: "#8a5700",
+          border: "1px solid #f1d17a",
+          fontSize: "14px",
+          fontWeight: 600
+        }}>
+          {warningMessage}
         </div>
       )}
       <header style={{
@@ -192,7 +208,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                         }}>
                           Level {div.level}
                         </span>
-                        <StatPill label="clubs" value={`${div.clubCount}/${div.maxSize}` as unknown as number} />
+                        <StatPill label="clubs" value={`${div.clubCount}/${div.maxSize}`} />
                         {atCapacity && (
                           <span style={{
                             display: "inline-flex",

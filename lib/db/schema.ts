@@ -137,6 +137,14 @@ CREATE TABLE IF NOT EXISTS clubs (
   coordinates_notes TEXT
 );
 
+CREATE TABLE IF NOT EXISTS division_assignments (
+  id INTEGER PRIMARY KEY,
+  club_id INTEGER NOT NULL UNIQUE REFERENCES clubs(id) ON DELETE CASCADE,
+  division_id INTEGER NOT NULL REFERENCES pyramid_divisions(id) ON DELETE CASCADE,
+  admin_updated_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS fixtures (
   id INTEGER PRIMARY KEY,
   source TEXT NOT NULL,
@@ -349,6 +357,7 @@ CREATE INDEX IF NOT EXISTS idx_pyramid_season_divisions_season ON pyramid_season
 CREATE INDEX IF NOT EXISTS idx_pyramid_season_divisions_division ON pyramid_season_divisions(division_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_season_memberships_season ON pyramid_season_memberships(season_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_season_memberships_division ON pyramid_season_memberships(season_division_id);
+CREATE INDEX IF NOT EXISTS idx_division_assignments_division_id ON division_assignments(division_id);
 CREATE INDEX IF NOT EXISTS idx_pyramid_movements_season ON pyramid_movements(season_id);
 CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_club ON club_venue_assignments(club_id);
 CREATE INDEX IF NOT EXISTS idx_club_venue_assignments_venue ON club_venue_assignments(venue_id);
