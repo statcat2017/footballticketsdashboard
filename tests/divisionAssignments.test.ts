@@ -274,6 +274,23 @@ describe("getDivisionAssignments", () => {
     expect(unassignedNames).not.toContain("Friendly Fixture FC");
     expect(unassignedNames).toContain("League Fixture FC");
   });
+
+  it("does not hide clubs with only league away fixtures", async () => {
+    const db = createMinimalDb();
+    db.exec(`
+      INSERT INTO clubs (id, name, status) VALUES
+        (200, 'League Away Only FC', 'partial');
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, venue_id,
+        fixture_date, status, is_demo_data, is_historical, away_one_off, away_one_off_name
+      ) VALUES
+        ('test', 'league-away', 'PL', 100, 50, '2025-08-01', 'scheduled', 0, 0, 1, 'Opponent');
+    `);
+
+    const data = await getDivisionAssignments(db);
+    const unassignedNames = data.unassignedClubs.map((c) => c.name);
+    expect(unassignedNames).toContain("League Away Only FC");
+  });
 });
 
 describe("assignClubToDivision", () => {

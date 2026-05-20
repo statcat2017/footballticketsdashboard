@@ -69,25 +69,32 @@ export async function POST(request: Request) {
       competition_code: string | null;
       status: string;
     }>(
-      `WITH friendly_only_clubs AS (
+      `WITH
+      friendly_clubs AS (
         SELECT c.id AS club_id FROM clubs c
         JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
-        UNION ALL
-        SELECT f.home_club_id AS club_id FROM fixtures f
+        UNION
+        SELECT f.home_club_id FROM fixtures f
         JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
         WHERE f.home_club_id IS NOT NULL
-        UNION ALL
-        SELECT f.away_club_id AS club_id FROM fixtures f
+        UNION
+        SELECT f.away_club_id FROM fixtures f
         JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
         WHERE f.away_club_id IS NOT NULL
+      ),
+      league_clubs AS (
+        SELECT f.home_club_id AS club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+        WHERE f.home_club_id IS NOT NULL
+        UNION
+        SELECT f.away_club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+        WHERE f.away_club_id IS NOT NULL
+      ),
+      friendly_only_clubs AS (
+        SELECT club_id FROM friendly_clubs
         EXCEPT
-        SELECT f.home_club_id AS club_id FROM fixtures f
-        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-        WHERE f.home_club_id IS NOT NULL
-        UNION ALL
-        SELECT f.away_club_id AS club_id FROM fixtures f
-        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-        WHERE f.away_club_id IS NOT NULL
+        SELECT club_id FROM league_clubs
       )
       SELECT c.id, c.name, c.competition_code, c.status
       FROM division_assignments da

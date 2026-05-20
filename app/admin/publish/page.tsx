@@ -198,77 +198,79 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}>
-                    <Link href={isSelected ? "/admin/publish" : `/admin/publish?division_id=${div.id}`} style={{
-                      textDecoration: "none",
-                      color: "inherit",
-                      display: "block"
+                    <div style={{
+                      padding: "0.75rem 1rem",
+                      background: isSelected ? "#f5f7f7" : "#fff",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "0.5rem"
                     }}>
-                      <div style={{
-                        padding: "0.75rem 1rem",
-                        background: isSelected ? "#f5f7f7" : "#fff",
+                      <Link href={isSelected ? "/admin/publish" : `/admin/publish?division_id=${div.id}`} style={{
+                        textDecoration: "none",
+                        color: "inherit",
                         display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "center",
+                        gap: "0.5rem",
                         flexWrap: "wrap",
-                        gap: "0.5rem"
+                        flex: 1
                       }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                          <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700 }}>
-                            {div.name}
-                          </h3>
+                        <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700 }}>
+                          {div.name}
+                        </h3>
+                        <span style={{
+                          fontSize: "12px",
+                          color: "#6f7e7a",
+                          fontWeight: 600
+                        }}>
+                          Level {div.level}
+                        </span>
+                        <StatPill label="clubs" value={`${div.clubCount}/${div.maxSize}`} />
+                        {atCapacity && (
                           <span style={{
-                            fontSize: "12px",
-                            color: "#6f7e7a",
-                            fontWeight: 600
+                            display: "inline-flex",
+                            padding: "2px 8px",
+                            borderRadius: "999px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            background: "#fff4d6",
+                            color: "#a76800",
+                            lineHeight: 1.4
                           }}>
-                            Level {div.level}
+                            At capacity
                           </span>
-                          <StatPill label="clubs" value={`${div.clubCount}/${div.maxSize}`} />
-                          {atCapacity && (
-                            <span style={{
-                              display: "inline-flex",
-                              padding: "2px 8px",
-                              borderRadius: "999px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              background: "#fff4d6",
-                              color: "#a76800",
-                              lineHeight: 1.4
+                        )}
+                        {missingVenueCount > 0 && (
+                          <StatPill label="no venue" value={missingVenueCount} warn />
+                        )}
+                        {missingTicketUrlCount > 0 && (
+                          <StatPill label="no ticket URL" value={missingTicketUrlCount} warn />
+                        )}
+                      </Link>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <StatusBadge published={div.isPublished} />
+                        {!div.isPublished && (
+                          <form method="post" action="/api/admin/publish/competition">
+                            <input type="hidden" name="csrf" value={csrfToken} />
+                            <input type="hidden" name="division_id" value={div.id} />
+                            <input type="hidden" name="redirect_division_id" value={div.id} />
+                            <button type="submit" style={{
+                              border: "1px solid #147a4d",
+                              borderRadius: "7px",
+                              background: "#147a4d",
+                              color: "#fff",
+                              padding: "0.4rem 0.8rem",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer"
                             }}>
-                              At capacity
-                            </span>
-                          )}
-                          {missingVenueCount > 0 && (
-                            <StatPill label="no venue" value={missingVenueCount} warn />
-                          )}
-                          {missingTicketUrlCount > 0 && (
-                            <StatPill label="no ticket URL" value={missingTicketUrlCount} warn />
-                          )}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                          <StatusBadge published={div.isPublished} />
-                          {!div.isPublished && (
-                            <form method="post" action="/api/admin/publish/competition" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                              <input type="hidden" name="csrf" value={csrfToken} />
-                              <input type="hidden" name="division_id" value={div.id} />
-                              <input type="hidden" name="redirect_division_id" value={div.id} />
-                              <button type="submit" style={{
-                                border: "1px solid #147a4d",
-                                borderRadius: "7px",
-                                background: "#147a4d",
-                                color: "#fff",
-                                padding: "0.4rem 0.8rem",
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                cursor: "pointer"
-                              }}>
-                                Publish competition
-                              </button>
-                            </form>
-                          )}
-                        </div>
+                              Publish competition
+                            </button>
+                          </form>
+                        )}
                       </div>
-                    </Link>
+                    </div>
 
                     {isSelected && (
                       <div style={{ overflowX: "auto" }}>
