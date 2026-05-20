@@ -27,9 +27,15 @@ export async function POST(request: Request) {
   const divisionIdStr = form.get("division_id");
   const redirectDivisionIdStr = form.get("redirect_division_id");
 
+  const validRedirectDivId =
+    typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)
+      ? redirectDivisionIdStr
+      : null;
+
   if (typeof divisionIdStr !== "string" || !/^\d+$/.test(divisionIdStr)) {
+    const base = validRedirectDivId ? `/admin/publish/${validRedirectDivId}` : "/admin/publish";
     return NextResponse.redirect(
-      new URL("/admin/publish?error=Invalid division ID.", request.url),
+      new URL(`${base}?error=Invalid+division+ID.`, request.url),
       { status: 303 }
     );
   }
@@ -37,14 +43,9 @@ export async function POST(request: Request) {
   const divisionId = Number(divisionIdStr);
   const db = await getDatabase();
 
-  const validRedirectDivId =
-    typeof redirectDivisionIdStr === "string" && /^\d+$/.test(redirectDivisionIdStr)
-      ? redirectDivisionIdStr
-      : null;
-
   function redirectWith(params: Record<string, string>) {
-    const url = new URL("/admin/publish", request.url);
-    if (validRedirectDivId) url.searchParams.set("division_id", validRedirectDivId);
+    const base = validRedirectDivId ? `/admin/publish/${validRedirectDivId}` : "/admin/publish";
+    const url = new URL(base, request.url);
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
     }

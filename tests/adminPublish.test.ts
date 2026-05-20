@@ -381,7 +381,7 @@ describe("admin publish redirect_division_id", () => {
 
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("division_id=10");
+    expect(location).toContain("/admin/publish/10");
     expect(location).toContain("success=Club");
   });
 
@@ -402,7 +402,7 @@ describe("admin publish redirect_division_id", () => {
 
     expect(response.status).toBe(303);
     const location = response.headers.get("location") ?? "";
-    expect(location).toContain("division_id=10");
+    expect(location).toContain("/admin/publish/10");
     expect(location).toContain("error=");
   });
 });
@@ -568,7 +568,7 @@ describe("admin publish competition route", () => {
 
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("division_id=10");
+    expect(location).toContain("/admin/publish/10");
     expect(location).toContain("published as");
   });
 });
@@ -811,7 +811,7 @@ describe("admin publish clubs bulk route", () => {
 
     expect(response.status).toBe(303);
     const location = decodeURIComponent(response.headers.get("location") ?? "").replace(/\+/g, " ");
-    expect(location).toContain("division_id=10");
+    expect(location).toContain("/admin/publish/10");
   });
 
   it("publishes via writeBatch when transaction is unavailable", async () => {

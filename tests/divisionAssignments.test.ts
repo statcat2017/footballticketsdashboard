@@ -9,6 +9,7 @@ import { seedDatabase } from "@/lib/db/seed";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import {
   getDivisionAssignments,
+  getDivisionDetail,
   assignClubToDivision,
   unassignClub,
 } from "@/lib/admin/divisionAssignments";
@@ -290,6 +291,87 @@ describe("getDivisionAssignments", () => {
     const data = await getDivisionAssignments(db);
     const unassignedNames = data.unassignedClubs.map((c) => c.name);
     expect(unassignedNames).toContain("League Away Only FC");
+  });
+
+  it("shows assigned friendly-only clubs in division club list (regression)", async () => {
+    const db = createMinimalDb();
+    db.exec(`
+      INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
+      INSERT INTO clubs (id, name, status, competition_code) VALUES
+        (200, 'Friendly Code FC', 'partial', 'FRIENDLY');
+      INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
+    `);
+
+    const data = await getDivisionAssignments(db);
+    const premier = data.divisions.find((d) => d.id === 10);
+    expect(premier).toBeDefined();
+    expect(premier!.clubs.map((c) => c.name)).toContain("Friendly Code FC");
+
+    const friendlyClub = premier!.clubs.find((c) => c.name === "Friendly Code FC");
+    expect(friendlyClub).toBeDefined();
+    expect(friendlyClub!.isFriendlyOnly).toBe(true);
+  });
+});
+
+describe("getDivisionDetail", () => {
+  it("returns division info and clubs for a valid division", async () => {
+    const db = createMinimalDb();
+
+    const detail = await getDivisionDetail(db, 10);
+
+    expect(detail).not.toBeNull();
+    expect(detail!.id).toBe(10);
+    expect(detail!.name).toBe("Premier Division");
+    expect(detail!.level).toBe(1);
+    expect(detail!.maxSize).toBe(20);
+    expect(detail!.clubCount).toBe(2);
+    expect(detail!.publishedCount).toBe(2);
+    expect(detail!.missingVenueCount).toBe(0);
+    expect(detail!.missingTicketUrlCount).toBe(2);
+    expect(detail!.clubs.map((c) => c.name)).toContain("Test Town United");
+    expect(detail!.clubs.map((c) => c.name)).toContain("City Athletic");
+  });
+
+  it("returns null for non-existent division", async () => {
+    const db = createMinimalDb();
+    const detail = await getDivisionDetail(db, 99999);
+    expect(detail).toBeNull();
+  });
+
+  it("reports friendly-only clubs with isFriendlyOnly flag", async () => {
+    const db = createMinimalDb();
+    db.exec(`
+      INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
+      INSERT INTO clubs (id, name, status, competition_code) VALUES
+        (200, 'Friendly Assigned FC', 'partial', 'FRIENDLY');
+      INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
+    `);
+
+    const detail = await getDivisionDetail(db, 10);
+
+    expect(detail).not.toBeNull();
+    const friendlyClub = detail!.clubs.find((c) => c.name === "Friendly Assigned FC");
+    expect(friendlyClub).toBeDefined();
+    expect(friendlyClub!.isFriendlyOnly).toBe(true);
+    expect(detail!.friendlyOnlyCount).toBe(1);
+  });
+
+  it("computes metrics correctly for a division with issues", async () => {
+    const db = createMinimalDb();
+    db.exec(`
+      INSERT INTO clubs (id, name, status) VALUES
+        (200, 'No Venue FC', 'partial'),
+        (201, 'No Tickets FC', 'known');
+      INSERT INTO division_assignments (club_id, division_id) VALUES (200, 12), (201, 12);
+    `);
+
+    const detail = await getDivisionDetail(db, 12);
+
+    expect(detail).not.toBeNull();
+    expect(detail!.clubCount).toBe(3);
+    expect(detail!.missingVenueCount).toBe(3);
+    expect(detail!.missingTicketUrlCount).toBe(3);
+    expect(detail!.publishedCount).toBe(0);
   });
 });
 
