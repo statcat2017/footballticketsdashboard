@@ -226,6 +226,65 @@ async function fixturesMissingSourceUrl(db: AppDatabase): Promise<DataQualityIss
   }));
 }
 
+async function duplicateFixtures(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const rows = await db.all<{
+    first_fixture_id: number;
+    fixture_count: number;
+    fixture_ids: string;
+    competition_code: string;
+    season_label: string | null;
+    fixture_date: string | null;
+    home_name: string;
+    away_name: string;
+  }>(
+    `WITH fixture_identity AS (
+       SELECT
+         f.id,
+         f.competition_code,
+         f.season_label,
+         f.fixture_date,
+         CASE
+           WHEN f.home_one_off = 1 THEN 'one-off:' || lower(trim(f.home_one_off_name))
+           ELSE 'club:' || f.home_club_id
+         END AS home_key,
+         CASE
+           WHEN f.away_one_off = 1 THEN 'one-off:' || lower(trim(f.away_one_off_name))
+           ELSE 'club:' || f.away_club_id
+         END AS away_key,
+         COALESCE(NULLIF(trim(f.home_one_off_name), ''), hc.name, 'Unknown home') AS home_name,
+         COALESCE(NULLIF(trim(f.away_one_off_name), ''), ac.name, 'Unknown away') AS away_name
+       FROM fixtures f
+       LEFT JOIN clubs hc ON hc.id = f.home_club_id
+       LEFT JOIN clubs ac ON ac.id = f.away_club_id
+     )
+     SELECT
+       MIN(id) AS first_fixture_id,
+       COUNT(*) AS fixture_count,
+       group_concat(id, ', ') AS fixture_ids,
+       competition_code,
+       season_label,
+       fixture_date,
+       MIN(home_name) AS home_name,
+       MIN(away_name) AS away_name
+     FROM fixture_identity
+     GROUP BY competition_code, season_label, fixture_date, home_key, away_key
+     HAVING COUNT(*) > 1
+     ORDER BY first_fixture_id
+     LIMIT 100`
+  );
+
+  return rows.map((r) => ({
+    id: `duplicate-fixture-${r.first_fixture_id}`,
+    severity: "warning",
+    issueType: "Duplicate fixture",
+    category: "Fixture",
+    entity: `${r.home_name} v ${r.away_name}`,
+    entityId: r.first_fixture_id,
+    summary: `${r.fixture_count} fixtures share ${r.competition_code} identity for ${r.season_label ?? "unknown season"}${r.fixture_date ? ` on ${r.fixture_date}` : ""}: ${r.fixture_ids}.`,
+    actionUrl: null
+  }));
+}
+
 async function fixturesWithAssumedKickoff(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string }>(
     `SELECT id, source, source_id
@@ -307,6 +366,7 @@ const dataQualityChecks: DataQualityCheck[] = [
   { categories: ["Division"], run: divisionsOverMaxSize },
   { categories: ["Division"], run: divisionsWithoutCompetitionMapping },
   { categories: ["Fixture"], run: fixturesMissingSourceUrl },
+  { categories: ["Fixture"], run: duplicateFixtures },
   { categories: ["Fixture"], run: fixturesWithAssumedKickoff },
   { categories: ["Fixture"], run: fixturesMissingTicketInfo },
   { categories: ["Fixture"], run: fixturesHiddenByLocation },
