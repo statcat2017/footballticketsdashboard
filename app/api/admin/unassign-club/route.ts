@@ -32,8 +32,9 @@ export async function POST(request: Request) {
     : null;
 
   if (!Number.isInteger(clubId) || clubId <= 0) {
+    const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
     return NextResponse.redirect(
-      new URL("/admin/publish?error=Invalid club ID.", request.url),
+      new URL(`${redirectPath}?error=Invalid+club+ID.`, request.url),
       { status: 303 }
     );
   }
@@ -43,15 +44,16 @@ export async function POST(request: Request) {
   try {
     await unassignClub(db, clubId, session.actor);
     const params = new URLSearchParams("success=Club unassigned.");
-    if (redirectDivisionId) params.set("division_id", redirectDivisionId);
+    const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
     return NextResponse.redirect(
-      new URL(`/admin/publish?${params.toString()}`, request.url),
+      new URL(`${redirectPath}?${params.toString()}`, request.url),
       { status: 303 }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+    const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
     return NextResponse.redirect(
-      new URL(`/admin/publish?error=${encodeURIComponent(message)}`, request.url),
+      new URL(`${redirectPath}?error=${encodeURIComponent(message)}`, request.url),
       { status: 303 }
     );
   }

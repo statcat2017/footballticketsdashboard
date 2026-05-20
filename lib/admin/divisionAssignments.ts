@@ -8,6 +8,7 @@ export interface DivisionAssignedClub {
   venueName: string | null;
   hasTicketUrl: boolean;
   isPublished: boolean;
+  isFriendlyOnly: boolean;
 }
 
 export interface DivisionGroup {
@@ -54,6 +55,7 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
     venue_name: string | null;
     generic_ticket_url: string | null;
     club_competition_code: string | null;
+    is_friendly_only: number;
   }>(
     `WITH
     friendly_clubs AS (
@@ -95,10 +97,11 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
       c.status AS club_status,
       v.name AS venue_name,
       c.generic_ticket_url,
-      c.competition_code AS club_competition_code
+      c.competition_code AS club_competition_code,
+      CASE WHEN c.id IN (SELECT club_id FROM friendly_only_clubs) THEN 1 ELSE 0 END AS is_friendly_only
     FROM pyramid_divisions d
     LEFT JOIN division_assignments da ON da.division_id = d.id
-    LEFT JOIN clubs c ON c.id = da.club_id AND c.id NOT IN (SELECT club_id FROM friendly_only_clubs)
+    LEFT JOIN clubs c ON c.id = da.club_id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
@@ -176,6 +179,7 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
         venueName: row.venue_name,
         hasTicketUrl: !!row.generic_ticket_url,
         isPublished: row.club_competition_code !== null && row.club_status === "known",
+        isFriendlyOnly: row.is_friendly_only === 1,
       });
     }
   }
@@ -318,4 +322,137 @@ export async function unassignClub(
   }));
 
   await db.writeBatch(statements);
+}
+
+export interface DivisionDetail {
+  id: number;
+  name: string;
+  level: number;
+  maxSize: number;
+  displayOrder: number | null;
+  competitionCode: string | null;
+  isPublished: boolean;
+  clubs: DivisionAssignedClub[];
+  clubCount: number;
+  publishedCount: number;
+  missingVenueCount: number;
+  missingTicketUrlCount: number;
+  friendlyOnlyCount: number;
+  seasonLabel: string;
+}
+
+export async function getDivisionDetail(
+  db: AppDatabase,
+  divisionId: number
+): Promise<DivisionDetail | null> {
+  const season = await db.get<{ season_label: string }>(
+    "SELECT season_label FROM pyramid_seasons ORDER BY id DESC LIMIT 1"
+  );
+
+  const division = await db.get<{
+    id: number;
+    name: string;
+    level: number;
+    max_size: number;
+    display_order: number | null;
+    competition_code: string | null;
+    is_published: number;
+  }>(
+    `SELECT d.id, d.name, d.level, d.max_size, d.display_order,
+            dcm.competition_code,
+            CASE WHEN dcm.id IS NOT NULL THEN 1 ELSE 0 END AS is_published
+     FROM pyramid_divisions d
+     LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
+     WHERE d.id = ?`,
+    [divisionId]
+  );
+
+  if (!division) return null;
+
+  const clubRows = await db.all<{
+    club_id: number;
+    club_name: string;
+    club_status: string;
+    venue_name: string | null;
+    generic_ticket_url: string | null;
+    club_competition_code: string | null;
+    is_friendly_only: number;
+  }>(
+    `WITH
+    friendly_clubs AS (
+      SELECT c.id AS club_id FROM clubs c
+      JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
+      UNION
+      SELECT f.home_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+      WHERE f.home_club_id IS NOT NULL
+      UNION
+      SELECT f.away_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+      WHERE f.away_club_id IS NOT NULL
+    ),
+    league_clubs AS (
+      SELECT f.home_club_id AS club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+      WHERE f.home_club_id IS NOT NULL
+      UNION
+      SELECT f.away_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+      WHERE f.away_club_id IS NOT NULL
+    ),
+    friendly_only_clubs AS (
+      SELECT club_id FROM friendly_clubs
+      EXCEPT
+      SELECT club_id FROM league_clubs
+    )
+    SELECT
+      c.id AS club_id,
+      c.name AS club_name,
+      c.status AS club_status,
+      v.name AS venue_name,
+      c.generic_ticket_url,
+      c.competition_code AS club_competition_code,
+      CASE WHEN c.id IN (SELECT club_id FROM friendly_only_clubs) THEN 1 ELSE 0 END AS is_friendly_only
+    FROM division_assignments da
+    JOIN clubs c ON c.id = da.club_id
+    LEFT JOIN club_venue_assignments cva
+      ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
+    LEFT JOIN venues v ON v.id = cva.venue_id
+    WHERE da.division_id = ?
+    ORDER BY c.name`,
+    [divisionId]
+  );
+
+  const clubs: DivisionAssignedClub[] = clubRows.map((r) => ({
+    id: r.club_id,
+    name: r.club_name,
+    status: r.club_status,
+    venueName: r.venue_name,
+    hasTicketUrl: !!r.generic_ticket_url,
+    isPublished: r.club_competition_code !== null && r.club_status === "known",
+    isFriendlyOnly: r.is_friendly_only === 1,
+  }));
+
+  const clubCount = clubs.length;
+  const publishedCount = clubs.filter((c) => c.isPublished).length;
+  const missingVenueCount = clubs.filter((c) => !c.venueName).length;
+  const missingTicketUrlCount = clubs.filter((c) => !c.hasTicketUrl).length;
+  const friendlyOnlyCount = clubs.filter((c) => c.isFriendlyOnly).length;
+
+  return {
+    id: division.id,
+    name: division.name,
+    level: division.level,
+    maxSize: division.max_size,
+    displayOrder: division.display_order,
+    competitionCode: division.competition_code,
+    isPublished: division.is_published === 1,
+    clubs,
+    clubCount,
+    publishedCount,
+    missingVenueCount,
+    missingTicketUrlCount,
+    friendlyOnlyCount,
+    seasonLabel: season?.season_label ?? "",
+  };
 }

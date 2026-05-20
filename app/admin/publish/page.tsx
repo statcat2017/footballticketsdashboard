@@ -70,7 +70,6 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
   const successMessage = typeof sp?.success === "string" ? sp.success : null;
   const errorMessage = typeof sp?.error === "string" ? sp.error : null;
   const warningMessage = typeof sp?.warning === "string" ? sp.warning : null;
-  const selectedDivisionId = typeof sp?.division_id === "string" ? Number(sp.division_id) : null;
 
   const db = await getDatabase();
   const data = await getDivisionAssignments(db);
@@ -166,14 +165,6 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
         <p style={{ color: "#6f7e7a" }}>No pyramid divisions found.</p>
       ) : (
         <div style={{ display: "grid", gap: "1.5rem" }}>
-          {selectedDivisionId && (
-            <Link href="/admin/publish" style={{
-              color: "#147a4d",
-              fontSize: "13px",
-              fontWeight: 700,
-              textDecoration: "none"
-            }}>&larr; All divisions</Link>
-          )}
           {sortedTiers.map(([tier, divisions]) => (
             <div key={tier} style={{ display: "grid", gap: "1rem" }}>
               <h2 style={{
@@ -187,7 +178,6 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                 Tier {tier}
               </h2>
               {divisions.map((div) => {
-                const isSelected = selectedDivisionId === div.id;
                 const atCapacity = div.clubCount >= div.maxSize;
                 const missingVenueCount = div.clubs.filter((c) => !c.venueName).length;
                 const missingTicketUrlCount = div.clubs.filter((c) => !c.hasTicketUrl).length;
@@ -198,112 +188,64 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}>
-                    <div style={{
+                    <Link href={`/admin/publish/${div.id}`} style={{
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "block",
                       padding: "0.75rem 1rem",
-                      background: isSelected ? "#f5f7f7" : "#fff",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "0.5rem"
+                      background: "#fff",
+                      transition: "background 0.1s"
                     }}>
-                      <Link href={isSelected ? "/admin/publish" : `/admin/publish?division_id=${div.id}`} style={{
-                        textDecoration: "none",
-                        color: "inherit",
+                      <div style={{
                         display: "flex",
+                        justifyContent: "space-between",
                         alignItems: "center",
-                        gap: "0.5rem",
                         flexWrap: "wrap",
-                        flex: 1
+                        gap: "0.5rem"
                       }}>
-                        <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700 }}>
-                          {div.name}
-                        </h3>
-                        <span style={{
-                          fontSize: "12px",
-                          color: "#6f7e7a",
-                          fontWeight: 600
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          flexWrap: "wrap",
+                          flex: 1
                         }}>
-                          Level {div.level}
-                        </span>
-                        <StatPill label="clubs" value={`${div.clubCount}/${div.maxSize}`} />
-                        {atCapacity && (
+                          <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700 }}>
+                            {div.name}
+                          </h3>
                           <span style={{
-                            display: "inline-flex",
-                            padding: "2px 8px",
-                            borderRadius: "999px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            background: "#fff4d6",
-                            color: "#a76800",
-                            lineHeight: 1.4
+                            fontSize: "12px",
+                            color: "#6f7e7a",
+                            fontWeight: 600
                           }}>
-                            At capacity
+                            Level {div.level}
                           </span>
-                        )}
-                        {missingVenueCount > 0 && (
-                          <StatPill label="no venue" value={missingVenueCount} warn />
-                        )}
-                        {missingTicketUrlCount > 0 && (
-                          <StatPill label="no ticket URL" value={missingTicketUrlCount} warn />
-                        )}
-                      </Link>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                        <StatusBadge published={div.isPublished} />
-                        {!div.isPublished && (
-                          <form method="post" action="/api/admin/publish/competition">
-                            <input type="hidden" name="csrf" value={csrfToken} />
-                            <input type="hidden" name="division_id" value={div.id} />
-                            <input type="hidden" name="redirect_division_id" value={div.id} />
-                            <button type="submit" style={{
-                              border: "1px solid #147a4d",
-                              borderRadius: "7px",
-                              background: "#147a4d",
-                              color: "#fff",
-                              padding: "0.4rem 0.8rem",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              cursor: "pointer"
+                          <StatPill label="clubs" value={`${div.clubCount}/${div.maxSize}`} />
+                          {atCapacity && (
+                            <span style={{
+                              display: "inline-flex",
+                              padding: "2px 8px",
+                              borderRadius: "999px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              background: "#fff4d6",
+                              color: "#a76800",
+                              lineHeight: 1.4
                             }}>
-                              Publish competition
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    </div>
-
-                    {isSelected && (
-                      <div style={{ overflowX: "auto" }}>
-                        <div style={{ padding: "0.5rem 1rem", borderBottom: "1px solid #eef1f1", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                          <form method="post" action="/api/admin/assign-club" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-                            <input type="hidden" name="csrf" value={csrfToken} />
-                            <input type="hidden" name="division_id" value={div.id} />
-                            <input type="hidden" name="redirect_division_id" value={div.id} />
-                            <select name="club_id" style={{
-                              padding: "0.3rem 0.5rem",
-                              border: "1px solid #dce3e2",
-                              borderRadius: "6px",
-                              fontSize: "13px",
-                              background: "#fff"
-                            }}>
-                              <option value="">Assign a club...</option>
-                              {data.unassignedClubs.map((c) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
-                            <button type="submit" style={{
-                              border: "1px solid #147a4d",
-                              borderRadius: "7px",
-                              background: "#147a4d",
-                              color: "#fff",
-                              padding: "0.3rem 0.7rem",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              cursor: "pointer"
-                            }}>Assign</button>
-                          </form>
-                          {div.isPublished && (
-                            <form method="post" action="/api/admin/publish/clubs" style={{ display: "inline" }}>
+                              At capacity
+                            </span>
+                          )}
+                          {missingVenueCount > 0 && (
+                            <StatPill label="no venue" value={missingVenueCount} warn />
+                          )}
+                          {missingTicketUrlCount > 0 && (
+                            <StatPill label="no ticket URL" value={missingTicketUrlCount} warn />
+                          )}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <StatusBadge published={div.isPublished} />
+                          {!div.isPublished && (
+                            <form method="post" action="/api/admin/publish/competition" onClick={(e) => e.stopPropagation()}>
                               <input type="hidden" name="csrf" value={csrfToken} />
                               <input type="hidden" name="division_id" value={div.id} />
                               <input type="hidden" name="redirect_division_id" value={div.id} />
@@ -312,146 +254,28 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                                 borderRadius: "7px",
                                 background: "#147a4d",
                                 color: "#fff",
-                                padding: "0.3rem 0.7rem",
+                                padding: "0.4rem 0.8rem",
                                 fontSize: "12px",
                                 fontWeight: 700,
                                 cursor: "pointer"
                               }}>
-                                Publish all ready clubs
+                                Publish competition
                               </button>
                             </form>
                           )}
+                          <span style={{ color: "#6f7e7a", fontSize: "12px", fontWeight: 600 }}>
+                            &rarr;
+                          </span>
                         </div>
-                        {div.clubs.length > 0 ? (
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-                            <thead>
-                              <tr style={{ background: "#fbfcfc", borderBottom: "1px solid #dce3e2" }}>
-                                <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Club</th>
-                                <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Status</th>
-                                <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Venue</th>
-                                <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Ticket URL</th>
-                                <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {div.clubs.map((club) => (
-                                <tr key={club.id} style={{ borderBottom: "1px solid #eef1f1" }}>
-                                  <td style={{ padding: "0.6rem 1rem" }}>
-                                    <Link href={`/admin/clubs/${club.id}`} style={{
-                                      color: "#17221f",
-                                      textDecoration: "none",
-                                      fontWeight: 700,
-                                      fontSize: "14px"
-                                    }}>
-                                      {club.name}
-                                    </Link>
-                                  </td>
-                                  <td style={{ padding: "0.6rem 1rem" }}>
-                                    <StatusBadge published={club.isPublished} />
-                                  </td>
-                                  <td style={{ padding: "0.6rem 1rem", color: club.venueName ? "#34413e" : "#a53a2d" }}>
-                                    {club.venueName ?? (
-                                      <span style={{ fontSize: "12px", fontWeight: 600 }}>No venue</span>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: "0.6rem 1rem", color: club.hasTicketUrl ? "#34413e" : "#a53a2d" }}>
-                                    {club.hasTicketUrl ? (
-                                      <span style={{ fontSize: "12px" }}>Set</span>
-                                    ) : (
-                                      <span style={{ fontSize: "12px", fontWeight: 600 }}>Missing</span>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: "0.6rem 1rem" }}>
-                                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                                      {!club.isPublished && club.venueName && div.isPublished && (
-                                        <form method="post" action="/api/admin/publish/club">
-                                          <input type="hidden" name="csrf" value={csrfToken} />
-                                          <input type="hidden" name="club_id" value={club.id} />
-                                          <input type="hidden" name="redirect_division_id" value={div.id} />
-                                          <button type="submit" style={{
-                                            border: "1px solid #147a4d",
-                                            borderRadius: "7px",
-                                            background: "#147a4d",
-                                            color: "#fff",
-                                            padding: "0.3rem 0.7rem",
-                                            fontSize: "12px",
-                                            fontWeight: 700,
-                                            cursor: "pointer"
-                                          }}>
-                                            Publish
-                                          </button>
-                                        </form>
-                                      )}
-                                      {!club.isPublished && !club.venueName && (
-                                        <span style={{ fontSize: "12px", color: "#a53a2d", fontWeight: 600 }}>
-                                          No venue
-                                        </span>
-                                      )}
-                                      {!club.isPublished && club.venueName && !div.isPublished && (
-                                        <span style={{ fontSize: "12px", color: "#a76800", fontWeight: 600 }}>
-                                          Unmapped
-                                        </span>
-                                      )}
-                                      <form method="post" action="/api/admin/move-club" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
-                                        <input type="hidden" name="csrf" value={csrfToken} />
-                                        <input type="hidden" name="club_id" value={club.id} />
-                                        <input type="hidden" name="redirect_division_id" value={div.id} />
-                                        <select name="division_id" style={{
-                                          padding: "0.2rem 0.3rem",
-                                          border: "1px solid #dce3e2",
-                                          borderRadius: "4px",
-                                          fontSize: "11px",
-                                          background: "#fff"
-                                        }}>
-                                          {data.divisions.filter((d) => d.id !== div.id).map((d) => (
-                                            <option key={d.id} value={d.id}>{d.name}</option>
-                                          ))}
-                                        </select>
-                                        <button type="submit" style={{
-                                          border: "1px solid #6f7e7a",
-                                          borderRadius: "4px",
-                                          background: "#fff",
-                                          color: "#34413e",
-                                          padding: "0.2rem 0.5rem",
-                                          fontSize: "11px",
-                                          fontWeight: 600,
-                                          cursor: "pointer"
-                                        }}>Move</button>
-                                      </form>
-                                      <form method="post" action="/api/admin/unassign-club" style={{ display: "inline" }}>
-                                        <input type="hidden" name="csrf" value={csrfToken} />
-                                        <input type="hidden" name="club_id" value={club.id} />
-                                        <input type="hidden" name="redirect_division_id" value={div.id} />
-                                        <button type="submit" style={{
-                                          border: "none",
-                                          background: "none",
-                                          color: "#a53a2d",
-                                          cursor: "pointer",
-                                          fontSize: "11px",
-                                          fontWeight: 600,
-                                          padding: 0
-                                        }}>Unassign</button>
-                                      </form>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <p style={{ padding: "1rem", color: "#6f7e7a", fontSize: "14px" }}>
-                            No clubs assigned to this division.
-                          </p>
-                        )}
                       </div>
-                    )}
+                    </Link>
                   </div>
                 );
               })}
             </div>
           ))}
 
-          {selectedDivisionId && data.unassignedClubs.length > 0 && (
+          {data.unassignedClubs.length > 0 && (
             <section style={{
               border: "1px solid #dce3e2",
               borderRadius: "8px",
@@ -480,7 +304,6 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                       <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Club</th>
                       <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Status</th>
                       <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Ground</th>
-                      <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -512,33 +335,6 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                           {club.venueName ?? (
                             <span style={{ fontSize: "12px", fontWeight: 600 }}>No primary ground</span>
                           )}
-                        </td>
-                        <td style={{ padding: "0.6rem 1rem" }}>
-                          <form method="post" action="/api/admin/assign-club" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
-                            <input type="hidden" name="csrf" value={csrfToken} />
-                            <input type="hidden" name="club_id" value={club.id} />
-                            <select name="division_id" style={{
-                              padding: "0.2rem 0.3rem",
-                              border: "1px solid #dce3e2",
-                              borderRadius: "4px",
-                              fontSize: "11px",
-                              background: "#fff"
-                            }}>
-                              {data.divisions.map((d) => (
-                                <option key={d.id} value={d.id}>{d.name}</option>
-                              ))}
-                            </select>
-                            <button type="submit" style={{
-                              border: "1px solid #147a4d",
-                              borderRadius: "4px",
-                              background: "#147a4d",
-                              color: "#fff",
-                              padding: "0.2rem 0.5rem",
-                              fontSize: "11px",
-                              fontWeight: 700,
-                              cursor: "pointer"
-                            }}>Assign</button>
-                          </form>
                         </td>
                       </tr>
                     ))}
