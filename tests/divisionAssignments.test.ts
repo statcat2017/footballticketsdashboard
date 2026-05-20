@@ -33,12 +33,6 @@ function createMinimalDb(): AppDatabase {
     INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES
       (1, 1, '2025-26');
 
-    INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES
-      (10, 1, 1, 10, 'open'),
-      (11, 1, 1, 11, 'open'),
-      (12, 1, 1, 12, 'open'),
-      (13, 1, 1, 13, 'open');
-
     INSERT INTO competitions (code, name, tier, kind) VALUES
       ('PL', 'Premier League', 1, 'league');
 
@@ -47,12 +41,6 @@ function createMinimalDb(): AppDatabase {
       (101, 'City Athletic', 'known', 'PL'),
       (102, 'Rovers FC', 'partial', NULL),
       (103, 'Tier Nine Club', 'known', NULL);
-
-    INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-      (100, 1, 1, 10, 100),
-      (101, 1, 1, 10, 101),
-      (102, 1, 1, 11, 102),
-      (103, 1, 1, 12, 103);
   `);
 
   sqlite.exec("INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10), (102, 11), (103, 12)");
@@ -94,6 +82,26 @@ describe("getDivisionAssignments", () => {
     applySchema(sqlite);
 
     try {
+      // Migration 023 drops pyramid_season_* tables; recreate them for this historical migration test
+      sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS pyramid_season_divisions (
+          id INTEGER PRIMARY KEY,
+          season_id INTEGER NOT NULL REFERENCES pyramid_seasons(id),
+          template_id INTEGER NOT NULL,
+          division_id INTEGER NOT NULL REFERENCES pyramid_divisions(id),
+          status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'locked', 'completed')),
+          locked_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS pyramid_season_memberships (
+          id INTEGER PRIMARY KEY,
+          season_id INTEGER NOT NULL REFERENCES pyramid_seasons(id),
+          template_id INTEGER NOT NULL,
+          season_division_id INTEGER NOT NULL REFERENCES pyramid_season_divisions(id),
+          club_id INTEGER NOT NULL REFERENCES clubs(id),
+          UNIQUE (season_id, club_id)
+        );
+      `);
+
       sqlite.exec(`
         INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
         INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
@@ -138,6 +146,26 @@ describe("getDivisionAssignments", () => {
     applySchema(sqlite);
 
     try {
+      // Migration 023 drops pyramid_season_* tables; recreate them for this historical migration test
+      sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS pyramid_season_divisions (
+          id INTEGER PRIMARY KEY,
+          season_id INTEGER NOT NULL REFERENCES pyramid_seasons(id),
+          template_id INTEGER NOT NULL,
+          division_id INTEGER NOT NULL REFERENCES pyramid_divisions(id),
+          status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'locked', 'completed')),
+          locked_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS pyramid_season_memberships (
+          id INTEGER PRIMARY KEY,
+          season_id INTEGER NOT NULL REFERENCES pyramid_seasons(id),
+          template_id INTEGER NOT NULL,
+          season_division_id INTEGER NOT NULL REFERENCES pyramid_season_divisions(id),
+          club_id INTEGER NOT NULL REFERENCES clubs(id),
+          UNIQUE (season_id, club_id)
+        );
+      `);
+
       sqlite.exec(`
         INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
         INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);

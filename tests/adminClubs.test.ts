@@ -24,26 +24,18 @@ function createMinimalDb(): AppDatabase {
       (1, 1, '2024-25'),
       (2, 1, '2025-26');
 
-    INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES
-      (10, 2, 1, 10, 'open'),
-      (11, 2, 1, 11, 'open'),
-      (12, 1, 1, 10, 'open'),
-      (13, 1, 1, 11, 'open');
-
     INSERT INTO clubs (id, name, status) VALUES
       (100, 'Test Town United', 'known'),
       (101, 'City Athletic', 'known'),
       (102, 'Rovers FC', 'partial'),
       (103, 'Albion FC', 'known');
 
-    INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
+    INSERT INTO division_assignments (club_id, division_id) VALUES
       -- 2025-26: Test Town + City + Albion in Premier; Rovers in First
-      (100, 2, 1, 10, 100),
-      (101, 2, 1, 10, 101),
-      (102, 2, 1, 11, 102),
-      (103, 2, 1, 10, 103),
-      -- 2024-25: Test Town in First (different division from latest)
-      (104, 1, 1, 13, 100);
+      (100, 10),
+      (101, 10),
+      (102, 11),
+      (103, 10);
 
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES
       (50, 'Test Park', 'TE1 1ST', 51.5, -0.1),
@@ -88,8 +80,6 @@ describe("admin club browser", () => {
 
     db.exec(`
       INSERT INTO clubs (id, name, status) VALUES (200, 'Old Club', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-        (200, 1, 1, 13, 200);
     `);
 
     const detail = await getAdminClubDetail(db, 200);
@@ -129,8 +119,7 @@ describe("admin club browser", () => {
 
     db.exec(`
       INSERT INTO clubs (id, name, status) VALUES (300, 'Homeless FC', 'partial');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-        (300, 2, 1, 10, 300);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (300, 10);
     `);
 
     const detail = await getAdminClubDetail(db, 300);

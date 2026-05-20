@@ -8,11 +8,9 @@ import {
   MEN_PYRAMID_DIVISIONS,
   MEN_PYRAMID_EDGES,
   MEN_PYRAMID_MEMBERSHIPS,
-  MEN_PYRAMID_MOVEMENTS,
   MEN_PYRAMID_SEASON_DIVISIONS,
   MEN_PYRAMID_SEASONS,
-  MEN_PYRAMID_TEMPLATE,
-  validatePyramidSeason
+  MEN_PYRAMID_TEMPLATE
 } from "./pyramid.ts";
 
 export interface SeedData {
@@ -612,16 +610,9 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     "SELECT COUNT(*) AS count FROM division_assignments"
   );
 
-  const pyramidIssues = validatePyramidSeason(MEN_PYRAMID_DIVISIONS, MEN_PYRAMID_SEASON_DIVISIONS, MEN_PYRAMID_MEMBERSHIPS, MEN_PYRAMID_MOVEMENTS);
-
-  if (pyramidIssues.length > 0) {
-    throw new Error(`Invalid pyramid seed data: ${pyramidIssues.map((issue) => issue.message).join("; ")}`);
-  }
-
   const divisionDisplayOrder = computeDivisionDisplayOrder();
   const edgeAllocationType = computeEdgeAllocationType();
   const latestPyramidSeasonId = Math.max(...MEN_PYRAMID_SEASONS.map((s) => s.id));
-  const seasonDivisionById = new Map(MEN_PYRAMID_SEASON_DIVISIONS.map((d) => [d.id, d]));
   const statements: D1PreparedStatement[] = [];
   const add = (sql: string, params: Array<string | number | null>) => {
     statements.push(binding.prepare(sql).bind(...params));
@@ -650,13 +641,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     add(
       "INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET template_id = excluded.template_id, season_label = excluded.season_label",
       [season.id, season.template_id, season.season_label]
-    );
-  }
-
-  for (const seasonDivision of MEN_PYRAMID_SEASON_DIVISIONS) {
-    add(
-      "INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status, locked_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET season_id = excluded.season_id, template_id = excluded.template_id, division_id = excluded.division_id, status = excluded.status, locked_at = excluded.locked_at",
-      [seasonDivision.id, seasonDivision.season_id, seasonDivision.template_id, seasonDivision.division_id, seasonDivision.status, seasonDivision.locked_at]
     );
   }
 
@@ -738,14 +722,11 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     }
   }
 
-  for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
-    add(
-      "INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET season_id = excluded.season_id, template_id = excluded.template_id, season_division_id = excluded.season_division_id, club_id = excluded.club_id",
-      [membership.id, membership.season_id, membership.template_id, membership.season_division_id, translateClubId(membership.club_id)]
-    );
-  }
-
   if (!existingAssignments || existingAssignments.count === 0) {
+    const seasonDivisionById = new Map<number, { division_id: number }>();
+    for (const sd of MEN_PYRAMID_SEASON_DIVISIONS) {
+      seasonDivisionById.set(sd.id, { division_id: sd.division_id });
+    }
     for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
       if (membership.season_id !== latestPyramidSeasonId) continue;
       const seasonDivision = seasonDivisionById.get(membership.season_division_id);
@@ -755,13 +736,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
         [translateClubId(membership.club_id), seasonDivision.division_id]
       );
     }
-  }
-
-  for (const movement of MEN_PYRAMID_MOVEMENTS) {
-    add(
-      "INSERT INTO pyramid_movements (id, season_id, template_id, club_id, from_season_division_id, to_season_division_id, movement_type, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET season_id = excluded.season_id, template_id = excluded.template_id, club_id = excluded.club_id, from_season_division_id = excluded.from_season_division_id, to_season_division_id = excluded.to_season_division_id, movement_type = excluded.movement_type, note = excluded.note, created_at = excluded.created_at",
-      [movement.id, movement.season_id, movement.template_id, translateClubId(movement.club_id), movement.from_season_division_id, movement.to_season_division_id, movement.movement_type, movement.note, movement.created_at]
-    );
   }
 
   for (const p of SEED_DATA.club_ticket_prices) {

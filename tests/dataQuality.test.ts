@@ -21,10 +21,8 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
       INSERT INTO clubs (id, name, status) VALUES (100, 'Homeless FC', 'known'), (101, 'Housed FC', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-        (100, 1, 1, 10, 100), (101, 1, 1, 10, 101);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Stadium', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES
         (101, 101, 50, '2025-08-01', NULL, 1);
@@ -123,10 +121,8 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Overcrowded Division', 1, 1);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
       INSERT INTO clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-        (100, 1, 1, 10, 100), (101, 1, 1, 10, 101);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10);
     `);
 
     const issues = await runDataQualityChecks(db);
@@ -144,11 +140,8 @@ describe("data quality checks", () => {
         (10, 1, 'mapped', 'Mapped Division', 1, 20),
         (11, 1, 'unmapped', 'Unmapped Division', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES
-        (10, 1, 1, 10, 'open'), (11, 1, 1, 11, 'open');
       INSERT INTO clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
-        (100, 1, 1, 10, 100), (101, 1, 1, 11, 101);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 11);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
       INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');
     `);
@@ -230,9 +223,8 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
       INSERT INTO clubs (id, name, status) VALUES (100, 'C', 'known');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', '', 999, 0);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
       INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Pub C', 'PL', 50);
@@ -255,9 +247,8 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
       INSERT INTO clubs (id, name, status, generic_ticket_url) VALUES (100, 'Healthy Club', 'known', 'https://tickets.example.com');
-      INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
+      INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
       INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
         (50, 'Healthy Ground', 'TE1 1ST', 51.5, -0.1, 'exact');
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES

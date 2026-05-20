@@ -92,11 +92,11 @@ export async function getPyramidExplorerData(db: AppDatabase): Promise<PyramidEx
     return { season: { id: 0, label: "" }, divisions: [], edges: [], clubs: [] };
   }
 
-  const divisions = await getExplorerDivisions(db, season.id);
+  const divisions = await getExplorerDivisions(db);
   const edges = await db.all<EdgeRow>(
     "SELECT id, from_division_id, to_division_id, movement_type, allocation_type, notes, source_url FROM pyramid_edges ORDER BY id"
   );
-  const clubs = await getClubSearchRows(db, season.id);
+  const clubs = await getClubSearchRows(db);
 
   return {
     season: { id: season.id, label: season.season_label },
@@ -106,28 +106,23 @@ export async function getPyramidExplorerData(db: AppDatabase): Promise<PyramidEx
   };
 }
 
-async function getExplorerDivisions(db: AppDatabase, seasonId: number): Promise<ExplorerDivision[]> {
+async function getExplorerDivisions(db: AppDatabase): Promise<ExplorerDivision[]> {
   const rows = await db.all<DivisionRow>(
     `SELECT
       d.id, d.code, d.name, d.level, d.max_size, d.display_order,
-      COUNT(pm.id) AS club_count
-    FROM pyramid_season_divisions psd
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    LEFT JOIN pyramid_season_memberships pm ON pm.season_division_id = psd.id
-    WHERE psd.season_id = ?
+      COUNT(da.id) AS club_count
+    FROM pyramid_divisions d
+    LEFT JOIN division_assignments da ON da.division_id = d.id
     GROUP BY d.id
-    ORDER BY d.level, d.display_order`,
-    [seasonId]
+    ORDER BY d.level, d.display_order`
   );
 
   const clubRows = await db.all<ClubInDivisionRow>(
-    `SELECT psd.division_id, pc.id, pc.name
-    FROM pyramid_season_memberships pm
-    JOIN pyramid_season_divisions psd ON psd.id = pm.season_division_id
-    JOIN clubs pc ON pc.id = pm.club_id
-    WHERE pm.season_id = ?
-    ORDER BY pc.name`,
-    [seasonId]
+    `SELECT d.id AS division_id, c.id, c.name
+    FROM division_assignments da
+    JOIN pyramid_divisions d ON d.id = da.division_id
+    JOIN clubs c ON c.id = da.club_id
+    ORDER BY d.id, c.name`
   );
 
   const clubsByDivision = new Map<number, ExplorerClubRow[]>();
@@ -149,22 +144,19 @@ async function getExplorerDivisions(db: AppDatabase, seasonId: number): Promise<
   }));
 }
 
-async function getClubSearchRows(db: AppDatabase, seasonId: number): Promise<ClubSearchRow[]> {
+async function getClubSearchRows(db: AppDatabase): Promise<ClubSearchRow[]> {
   return db.all<ClubSearchRow>(
     `SELECT
-      pc.id AS club_id,
-      pc.name AS club_name,
+      c.id AS club_id,
+      c.name AS club_name,
       d.id AS division_id,
       d.code AS division_code,
       d.name AS division_name,
       d.level
-    FROM pyramid_season_memberships pm
-    JOIN clubs pc ON pc.id = pm.club_id
-    JOIN pyramid_season_divisions psd ON psd.id = pm.season_division_id
-    JOIN pyramid_divisions d ON d.id = psd.division_id
-    WHERE pm.season_id = ?
-    ORDER BY pc.name`,
-    [seasonId]
+    FROM division_assignments da
+    JOIN clubs c ON c.id = da.club_id
+    JOIN pyramid_divisions d ON d.id = da.division_id
+    ORDER BY c.name`
   );
 }
 
