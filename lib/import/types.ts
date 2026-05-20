@@ -1,3 +1,5 @@
+import type { AppDatabase } from "../db/adapter.ts";
+
 export type SourceType = "api_feed" | "agent_scrape" | "url_table_scrape" | "csv_upload" | "csv_paste" | "manual";
 export type TrustLevel = "trusted" | "moderated" | "untrusted";
 export type ParseStatus = "pending" | "parsing" | "parsed" | "failed";
@@ -158,6 +160,28 @@ export interface NormalizedFixtureRow {
   sourceUrl?: string;
   evidence?: Record<string, unknown>;
   confidence?: Confidence;
+}
+
+export interface FixtureAdapterParseError {
+  rowIndex: number;
+  message: string;
+}
+
+export interface FixtureAdapterParseResult {
+  rows: NormalizedFixtureRow[];
+  errors: FixtureAdapterParseError[] | string[];
+}
+
+export interface FixtureSourceAdapter<
+  ParseResult extends FixtureAdapterParseResult = FixtureAdapterParseResult,
+  ImportResult = unknown,
+  ParseOptions = undefined,
+  CreateBatchArgs extends unknown[] = unknown[],
+> {
+  sourceType: SourceType;
+  name: string;
+  parse: (payload: string, options?: ParseOptions) => ParseResult | Promise<ParseResult>;
+  createImportBatch?(db: AppDatabase, payload: string, ...args: CreateBatchArgs): Promise<ImportResult>;
 }
 
 export interface ImportBatchRowInput {
