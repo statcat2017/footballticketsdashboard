@@ -62,31 +62,35 @@ export async function POST(request: Request) {
     }
 
     const friendlyClub = await db.get<{ id: number }>(
-      `SELECT c.id
-       FROM clubs c
-       WHERE c.id = ?
-         AND (
-           EXISTS (
-             SELECT 1 FROM competitions comp
-             WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
-           )
-           OR (
-             EXISTS (
-               SELECT 1
-               FROM fixtures f
-               JOIN competitions comp ON comp.code = f.competition_code
-               WHERE comp.kind = 'friendly'
-                 AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-             )
-             AND NOT EXISTS (
-               SELECT 1
-               FROM fixtures f
-               JOIN competitions comp ON comp.code = f.competition_code
-               WHERE comp.kind != 'friendly'
-                 AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-             )
-           )
-         )`,
+      `WITH
+      friendly_clubs AS (
+        SELECT c.id AS club_id FROM clubs c
+        JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
+        UNION
+        SELECT f.home_club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+        WHERE f.home_club_id IS NOT NULL
+        UNION
+        SELECT f.away_club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+        WHERE f.away_club_id IS NOT NULL
+      ),
+      league_clubs AS (
+        SELECT f.home_club_id AS club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+        WHERE f.home_club_id IS NOT NULL
+        UNION
+        SELECT f.away_club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+        WHERE f.away_club_id IS NOT NULL
+      ),
+      friendly_only_clubs AS (
+        SELECT club_id FROM friendly_clubs
+        EXCEPT
+        SELECT club_id FROM league_clubs
+      )
+      SELECT c.id FROM clubs c
+      WHERE c.id = ? AND c.id IN (SELECT club_id FROM friendly_only_clubs)`,
       [clubId]
     );
 

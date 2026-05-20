@@ -25,9 +25,13 @@ export async function POST(request: Request) {
 
   const clubIdRaw = form.get("club_id");
   const divisionIdRaw = form.get("division_id");
+  const redirectDivisionIdRaw = form.get("redirect_division_id");
 
   const clubId = typeof clubIdRaw === "string" ? Number(clubIdRaw) : NaN;
   const divisionId = typeof divisionIdRaw === "string" ? Number(divisionIdRaw) : NaN;
+  const redirectDivisionId = typeof redirectDivisionIdRaw === "string" && /^\d+$/.test(redirectDivisionIdRaw)
+    ? redirectDivisionIdRaw
+    : null;
 
   if (!Number.isInteger(clubId) || clubId <= 0) {
     return NextResponse.redirect(
@@ -53,6 +57,7 @@ export async function POST(request: Request) {
     } else {
       params.set("success", "Club moved.");
     }
+    if (redirectDivisionId) params.set("division_id", redirectDivisionId);
     return NextResponse.redirect(
       new URL(`/admin/publish?${params.toString()}`, request.url),
       { status: 303 }

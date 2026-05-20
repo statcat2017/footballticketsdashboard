@@ -24,8 +24,12 @@ export async function POST(request: Request) {
   }
 
   const clubIdRaw = form.get("club_id");
+  const redirectDivisionIdRaw = form.get("redirect_division_id");
 
   const clubId = typeof clubIdRaw === "string" ? Number(clubIdRaw) : NaN;
+  const redirectDivisionId = typeof redirectDivisionIdRaw === "string" && /^\d+$/.test(redirectDivisionIdRaw)
+    ? redirectDivisionIdRaw
+    : null;
 
   if (!Number.isInteger(clubId) || clubId <= 0) {
     return NextResponse.redirect(
@@ -38,8 +42,10 @@ export async function POST(request: Request) {
 
   try {
     await unassignClub(db, clubId, session.actor);
+    const params = new URLSearchParams("success=Club unassigned.");
+    if (redirectDivisionId) params.set("division_id", redirectDivisionId);
     return NextResponse.redirect(
-      new URL("/admin/publish?success=Club unassigned.", request.url),
+      new URL(`/admin/publish?${params.toString()}`, request.url),
       { status: 303 }
     );
   } catch (error) {

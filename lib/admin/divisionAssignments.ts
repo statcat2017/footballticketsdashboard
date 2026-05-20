@@ -55,7 +55,34 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
     generic_ticket_url: string | null;
     club_competition_code: string | null;
   }>(
-    `SELECT
+    `WITH
+    friendly_clubs AS (
+      SELECT c.id AS club_id FROM clubs c
+      JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
+      UNION
+      SELECT f.home_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+      WHERE f.home_club_id IS NOT NULL
+      UNION
+      SELECT f.away_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+      WHERE f.away_club_id IS NOT NULL
+    ),
+    league_clubs AS (
+      SELECT f.home_club_id AS club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+      WHERE f.home_club_id IS NOT NULL
+      UNION
+      SELECT f.away_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+      WHERE f.away_club_id IS NOT NULL
+    ),
+    friendly_only_clubs AS (
+      SELECT club_id FROM friendly_clubs
+      EXCEPT
+      SELECT club_id FROM league_clubs
+    )
+    SELECT
       d.id AS division_id,
       d.name AS division_name,
       d.level AS division_level,
@@ -71,27 +98,7 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
       c.competition_code AS club_competition_code
     FROM pyramid_divisions d
     LEFT JOIN division_assignments da ON da.division_id = d.id
-    LEFT JOIN clubs c ON c.id = da.club_id
-      AND NOT EXISTS (
-        SELECT 1 FROM competitions comp
-        WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
-      )
-      AND NOT (
-        EXISTS (
-          SELECT 1
-          FROM fixtures f
-          JOIN competitions comp ON comp.code = f.competition_code
-          WHERE comp.kind = 'friendly'
-            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM fixtures f
-          JOIN competitions comp ON comp.code = f.competition_code
-          WHERE comp.kind != 'friendly'
-            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-        )
-      )
+    LEFT JOIN clubs c ON c.id = da.club_id AND c.id NOT IN (SELECT club_id FROM friendly_only_clubs)
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
@@ -105,33 +112,41 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
     status: string;
     venue_name: string | null;
   }>(
-    `SELECT c.id, c.name, c.status, v.name AS venue_name
+    `WITH
+    friendly_clubs AS (
+      SELECT c.id AS club_id FROM clubs c
+      JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
+      UNION
+      SELECT f.home_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+      WHERE f.home_club_id IS NOT NULL
+      UNION
+      SELECT f.away_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+      WHERE f.away_club_id IS NOT NULL
+    ),
+    league_clubs AS (
+      SELECT f.home_club_id AS club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+      WHERE f.home_club_id IS NOT NULL
+      UNION
+      SELECT f.away_club_id FROM fixtures f
+      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+      WHERE f.away_club_id IS NOT NULL
+    ),
+    friendly_only_clubs AS (
+      SELECT club_id FROM friendly_clubs
+      EXCEPT
+      SELECT club_id FROM league_clubs
+    )
+    SELECT c.id, c.name, c.status, v.name AS venue_name
     FROM clubs c
     LEFT JOIN division_assignments da ON da.club_id = c.id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
     WHERE da.id IS NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM competitions comp
-        WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
-      )
-      AND NOT (
-        EXISTS (
-          SELECT 1
-          FROM fixtures f
-          JOIN competitions comp ON comp.code = f.competition_code
-          WHERE comp.kind = 'friendly'
-            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM fixtures f
-          JOIN competitions comp ON comp.code = f.competition_code
-          WHERE comp.kind != 'friendly'
-            AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-        )
-      )
+      AND c.id NOT IN (SELECT club_id FROM friendly_only_clubs)
     ORDER BY c.name`
   );
 
