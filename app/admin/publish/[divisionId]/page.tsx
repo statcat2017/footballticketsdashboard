@@ -7,6 +7,7 @@ import { getDatabase } from "@/lib/db/client";
 import { getDivisionDetail, getPromoteTargets, getRelegateTargets, getMigrateTargets, getClubsInDivision } from "@/lib/admin/divisionAssignments";
 import { ClubAutocomplete } from "@/app/components/admin/ClubAutocomplete";
 import { ClubMovementButtons } from "@/app/components/admin/ClubMovementButtons";
+import { DivisionGroundsMapWrapper } from "./_components/DivisionGroundsMapWrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +166,40 @@ export default async function DivisionDetailPage(props: {
   const clubCount = detail.clubCount;
   const maxSize = detail.maxSize;
   const remainingSpaces = maxSize - clubCount;
+  const groundMarkers = detail.clubs.flatMap((club) => {
+    if (
+      club.venueName &&
+      club.venueLatitude !== null &&
+      club.venueLongitude !== null &&
+      Number.isFinite(club.venueLatitude) &&
+      Number.isFinite(club.venueLongitude)
+    ) {
+      return [{
+        clubId: club.id,
+        clubName: club.name,
+        venueName: club.venueName,
+        postcode: club.venuePostcode,
+        lat: club.venueLatitude,
+        lng: club.venueLongitude,
+      }];
+    }
+
+    return [];
+  });
+  const unplacedClubs = detail.clubs
+    .filter((club) =>
+      !club.venueName ||
+      club.venueLatitude === null ||
+      club.venueLongitude === null ||
+      !Number.isFinite(club.venueLatitude) ||
+      !Number.isFinite(club.venueLongitude)
+    )
+    .map((club) => ({
+      clubId: club.id,
+      clubName: club.name,
+      venueName: club.venueName,
+      postcode: club.venuePostcode,
+    }));
 
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
@@ -379,6 +414,9 @@ export default async function DivisionDetailPage(props: {
           }}>
             {remainingSpaces} slot{remainingSpaces !== 1 ? "s" : ""} remaining &middot; Use the search box above to assign clubs
           </div>
+        )}
+        {clubCount > 0 && (
+          <DivisionGroundsMapWrapper markers={groundMarkers} unplacedClubs={unplacedClubs} />
         )}
         {clubCount > 0 ? (
           <div style={{ overflowX: "auto" }}>

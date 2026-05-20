@@ -372,6 +372,32 @@ describe("getDivisionDetail", () => {
     expect(detail!.missingTicketUrlCount).toBe(2);
     expect(detail!.clubs.map((c) => c.name)).toContain("Test Town United");
     expect(detail!.clubs.map((c) => c.name)).toContain("City Athletic");
+
+    const testTown = detail!.clubs.find((c) => c.name === "Test Town United");
+    expect(testTown).toMatchObject({
+      venueName: "Test Park",
+      venuePostcode: "TE1 1ST",
+      venueLatitude: 51.5,
+      venueLongitude: -0.1,
+    });
+  });
+
+  it("keeps assigned clubs without primary venues available for map unplaced lists", async () => {
+    const db = createMinimalDb();
+    db.exec(`
+      INSERT INTO clubs (id, name, status) VALUES (200, 'Venue Missing FC', 'known');
+      INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
+    `);
+
+    const detail = await getDivisionDetail(db, 10);
+
+    const missingCoords = detail!.clubs.find((c) => c.name === "Venue Missing FC");
+    expect(missingCoords).toMatchObject({
+      venueName: null,
+      venuePostcode: null,
+      venueLatitude: null,
+      venueLongitude: null,
+    });
   });
 
   it("returns null for non-existent division", async () => {
