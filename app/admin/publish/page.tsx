@@ -161,10 +161,10 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                 Tier {tier.tier}
               </h2>
               {tier.competitions.map((comp) => {
-                const isExpanded = expandedCompId === comp.id;
+                const isExpanded = expandedCompId !== null && expandedCompId === comp.id;
 
                 return (
-                  <details key={comp.id} open={isExpanded} style={{
+                  <details key={comp.code ?? comp.name} open={isExpanded} style={{
                     border: "1px solid #dce3e2",
                     borderRadius: "8px",
                     overflow: "hidden"
@@ -204,7 +204,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                         <StatusBadge published={comp.isPublished} />
-                        {!comp.isPublished && (
+                        {!comp.isPublished && comp.id !== null && (
                           <form method="post" action="/api/admin/publish/competition">
                             <input type="hidden" name="csrf" value={csrfToken} />
                             <input type="hidden" name="division_id" value={comp.id} />
@@ -226,7 +226,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                     </summary>
 
                     <div style={{ overflowX: "auto" }}>
-                      {comp.isPublished && (
+                      {comp.isPublished && comp.id !== null && (
                         <div style={{ padding: "0.5rem 1rem", borderBottom: "1px solid #eef1f1" }}>
                           <form method="post" action="/api/admin/publish/clubs" style={{ display: "inline" }}>
                             <input type="hidden" name="csrf" value={csrfToken} />
@@ -285,7 +285,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                                 )}
                               </td>
                               <td style={{ padding: "0.6rem 1rem" }}>
-                                {!club.isPublished && club.venueName && comp.isPublished && (
+                                {!club.isPublished && club.venueName && comp.isPublished && comp.id !== null && (
                                   <form method="post" action="/api/admin/publish/club">
                                     <input type="hidden" name="csrf" value={csrfToken} />
                                     <input type="hidden" name="club_id" value={club.id} />
