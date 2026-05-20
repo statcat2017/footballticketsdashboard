@@ -69,31 +69,32 @@ export async function POST(request: Request) {
       competition_code: string | null;
       status: string;
     }>(
-      `SELECT c.id, c.name, c.competition_code, c.status
-       FROM division_assignments da
-       JOIN clubs c ON c.id = da.club_id
-       WHERE da.division_id = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM competitions comp
-           WHERE comp.code = c.competition_code AND comp.kind = 'friendly'
-         )
-         AND NOT (
-           EXISTS (
-             SELECT 1
-             FROM fixtures f
-             JOIN competitions comp ON comp.code = f.competition_code
-             WHERE comp.kind = 'friendly'
-               AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-           )
-           AND NOT EXISTS (
-             SELECT 1
-             FROM fixtures f
-             JOIN competitions comp ON comp.code = f.competition_code
-             WHERE comp.kind != 'friendly'
-               AND (f.home_club_id = c.id OR f.away_club_id = c.id)
-           )
-         )
-       ORDER BY c.name`,
+      `WITH friendly_only_clubs AS (
+        SELECT c.id AS club_id FROM clubs c
+        JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
+        UNION ALL
+        SELECT f.home_club_id AS club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+        WHERE f.home_club_id IS NOT NULL
+        UNION ALL
+        SELECT f.away_club_id AS club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
+        WHERE f.away_club_id IS NOT NULL
+        EXCEPT
+        SELECT f.home_club_id AS club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+        WHERE f.home_club_id IS NOT NULL
+        UNION ALL
+        SELECT f.away_club_id AS club_id FROM fixtures f
+        JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
+        WHERE f.away_club_id IS NOT NULL
+      )
+      SELECT c.id, c.name, c.competition_code, c.status
+      FROM division_assignments da
+      JOIN clubs c ON c.id = da.club_id
+      WHERE da.division_id = ?
+        AND c.id NOT IN (SELECT club_id FROM friendly_only_clubs)
+      ORDER BY c.name`,
       [divisionId]
     );
 
