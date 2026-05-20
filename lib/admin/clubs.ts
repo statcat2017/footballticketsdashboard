@@ -473,7 +473,6 @@ export interface CompetitionClubRow {
   name: string;
   status: string;
   venueName: string | null;
-  venueId: number | null;
   hasTicketUrl: boolean;
   isPublished: boolean;
 }
@@ -569,13 +568,12 @@ export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllC
     level: number;
     code: string | null;
     clubs: Array<{
-      id: number;
-      name: string;
-      status: string;
-      venueName: string | null;
-      venueId: number | null;
-      hasTicketUrl: boolean;
-      isPublished: boolean;
+    id: number;
+    name: string;
+    status: string;
+    venueName: string | null;
+    hasTicketUrl: boolean;
+    isPublished: boolean;
     }>;
   }>();
 
@@ -596,7 +594,6 @@ export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllC
       name: row.club_name,
       status: row.club_status,
       venueName: row.venue_name,
-      venueId: row.club_id,
       hasTicketUrl: !!row.generic_ticket_url,
       isPublished: row.competition_code !== null && row.club_status === "known",
     });

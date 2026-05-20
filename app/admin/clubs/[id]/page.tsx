@@ -53,12 +53,12 @@ export default async function AdminClubDetailPage(props: {
         marginBottom: "1.5rem"
       }}>
         <div>
-          <Link href="/admin/clubs" style={{
+          <Link href="/admin/publish" style={{
             color: "#6f7e7a",
             fontSize: "13px",
             textDecoration: "none",
             fontWeight: 600
-          }}>&larr; Clubs</Link>
+          }}>&larr; Clubs & Divisions</Link>
           <h1 style={{ margin: "0.25rem 0 0", fontSize: "1.5rem" }}>{data.club.name}</h1>
           <p style={{ margin: "0.25rem 0 0", color: "#6f7e7a", fontSize: "14px" }}>
             {data.season.division_name} (Level {data.season.division_level}) &middot; Season {data.season.label}
