@@ -1,7 +1,14 @@
 import type { AppDatabase } from "../db/adapter.ts";
 import { distanceMiles } from "../distance.ts";
-import { resolvePostcodeOrigin } from "../postcode.ts";
+import {
+  resolvePostcodeOrigin,
+  normalizePostcode,
+  postcodeDistrict,
+  type PostcodeResolver,
+  type ResolvedPostcodeOrigin
+} from "../postcode.ts";
 import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
+import type { TravelProvider } from "../travel/providers.ts";
 import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
@@ -65,14 +72,33 @@ function mergeProviders(...providers: Array<string | null | undefined>): string 
 export async function searchFixtures(
   db: AppDatabase,
   request: SearchRequest,
-  options: { travelProviders?: TravelProviderRuntimeConfig } = {}
+  options: {
+    travelProviders?: TravelProviderRuntimeConfig;
+    postcodeResolver?: PostcodeResolver;
+    travelProviderOverrides?: TravelProvider[];
+  } = {}
 ): Promise<FixtureResult[]> {
   const defaults = defaultDateRange();
   const dateRange = {
     dateFrom: request.dateFrom ?? defaults.dateFrom,
     dateTo: request.dateTo ?? defaults.dateTo
   };
-  const origin = await resolvePostcodeOrigin(request.postcode);
+
+  let origin: ResolvedPostcodeOrigin;
+
+  if (options.postcodeResolver) {
+    const normalized = normalizePostcode(request.postcode);
+    const district = postcodeDistrict(normalized);
+    const coordinate = await options.postcodeResolver.resolve(normalized);
+
+    if (!coordinate) {
+      throw new Error("Could not resolve postcode.");
+    }
+
+    origin = { normalized, district, coordinate, source: "known" };
+  } else {
+    origin = await resolvePostcodeOrigin(request.postcode);
+  }
 
   let rows = await queryFixtures(db, dateRange, origin.district);
 
@@ -95,7 +121,7 @@ export async function searchFixtures(
         return dist <= radiusFilter;
       });
 
-  const enrichedRows = await enrichTravelRows(db, inRadius, origin, options.travelProviders);
+  const enrichedRows = await enrichTravelRows(db, inRadius, origin, options.travelProviders, options.travelProviderOverrides);
 
   return enrichedRows
     .map((row) => toResult(row, origin.coordinate))
@@ -294,8 +320,9 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
 async function enrichTravelRows(
   db: AppDatabase,
   rows: FixtureRow[],
-  origin: Awaited<ReturnType<typeof resolvePostcodeOrigin>>,
-  travelProviders?: TravelProviderRuntimeConfig
+  origin: ResolvedPostcodeOrigin,
+  travelProviders?: TravelProviderRuntimeConfig,
+  travelProviderOverrides?: TravelProvider[]
 ): Promise<FixtureRow[]> {
   const byVenue = new Map<number, {
     row: FixtureRow;
@@ -313,17 +340,19 @@ async function enrichTravelRows(
 
     byVenue.set(row.venue_id, {
       row,
-      buildEntry: () => buildTravelCacheEntry({
-        postcodeDistrictValue: origin.district,
-        origin: origin.coordinate,
-        venue: {
-          venue_id: row.venue_id,
-          venue_name: row.venue_name,
-          latitude: row.latitude,
-          longitude: row.longitude
-        },
-        providers: travelProviders ?? {}
-      })
+      buildEntry: () => travelProviderOverrides
+        ? buildEntryWithOverrides(travelProviderOverrides, origin, row)
+        : buildTravelCacheEntry({
+            postcodeDistrictValue: origin.district,
+            origin: origin.coordinate,
+            venue: {
+              venue_id: row.venue_id,
+              venue_name: row.venue_name,
+              latitude: row.latitude,
+              longitude: row.longitude
+            },
+            providers: travelProviders ?? {}
+          })
     });
   }
 
@@ -387,4 +416,44 @@ async function enrichTravelRows(
       travel_source: row.cached_distance_miles !== null ? "cache" : "live"
     };
   });
+}
+
+async function buildEntryWithOverrides(
+  providers: TravelProvider[],
+  origin: ResolvedPostcodeOrigin,
+  row: FixtureRow
+): Promise<{
+  venueId: number;
+  distanceMiles: number;
+  drivingMinutes: number | null;
+  publicTransportMinutes: number | null;
+  provider: string | null;
+}> {
+  const destination = { latitude: row.latitude, longitude: row.longitude };
+  const results = await Promise.allSettled(
+    providers.map(p => p.estimate(origin.coordinate, destination))
+  );
+
+  let drivingMinutes: number | null = null;
+  let publicTransportMinutes: number | null = null;
+  const providerNames: string[] = [];
+
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) {
+      const estimate = result.value;
+      if (estimate.drivingMinutes !== null) drivingMinutes = estimate.drivingMinutes;
+      if (estimate.publicTransportMinutes !== null) publicTransportMinutes = estimate.publicTransportMinutes;
+      if (estimate.provider) providerNames.push(estimate.provider);
+    }
+  }
+
+  const distanceMilesValue = Math.round(distanceMiles(origin.coordinate, destination) * 10) / 10;
+
+  return {
+    venueId: row.venue_id,
+    distanceMiles: distanceMilesValue,
+    drivingMinutes,
+    publicTransportMinutes,
+    provider: providerNames.length > 0 ? providerNames.join("+") : null
+  };
 }

@@ -6,6 +6,10 @@ export interface Coordinate {
   longitude: number;
 }
 
+export interface PostcodeResolver {
+  resolve(postcode: string): Promise<Coordinate | null>;
+}
+
 const POSTCODE_COORDINATES: Record<string, Coordinate> = {
   "N5 1BU": { latitude: 51.5549, longitude: -0.1084 },
   "B6 6HE": { latitude: 52.5092, longitude: -1.8848 },
@@ -125,17 +129,7 @@ export async function resolvePostcodeOrigin(
   };
 }
 
-function districtFallbackCoordinate(district: string): Coordinate {
-  const area = district.match(/^[A-Z]+/)?.[0];
-
-  if (area && AREA_FALLBACK_COORDINATES[area]) {
-    return AREA_FALLBACK_COORDINATES[area];
-  }
-
-  return { latitude: 51.5074, longitude: -0.1278 };
-}
-
-async function lookupPostcodeCoordinate(
+export async function lookupPostcodeCoordinate(
   postcode: string,
   fetchImpl: typeof fetch,
   postcodesIoBaseUrl = "https://api.postcodes.io"
@@ -159,6 +153,33 @@ async function lookupPostcodeCoordinate(
     return { latitude: result.latitude, longitude: result.longitude };
   } catch {
     return null;
+  }
+}
+
+function districtFallbackCoordinate(district: string): Coordinate {
+  const area = district.match(/^[A-Z]+/)?.[0];
+
+  if (area && AREA_FALLBACK_COORDINATES[area]) {
+    return AREA_FALLBACK_COORDINATES[area];
+  }
+
+  return { latitude: 51.5074, longitude: -0.1278 };
+}
+
+export class KnownPostcodeResolver implements PostcodeResolver {
+  resolve(postcode: string): Promise<Coordinate | null> {
+    return Promise.resolve(POSTCODE_COORDINATES[postcode] ?? null);
+  }
+}
+
+export class HttpPostcodeResolver implements PostcodeResolver {
+  constructor(
+    private baseUrl = "https://api.postcodes.io",
+    private fetchImpl: typeof fetch = fetch
+  ) {}
+
+  async resolve(postcode: string): Promise<Coordinate | null> {
+    return lookupPostcodeCoordinate(postcode, this.fetchImpl, this.baseUrl);
   }
 }
 
