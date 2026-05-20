@@ -1,5 +1,5 @@
 import type { AppDatabase } from "../../db/adapter.ts";
-import type { NormalizedFixtureRow } from "../types.ts";
+import type { NormalizedFixtureRow, KickoffAssumptionPolicy } from "../types.ts";
 import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus, getOrCreateSource } from "../index.ts";
 import { HEADER_ALIASES, parseDateField, parseTimeField, parseStatusField, parsePriceField } from "./csv.ts";
 
@@ -331,6 +331,7 @@ export async function createImportBatchFromHtmlUrl(
     selectedTableIndices?: number[];
     trustedDomains?: string[];
     fetcher?: typeof fetch;
+    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
   }
 ): Promise<HtmlImportResult> {
   const fetchResult = await fetchPage(url, {

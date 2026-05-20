@@ -1,5 +1,5 @@
 import type { AppDatabase } from "../../db/adapter.ts";
-import type { NormalizedFixtureRow, FixtureStatus } from "../types.ts";
+import type { NormalizedFixtureRow, FixtureStatus, KickoffAssumptionPolicy } from "../types.ts";
 import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../index.ts";
 
 export interface CsvParseError {
@@ -148,6 +148,7 @@ export async function createImportBatchFromCsv(
   actor: string,
   options?: {
     seasonLabel?: string;
+    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
   }
 ): Promise<CreateBatchFromCsvResult> {
   const result = parseCsv(csvText);

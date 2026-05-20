@@ -1,5 +1,5 @@
 import type { AppDatabase, SqlWrite } from "../db/adapter.ts";
-import type { ImportBatchRow } from "./types.ts";
+import type { ImportBatchRow, KickoffAssumptionPolicy } from "./types.ts";
 import { getBatch, getBatchRows } from "./importBatch.ts";
 import { buildAdminAuditLogWrite } from "../admin/audit.ts";
 import { getCurrentSeasonLabel, getAssumedKickoffTime } from "./shared";
@@ -12,14 +12,18 @@ export interface ApplyResult {
   total: number;
 }
 
-export function buildFixtureInsert(row: ImportBatchRow, seasonLabel: string | null): SqlWrite {
+export function buildFixtureInsert(
+  row: ImportBatchRow,
+  seasonLabel: string | null,
+  kickoffAssumptionPolicy?: KickoffAssumptionPolicy
+): SqlWrite {
   const source = "import_batch";
   const sourceId = `${row.batchId}-${row.id}`;
 
   const dateValue = row.kickoffDate;
   const timeValue = row.kickoffTime;
 
-  const time = timeValue ?? (dateValue ? getAssumedKickoffTime(dateValue) : null);
+  const time = timeValue ?? (dateValue ? getAssumedKickoffTime(dateValue, kickoffAssumptionPolicy) : null);
   const kickoffAt = dateValue && time ? `${dateValue}T${time}:00.000Z` : null;
   const statusValue = row.status ?? "scheduled";
   const competitionCode = row.competitionResolvedCode
@@ -157,6 +161,9 @@ export async function applyBatchRows(
   db: AppDatabase,
   batchId: number,
   actor: string,
+  options?: {
+    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
+  }
 ): Promise<ApplyResult> {
   const batch = await getBatch(db, batchId);
   if (!batch) throw new Error(`Import batch ${batchId} not found.`);
@@ -207,7 +214,7 @@ export async function applyBatchRows(
       staleUpdateRows.push(row);
       continue;
     }
-    fixtureStatements.push(buildFixtureInsert(row, seasonLabel));
+    fixtureStatements.push(buildFixtureInsert(row, seasonLabel, options?.kickoffAssumptionPolicy));
     fixtureMetadata.push({ rowId: row.id, finalAction: "insert" });
   }
 

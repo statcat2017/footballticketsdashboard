@@ -1,5 +1,5 @@
 import type { AppDatabase } from "../db/adapter.ts";
-import type { ImportBatchRow, MatchResult, FixtureStatus, WarningIssue, IssueCode } from "./types.ts";
+import type { ImportBatchRow, MatchResult, FixtureStatus, WarningIssue, IssueCode, KickoffAssumptionPolicy } from "./types.ts";
 import {
   resolveFixtureParticipant,
   resolveCompetitionFromFixture,
@@ -44,7 +44,10 @@ export interface BatchValidationResult {
 
 export async function validateImportBatch(
   db: AppDatabase,
-  batchId: number
+  batchId: number,
+  options?: {
+    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
+  }
 ): Promise<BatchValidationResult> {
   const batch = await getBatch(db, batchId);
   if (!batch) throw new Error(`Import batch ${batchId} not found.`);
@@ -64,7 +67,9 @@ export async function validateImportBatch(
       continue;
     }
 
-    const validation = await validateRow(db, row, seasonLabel);
+    const validation = await validateRow(db, row, seasonLabel, {
+      kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
+    });
 
     const payload = validation.warnings.length > 0 ? buildWarningsPayload(validation.warnings) : undefined;
     const outcomeUpdate: Parameters<typeof updateBatchRowOutcome>[2] = {
@@ -393,6 +398,9 @@ export async function validateRow(
   db: AppDatabase,
   row: ImportBatchRow,
   seasonLabel: string | null,
+  options?: {
+    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
+  }
 ): Promise<RowValidationResult> {
   const warnings: ValidationWarning[] = [];
   let hasBlocker = false;
@@ -477,13 +485,15 @@ export async function validateRow(
       normalizedTime = parsedTime;
     }
   } else if (dateStr && !hasBlocker) {
-    kickoffTime = getAssumedKickoffTime(dateStr);
-    warnings.push(makeIssue("assumed_time",
-      isWeekend(dateStr)
-        ? "Kickoff time assumed 15:00 (weekend)."
-        : "Kickoff time assumed 19:45 (midweek).",
-      { severity: "warning" }
-    ));
+    kickoffTime = getAssumedKickoffTime(dateStr, options?.kickoffAssumptionPolicy);
+    if (kickoffTime) {
+      warnings.push(makeIssue("assumed_time",
+        isWeekend(dateStr)
+          ? `Kickoff time assumed ${kickoffTime} (weekend).`
+          : `Kickoff time assumed ${kickoffTime} (midweek).`,
+        { severity: "warning" }
+      ));
+    }
   }
 
   let normalizedStatus: FixtureStatus | null | undefined;
@@ -635,5 +645,4 @@ export async function validateRow(
     awayParticipantRaw: row.awayParticipantRaw,
   };
 }
-
 

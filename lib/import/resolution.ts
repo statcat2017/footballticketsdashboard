@@ -1,5 +1,5 @@
 import type { AppDatabase, SqlWrite } from "../db/adapter.ts";
-import type { ImportBatchRow, RowEditFields, WarningIssue, WarningsPayload } from "./types.ts";
+import type { ImportBatchRow, RowEditFields, WarningIssue, WarningsPayload, KickoffAssumptionPolicy } from "./types.ts";
 import { getBatch, getBatchRow, getBatchRows, updateBatchRow, updateBatchStatus } from "./importBatch.ts";
 import { buildWarningsPayload, validateRow } from "./validation.ts";
 import { buildAdminAuditLogWrite } from "../admin/audit.ts";
@@ -21,7 +21,10 @@ function buildWarningsUpdate(warnings: WarningsPayload | null): string | null {
 export async function validateRowById(
   db: AppDatabase,
   rowId: number,
-  seasonLabelArg?: string | null
+  seasonLabelArg?: string | null,
+  options?: {
+    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
+  }
 ): Promise<ImportBatchRow> {
   const row = await getBatchRow(db, rowId);
   if (!row) throw new Error(`Import batch row ${rowId} not found.`);
@@ -31,7 +34,9 @@ export async function validateRowById(
   if (!batch) throw new Error(`Import batch ${row.batchId} not found.`);
 
   const seasonLabel = (seasonLabelArg ?? batch.seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
-  const validation = await validateRow(db, row, seasonLabel);
+  const validation = await validateRow(db, row, seasonLabel, {
+    kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
+  });
 
   const payload = validation.warnings.length > 0 ? buildWarningsPayload(validation.warnings) : null;
 
@@ -131,12 +136,17 @@ export async function importSingleRow(
   db: AppDatabase,
   rowId: number,
   actor: string,
+  options?: {
+    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
+  }
 ): Promise<ApplySingleResult> {
   const row = await getBatchRow(db, rowId);
   if (!row) throw new Error(`Import batch row ${rowId} not found.`);
   if (row.finalAction) throw new Error(`Row ${rowId} has final action "${row.finalAction}" and cannot be imported again.`);
 
-  const revalidated = await validateRowById(db, rowId);
+  const revalidated = await validateRowById(db, rowId, undefined, {
+    kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
+  });
   if (revalidated.matchResult === "blocked") {
     return { row: revalidated, fixtureId: null };
   }
@@ -189,7 +199,7 @@ export async function importSingleRow(
       return { row: updated!, fixtureId: null };
     }
   } else {
-    statements.push(buildFixtureInsert(revalidated, seasonLabel));
+    statements.push(buildFixtureInsert(revalidated, seasonLabel, options?.kickoffAssumptionPolicy));
     action = "import_insert";
     auditStmts.push(buildAdminAuditLogWrite({
       action: "create",

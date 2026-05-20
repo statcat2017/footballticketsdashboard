@@ -1,4 +1,5 @@
 import type { AppDatabase } from "../db/adapter";
+import type { KickoffAssumptionPolicy } from "./types";
 
 export async function getCurrentSeasonLabel(db: AppDatabase): Promise<string | undefined> {
   const season = await db.get<{ label: string }>(
@@ -12,6 +13,13 @@ export function isWeekend(dateStr: string): boolean {
   return day === 0 || day === 6;
 }
 
-export function getAssumedKickoffTime(dateStr: string): string {
-  return isWeekend(dateStr) ? "15:00" : "19:45";
+export function getAssumedKickoffTime(
+  dateStr: string,
+  policy?: KickoffAssumptionPolicy
+): string | null {
+  if (policy?.enabled === false) return null;
+
+  const defaultTime = isWeekend(dateStr) ? "15:00" : "19:45";
+  const configuredTime = isWeekend(dateStr) ? policy?.weekend : policy?.midweek;
+  return configuredTime === undefined ? defaultTime : configuredTime;
 }
