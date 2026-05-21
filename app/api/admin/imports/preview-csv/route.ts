@@ -4,6 +4,7 @@ import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getOrCreateSource, createImportBatchFromCsv } from "@/lib/import";
 import { validateImportBatch } from "@/lib/import/validation";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -23,10 +24,7 @@ export async function POST(request: Request) {
 
   const csvText = form.get("csv");
   if (typeof csvText !== "string" || csvText.trim().length === 0) {
-    return NextResponse.redirect(
-      new URL("/admin/imports/new?error=CSV text is required.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/imports/new?error=CSV text is required.");
   }
 
   const sourceName = form.get("source_name");
@@ -51,15 +49,9 @@ export async function POST(request: Request) {
 
     await validateImportBatch(db, result.batchId);
 
-    return NextResponse.redirect(
-      new URL(`/admin/imports/${result.batchId}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/imports/${result.batchId}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/imports/new?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/imports/new?error=${encodeURIComponent(message)}`);
   }
 }

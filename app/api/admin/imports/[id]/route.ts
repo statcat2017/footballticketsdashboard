@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { getDatabase } from "@/lib/db/client";
 import { getBatchDetail } from "@/lib/admin/imports";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function GET(
   _request: Request,
@@ -116,10 +117,7 @@ export async function POST(
   if (action === "delete") {
     const confirm = form.get("confirm");
     if (confirm !== "1") {
-      return NextResponse.redirect(
-        new URL(`/admin/imports/${batchId}?error=Please confirm the delete action.`, request.url),
-        { status: 303 }
-      );
+      return adminRedirect(request, `/admin/imports/${batchId}?error=Please confirm the delete action.`);
     }
 
     const db = await getDatabase();
@@ -139,25 +137,16 @@ export async function POST(
             : undefined,
         }),
       ]);
-      return NextResponse.redirect(
-        new URL("/admin/imports?deleted=1", request.url),
-        { status: 303 }
-      );
+      return adminRedirect(request, "/admin/imports?deleted=1");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      return NextResponse.redirect(
-        new URL(`/admin/imports/${batchId}?error=${encodeURIComponent(message)}`, request.url),
-        { status: 303 }
-      );
+      return adminRedirect(request, `/admin/imports/${batchId}?error=${encodeURIComponent(message)}`);
     }
   }
 
   const confirm = form.get("confirm");
   if (confirm !== "1") {
-    return NextResponse.redirect(
-      new URL(`/admin/imports/${batchId}?error=Please confirm the apply action.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/imports/${batchId}?error=Please confirm the apply action.`);
   }
 
   const db = await getDatabase();
@@ -171,15 +160,9 @@ export async function POST(
     params.set("updated", String(result.updated));
     params.set("skipped", String(result.skipped));
 
-    return NextResponse.redirect(
-      new URL(`/admin/imports/${batchId}?${params.toString()}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/imports/${batchId}?${params.toString()}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/imports/${batchId}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/imports/${batchId}?error=${encodeURIComponent(message)}`);
   }
 }

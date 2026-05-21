@@ -4,6 +4,7 @@ import { ADMIN_COOKIE_NAME, expiredAdminCookieOptions, getAdminSessionFromReques
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { writeAdminAuditLog } from "@/lib/admin/audit";
 import { getDatabase } from "@/lib/db/client";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     after: { result: "success" }
   });
 
-  const response = NextResponse.redirect(new URL("/admin/login", request.url), { status: 303 });
+  const response = adminRedirect(request, "/admin/login");
   response.cookies.set(ADMIN_COOKIE_NAME, "", expiredAdminCookieOptions());
   return response;
 }

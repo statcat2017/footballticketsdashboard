@@ -4,6 +4,7 @@ import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { addAlias, retireAlias, listAliasesForClub } from "@/lib/db/clubMapping";
 import { writeAdminAuditLog } from "@/lib/admin/audit";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getAdminSessionFromRequest(_request);
@@ -71,13 +72,10 @@ async function handleRetire(request: Request, clubId: number, form: FormData) {
       after: { aliasId, clubId, retired: true },
     });
 
-    return NextResponse.redirect(new URL(`/admin/clubs/${clubId}`, request.url), { status: 303 });
+    return adminRedirect(request, `/admin/clubs/${clubId}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`);
   }
 }
 
@@ -102,13 +100,10 @@ async function handleAddAlias(request: Request, clubId: number, form: FormData) 
       after: { clubId, alias: created.alias, competitionCode: created.competitionCode, source: created.source },
     });
 
-    return NextResponse.redirect(new URL(`/admin/clubs/${clubId}`, request.url), { status: 303 });
+    return adminRedirect(request, `/admin/clubs/${clubId}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`);
   }
 }
 

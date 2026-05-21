@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { unassignClub } from "@/lib/admin/divisionAssignments";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -33,10 +34,7 @@ export async function POST(request: Request) {
 
   if (!Number.isInteger(clubId) || clubId <= 0) {
     const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?error=Invalid+club+ID.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?error=Invalid+club+ID.`);
   }
 
   const db = await getDatabase();
@@ -45,16 +43,10 @@ export async function POST(request: Request) {
     await unassignClub(db, clubId, session.actor);
     const params = new URLSearchParams("success=Club unassigned.");
     const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?${params.toString()}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?${params.toString()}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const redirectPath = redirectDivisionId ? `/admin/publish/${redirectDivisionId}` : "/admin/publish";
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?error=${encodeURIComponent(message)}`);
   }
 }

@@ -6,6 +6,7 @@ import { secureCompare } from "@/lib/admin/crypto";
 import { writeAdminAuditLog } from "@/lib/admin/audit";
 import { getDatabase } from "@/lib/db/client";
 import { checkRateLimit, getRateLimitStatus, resetRateLimit } from "@/lib/rate-limit";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60_000;
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
   });
 
   resetRateLimit(rateLimitKey);
-  const response = NextResponse.redirect(new URL("/admin", request.url), { status: 303 });
+  const response = adminRedirect(request, "/admin");
   response.cookies.set(ADMIN_COOKIE_NAME, cookieValue, adminCookieOptions());
   return response;
 }

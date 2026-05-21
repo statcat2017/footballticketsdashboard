@@ -1,0 +1,59 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Prepare standalone bundle
+        run: |
+          rm -rf deploy
+          mkdir -p deploy
+          cp -r .next/standalone/. deploy/
+          mkdir -p deploy/.next
+          mkdir -p deploy/lib/db
+          cp -r .next/static deploy/.next/static
+          cp -r lib/db/migrations deploy/lib/db/migrations
+          cp -r ./scripts deploy/scripts
+
+      - name: Deploy to VPS
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY }}
+          REMOTE_HOST: ${{ secrets.DEPLOY_HOST }}
+          REMOTE_USER: appuser
+          SOURCE: "deploy/"
+          TARGET: ${{ secrets.DEPLOY_PATH }}
+          EXCLUDE: "data/*.sqlite, data/*.sqlite-shm, data/*.sqlite-wal"
+          ARGS: "-rlgoDzvc -i --delete"
+
+      - name: Restart app
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: appuser
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            set -a
+            . /etc/nearmefc.env
+            set +a
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-migrate-prod.ts
+            sudo systemctl restart nearmefc
