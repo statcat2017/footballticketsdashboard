@@ -12,7 +12,7 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO clubs (id, name, status) VALUES (100, 'Homeless FC', 'known'), (101, 'Housed FC', 'known');
+      INSERT INTO clubs (id, name) VALUES (100, 'Homeless FC'), (101, 'Housed FC');
       INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Stadium', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES
@@ -74,13 +74,13 @@ describe("data quality checks", () => {
   it("does not flag cross-scope aliases as duplicates", async () => {
     const db = minimalDb();
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES (100, 'Club A', 'known'), (101, 'Club B', 'known');
+      INSERT INTO clubs (id, name) VALUES (100, 'Club A'), (101, 'Club B');
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1), (2, 'ELC', 'Championship', 2);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Pub A', 'PL', 50), (201, 'Pub B', 'ELC', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'Pub A', 50), (201, 'Pub B', 50);
       INSERT INTO club_aliases (id, club_id, alias, normalized_alias, competition_code) VALUES
-        (1, 200, 'Same', 'same', 'PL'),
-        (2, 201, 'Same', 'same', 'ELC');
+        (1, 200, 'Same', 'same'),
+        (2, 201, 'Same', 'same');
     `);
 
     const issues = await runDataQualityChecks(db);
@@ -93,9 +93,9 @@ describe("data quality checks", () => {
     db.exec(`
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
-      INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES
-        (200, 'Has Tickets', 'PL', 50, 'https://tickets.example.com'),
-        (201, 'No Tickets', 'PL', 50, NULL);
+      INSERT INTO clubs (id, name, venue_id, generic_ticket_url) VALUES
+        (200, 'Has Tickets', 50, 'https://tickets.example.com'),
+        (201, 'No Tickets', 50, NULL);
     `);
 
     const issues = await runDataQualityChecks(db);
@@ -112,7 +112,7 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Overcrowded Division', 1, 1);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
+      INSERT INTO clubs (id, name) VALUES (100, 'C1'), (101, 'C2');
       INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10);
     `);
 
@@ -123,33 +123,12 @@ describe("data quality checks", () => {
     expect(match[0].severity).toBe("warning");
   });
 
-  it("detects divisions without competition mapping", async () => {
-    const db = minimalDb();
-    db.exec(`
-      INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
-      INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES
-        (10, 1, 'mapped', 'Mapped Division', 1, 20),
-        (11, 1, 'unmapped', 'Unmapped Division', 1, 20);
-      INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO clubs (id, name, status) VALUES (100, 'C1', 'known'), (101, 'C2', 'known');
-      INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 11);
-      INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');
-    `);
-
-    const issues = await runDataQualityChecks(db);
-    const match = issues.filter((i) => i.id.startsWith("division-no-mapping"));
-    expect(match).toHaveLength(1);
-    expect(match[0].entity).toBe("Unmapped Division");
-    expect(match[0].severity).toBe("warning");
-  });
-
   it("detects fixtures missing source URL", async () => {
     const db = minimalDb();
     db.exec(`
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'C', 'PL', 50), (201, 'D', 'PL', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'C', 50), (201, 'D', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', NULL);
     `);
@@ -166,7 +145,7 @@ describe("data quality checks", () => {
       INSERT INTO fixture_seasons (id, label, starts_on, ends_on) VALUES (1, '2025-26', '2025-07-01', '2026-06-30');
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Home FC', 'PL', 50), (201, 'Away FC', 'PL', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'Home FC', 50), (201, 'Away FC', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, fixture_date, kickoff_time_status, status, season_label, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20', 'confirmed', 'scheduled', '2025-26', 'https://example.com/1'),
         (2, 'test', 'f2', 'PL', 50, 200, 201, '2026-05-20', 'confirmed', 'scheduled', '2025-26', 'https://example.com/2'),
@@ -188,7 +167,7 @@ describe("data quality checks", () => {
       INSERT INTO fixture_seasons (id, label, starts_on, ends_on) VALUES (1, '2025-26', '2025-07-01', '2026-06-30');
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'FAC', 'FA Cup', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Home FC', 'FAC', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'Home FC', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, fixture_date, kickoff_time_status, status, season_label, home_one_off, away_one_off, away_one_off_name, source_url) VALUES
         (1, 'test', 'f1', 'FAC', 50, 200, NULL, '2026-05-20', 'confirmed', 'scheduled', '2025-26', 0, 1, 'Qualifier Winner', 'https://example.com/1'),
         (2, 'test', 'f2', 'FAC', 50, 200, NULL, '2026-05-20', 'confirmed', 'scheduled', '2025-26', 0, 1, ' qualifier winner ', 'https://example.com/2');
@@ -207,7 +186,7 @@ describe("data quality checks", () => {
       INSERT INTO fixture_seasons (id, label, starts_on, ends_on) VALUES (1, '2025-26', '2025-07-01', '2026-06-30');
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'FAC', 'FA Cup', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Home FC', 'FAC', 50), (201, 'Away FC', 'FAC', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'Home FC', 50), (201, 'Away FC', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, fixture_date, kickoff_time_status, status, season_label, home_one_off, away_one_off, home_one_off_name, source_url) VALUES
         (1, 'test', 'f1', 'FAC', 50, NULL, 201, '2026-05-20', 'confirmed', 'scheduled', '2025-26', 1, 0, 'Tourists FC', 'https://example.com/1'),
         (2, 'test', 'f2', 'FAC', 50, NULL, 201, '2026-05-21', 'confirmed', 'scheduled', '2025-26', 1, 0, 'Tourists FC', 'https://example.com/2');
@@ -225,7 +204,7 @@ describe("data quality checks", () => {
     db.exec(`
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'C', 'PL', 50), (201, 'D', 'PL', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'C', 50), (201, 'D', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'assumed', 'scheduled', 'https://example.com');
     `);
@@ -241,7 +220,7 @@ describe("data quality checks", () => {
     db.exec(`
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'C', 'PL', 50), (201, 'D', 'PL', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'C', 50), (201, 'D', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
     `);
@@ -257,7 +236,7 @@ describe("data quality checks", () => {
     db.exec(`
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'Broken Ground', 'BG1 1XX', 999, 0);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'C', 'PL', 50), (201, 'D', 'PL', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'C', 50), (201, 'D', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
     `);
@@ -274,11 +253,11 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO clubs (id, name, status) VALUES (100, 'C', 'known');
+      INSERT INTO clubs (id, name) VALUES (100, 'C');
       INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', '', 999, 0);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Pub C', 'PL', 50);
+      INSERT INTO clubs (id, name, venue_id) VALUES (200, 'Pub C', 50);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 200, '2026-05-20T15:00:00Z', 'assumed', 'scheduled', NULL);
     `);
@@ -298,9 +277,9 @@ describe("data quality checks", () => {
       INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
         (50, 'Broken Ground', 'BG1 1XX', 999, 0, 'exact');
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES
-        (200, 'Tickets FC', 'PL', 50, 'https://tickets.example.com'),
-        (201, 'Away FC', 'PL', 50, 'https://tickets.example.com');
+      INSERT INTO clubs (id, name, venue_id, generic_ticket_url) VALUES
+        (200, 'Tickets FC', 50, 'https://tickets.example.com'),
+        (201, 'Away FC', 50, 'https://tickets.example.com');
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
       INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, confidence) VALUES
@@ -321,9 +300,9 @@ describe("data quality checks", () => {
       INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
         (50, 'Broken Ground', 'BG1 1XX', 999, 0, 'exact');
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES
-        (200, 'Tickets FC', 'PL', 50, 'https://tickets.example.com'),
-        (201, 'Away FC', 'PL', 50, 'https://tickets.example.com');
+      INSERT INTO clubs (id, name, venue_id, generic_ticket_url) VALUES
+        (200, 'Tickets FC', 50, 'https://tickets.example.com'),
+        (201, 'Away FC', 50, 'https://tickets.example.com');
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 201, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
       INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, confidence) VALUES
@@ -365,16 +344,16 @@ describe("data quality checks", () => {
       INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Pyramid', 'mens', 'active');
       INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier', 1, 20);
       INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
-      INSERT INTO clubs (id, name, status, generic_ticket_url) VALUES (100, 'Healthy Club', 'known', 'https://tickets.example.com');
+      INSERT INTO clubs (id, name, generic_ticket_url) VALUES (100, 'Healthy Club', 'https://tickets.example.com');
       INSERT INTO division_assignments (club_id, division_id) VALUES (100, 10);
       INSERT INTO venues (id, name, postcode, latitude, longitude, coordinate_precision) VALUES
         (50, 'Healthy Ground', 'TE1 1ST', 51.5, -0.1, 'exact');
       INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES
         (100, 100, 50, '2025-08-01', NULL, 1);
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
-      INSERT INTO clubs (id, name, competition_code, venue_id, generic_ticket_url) VALUES
-        (200, 'Healthy Public Club', 'PL', 50, 'https://tickets.example.com');
-      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');
+      INSERT INTO clubs (id, name, venue_id, generic_ticket_url) VALUES
+        (200, 'Healthy Public Club', 50, 'https://tickets.example.com');
+      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10);
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 200, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
       INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, confidence) VALUES

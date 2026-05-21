@@ -50,8 +50,8 @@ function createAdminRouteDb(): AppDatabase {
     INSERT INTO pyramid_seasons (id, template_id, season_label)
     VALUES (1, 1, '2025-26');
 
-    INSERT INTO clubs (id, name, aliases, status, source_url, verified_at)
-    VALUES (100, 'Test Town United', NULL, 'known', NULL, NULL);
+    INSERT INTO clubs (id, name, aliases, source_url, verified_at)
+    VALUES (100, 'Test Town United', NULL, NULL, NULL);
 
     INSERT INTO division_assignments (club_id, division_id)
     VALUES (100, 10);
@@ -101,7 +101,6 @@ describe("admin route handlers", () => {
         csrf: "test-csrf",
         name: "Test Town Renamed",
         aliases: "TTU, Town",
-        status: "partial",
         source_url: "https://example.com/test-town",
         verified_at: "2026-05-20T12:00:00.000Z"
       }),
@@ -114,19 +113,17 @@ describe("admin route handlers", () => {
     const club = await db.get<{
       name: string;
       aliases: string | null;
-      status: string;
       source_url: string | null;
       verified_at: string | null;
       admin_updated_at: string | null;
     }>(
-      `SELECT name, aliases, status, source_url, verified_at, admin_updated_at
+      `SELECT name, aliases, source_url, verified_at, admin_updated_at
        FROM clubs WHERE id = 100`
     );
 
     expect(club).toMatchObject({
       name: "Test Town Renamed",
       aliases: "TTU, Town",
-      status: "partial",
       source_url: "https://example.com/test-town",
       verified_at: "2026-05-20T12:00:00.000Z"
     });

@@ -6,7 +6,6 @@ interface ClubOption {
   id: number;
   name: string;
   venueName: string | null;
-  status: string;
 }
 
 export function ClubAutocomplete({

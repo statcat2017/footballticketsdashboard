@@ -22,7 +22,7 @@ export function createAdminFixtureDatabase(options: AdminFixtureOptions = {}): A
     ? "(1, 1, '2024-25'), (2, 1, '2025-26')"
     : "(1, 1, '2025-26')";
   const albionClub = options.includeAlbionGroundshare
-    ? ",\n      (103, 'Albion FC', 'known')"
+    ? ",\n      (103, 'Albion FC')"
     : "";
   const albionDivisionAssignment = options.includeAlbionGroundshare
     ? ",\n      (103, 10)"
@@ -40,10 +40,10 @@ export function createAdminFixtureDatabase(options: AdminFixtureOptions = {}): A
 
     INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES ${seasons};
 
-    INSERT INTO clubs (id, name, status) VALUES
-      (100, 'Test Town United', 'known'),
-      (101, 'City Athletic', 'known'),
-      (102, 'Rovers FC', 'partial')${albionClub};
+    INSERT INTO clubs (id, name) VALUES
+      (100, 'Test Town United'),
+      (101, 'City Athletic'),
+      (102, 'Rovers FC')${albionClub};
 
     INSERT INTO division_assignments (club_id, division_id) VALUES
       (100, 10),

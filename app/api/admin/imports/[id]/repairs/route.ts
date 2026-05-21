@@ -429,7 +429,7 @@ async function handlePublishPyramidClub(
   _db: import("@/lib/db/adapter").AppDatabase,
   batchId: number,
 ) {
-  return redirectTo(request, batchId, { error: "Publish pyramid club via /admin/publish." });
+  return redirectTo(request, batchId, { error: "Assign club to a division via /admin/publish." });
 }
 
 async function handleAssignExistingVenue(

@@ -4,7 +4,6 @@ import { writeAdminAuditLog } from "@/lib/admin/audit";
 export interface AdminClubUpdateInput {
   name?: string;
   aliases?: string | null;
-  status?: string;
   source_url?: string | null;
   verified_at?: string | null;
 }
@@ -12,7 +11,6 @@ export interface AdminClubUpdateInput {
 export interface AdminClubRow {
   club_id: number;
   club_name: string;
-  club_status: string;
   venue_id: number | null;
   venue_name: string | null;
   venue_postcode: string | null;
@@ -37,7 +35,6 @@ interface ClubDivisionRow {
   division_level: number;
   club_id: number;
   club_name: string;
-  club_status: string;
   venue_id: number | null;
   venue_name: string | null;
   venue_postcode: string | null;
@@ -48,7 +45,6 @@ export interface AdminClubDetailData {
     id: number;
     name: string;
     aliases: string | null;
-    status: string;
     source_url: string | null;
     verified_at: string | null;
   };
@@ -86,7 +82,6 @@ interface ClubDetailRow {
   id: number;
   name: string;
   aliases: string | null;
-  status: string;
   source_url: string | null;
   verified_at: string | null;
   division_id: number;
@@ -128,7 +123,6 @@ export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListDa
       d.level AS division_level,
       c.id AS club_id,
       c.name AS club_name,
-      c.status AS club_status,
       v.id AS venue_id,
       v.name AS venue_name,
       v.postcode AS venue_postcode
@@ -142,7 +136,7 @@ export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListDa
   );
 
   const unassignedRows = await db.all<AdminClubRow>(
-    `SELECT c.id AS club_id, c.name AS club_name, c.status AS club_status,
+    `SELECT c.id AS club_id, c.name AS club_name,
       v.id AS venue_id, v.name AS venue_name, v.postcode AS venue_postcode
     FROM clubs c
     LEFT JOIN division_assignments da ON da.club_id = c.id
@@ -170,7 +164,6 @@ export async function getAdminClubList(db: AppDatabase): Promise<AdminClubListDa
     group.clubs.push({
       club_id: row.club_id,
       club_name: row.club_name,
-      club_status: row.club_status,
       venue_id: row.venue_id,
       venue_name: row.venue_name,
       venue_postcode: row.venue_postcode
@@ -191,7 +184,7 @@ export async function getAdminClubDetail(db: AppDatabase, clubId: number): Promi
 
   const clubRow = await db.get<ClubDetailRow>(
     `SELECT
-      c.id, c.name, c.aliases, c.status, c.source_url, c.verified_at,
+      c.id, c.name, c.aliases, c.source_url, c.verified_at,
       d.id AS division_id, d.name AS division_name, d.level AS division_level,
       v.id AS venue_id, v.name AS venue_name, v.postcode AS venue_postcode,
       v.latitude, v.longitude, v.is_approximate
@@ -248,7 +241,6 @@ export async function getAdminClubDetail(db: AppDatabase, clubId: number): Promi
       id: clubRow.id,
       name: clubRow.name,
       aliases: clubRow.aliases,
-      status: clubRow.status,
       source_url: clubRow.source_url,
       verified_at: clubRow.verified_at
     },
@@ -286,9 +278,9 @@ export async function updateAdminClub(db: AppDatabase, clubId: number, input: Ad
 
   const current = await db.get<{
     id: number; name: string; aliases: string | null;
-    status: string; source_url: string | null; verified_at: string | null;
+    source_url: string | null; verified_at: string | null;
   }>(
-    `SELECT id, name, aliases, status, source_url, verified_at FROM clubs WHERE id = ?`,
+    `SELECT id, name, aliases, source_url, verified_at FROM clubs WHERE id = ?`,
     [clubId]
   );
 
@@ -298,15 +290,14 @@ export async function updateAdminClub(db: AppDatabase, clubId: number, input: Ad
 
   const updatedName = input.name ?? current.name;
   const updatedAliases = input.aliases !== undefined ? input.aliases : current.aliases;
-  const updatedStatus = input.status ?? current.status;
   const updatedSourceUrl = input.source_url !== undefined ? input.source_url : current.source_url;
   const updatedVerifiedAt = input.verified_at !== undefined ? input.verified_at : current.verified_at;
 
   await db.run(
     `UPDATE clubs
-     SET name = ?, aliases = ?, status = ?, source_url = ?, verified_at = ?, admin_updated_at = ?
+     SET name = ?, aliases = ?, source_url = ?, verified_at = ?, admin_updated_at = ?
      WHERE id = ?`,
-    [updatedName, updatedAliases, updatedStatus, updatedSourceUrl, updatedVerifiedAt, now, clubId]
+    [updatedName, updatedAliases, updatedSourceUrl, updatedVerifiedAt, now, clubId]
   );
 
   await writeAdminAuditLog(db, {
@@ -316,81 +307,16 @@ export async function updateAdminClub(db: AppDatabase, clubId: number, input: Ad
     before: {
       name: current.name,
       aliases: current.aliases,
-      status: current.status,
       source_url: current.source_url,
       verified_at: current.verified_at
     },
     after: {
       name: updatedName,
       aliases: updatedAliases,
-      status: updatedStatus,
       source_url: updatedSourceUrl,
       verified_at: updatedVerifiedAt
     }
   });
-}
-
-export interface PublishableDivision {
-  id: number;
-  name: string;
-  level: number;
-  isPublished: boolean;
-  competitionCode: string | null;
-}
-
-export interface PublishableClub {
-  id: number;
-  name: string;
-  divisionId: number;
-  divisionName: string;
-  venueName: string | null;
-  isPublished: boolean;
-}
-
-export async function getPublishableDivisions(db: AppDatabase): Promise<PublishableDivision[]> {
-  const rows = await db.all<{
-    id: number; name: string; level: number; competition_code: string | null;
-  }>(
-    `SELECT d.id, d.name, d.level, dcm.competition_code
-    FROM pyramid_divisions d
-    LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
-    WHERE EXISTS (
-      SELECT 1 FROM division_assignments da WHERE da.division_id = d.id
-    )
-    ORDER BY d.level, d.name`
-  );
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    level: row.level,
-    isPublished: row.competition_code !== null,
-    competitionCode: row.competition_code
-  }));
-}
-
-export async function getPublishableClubs(db: AppDatabase, divisionId: number): Promise<PublishableClub[]> {
-  const rows = await db.all<{
-    id: number; name: string; division_id: number; division_name: string; venue_name: string | null; is_published: number;
-  }>(
-    `SELECT c.id, c.name, d.id AS division_id, d.name AS division_name, v.name AS venue_name,
-      c.competition_code IS NOT NULL AND c.status = 'known' AS is_published
-    FROM division_assignments da
-    JOIN pyramid_divisions d ON d.id = da.division_id
-    JOIN clubs c ON c.id = da.club_id
-    LEFT JOIN club_venue_assignments cva ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-    LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE d.id = ?
-    ORDER BY d.level, d.name, c.name`,
-    [divisionId]
-  );
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    divisionId: row.division_id,
-    divisionName: row.division_name,
-    venueName: row.venue_name,
-    isPublished: row.is_published === 1
-  }));
 }
 
 const KNOWN_COMPETITION_MAP: Record<string, string> = {
@@ -461,181 +387,3 @@ export function divisionCodeFromName(name: string): string {
 export function getKnownCompetitionCodes(): string[] {
   return Array.from(new Set(Object.values(KNOWN_COMPETITION_MAP)));
 }
-
-export interface CompetitionClubRow {
-  id: number;
-  name: string;
-  status: string;
-  venueName: string | null;
-  hasTicketUrl: boolean;
-  isPublished: boolean;
-}
-
-export interface CompetitionSummary {
-  id: number | null;
-  name: string;
-  level: number;
-  code: string | null;
-  isPublished: boolean;
-  totalClubs: number;
-  missingVenueCount: number;
-  missingTicketUrlCount: number;
-  clubs: CompetitionClubRow[];
-}
-
-export interface TierGroup {
-  tier: number;
-  competitions: CompetitionSummary[];
-}
-
-export interface AllCompetitionsData {
-  seasonLabel: string;
-  tiers: TierGroup[];
-  unassignedClubs: Array<{
-    id: number;
-    name: string;
-    status: string;
-    venueName: string | null;
-  }>;
-}
-
-export async function getAllCompetitionsWithClubs(db: AppDatabase): Promise<AllCompetitionsData> {
-  const season = await db.get<{ season_label: string }>(
-    "SELECT season_label FROM pyramid_seasons ORDER BY id DESC LIMIT 1"
-  );
-
-  const rows = await db.all<{
-    competition_code: string;
-    competition_name: string;
-    competition_tier: number;
-    division_id: number | null;
-    has_mapping: number;
-    club_id: number | null;
-    club_name: string | null;
-    club_status: string | null;
-    club_competition_code: string | null;
-    venue_name: string | null;
-    generic_ticket_url: string | null;
-  }>(
-    `SELECT
-      c.code AS competition_code,
-      c.name AS competition_name,
-      c.tier AS competition_tier,
-      d.id AS division_id,
-      CASE WHEN dcm.id IS NOT NULL THEN 1 ELSE 0 END AS has_mapping,
-      cl.id AS club_id,
-      cl.name AS club_name,
-      cl.status AS club_status,
-      cl.competition_code AS club_competition_code,
-      v.name AS venue_name,
-      cl.generic_ticket_url
-    FROM competitions c
-    LEFT JOIN division_competition_mappings dcm ON dcm.competition_code = c.code
-    LEFT JOIN pyramid_divisions d ON d.id = dcm.division_id
-    LEFT JOIN division_assignments da ON da.division_id = d.id
-    LEFT JOIN clubs cl ON cl.id = da.club_id
-    LEFT JOIN club_venue_assignments cva
-      ON cva.club_id = cl.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-    LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE c.kind != 'friendly'
-    ORDER BY c.tier, c.name, cl.name`
-  );
-
-  const unassignedRows = await db.all<{
-    id: number;
-    name: string;
-    status: string;
-    venue_name: string | null;
-  }>(
-    `SELECT c.id, c.name, c.status, v.name AS venue_name
-    FROM clubs c
-    LEFT JOIN division_assignments da ON da.club_id = c.id
-    LEFT JOIN club_venue_assignments cva ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
-    LEFT JOIN venues v ON v.id = cva.venue_id
-    WHERE da.id IS NULL
-    ORDER BY c.name`
-  );
-
-  const compMap = new Map<string, {
-    id: number | null;
-    name: string;
-    level: number;
-    code: string;
-    isPublished: boolean;
-    clubs: Array<{
-      id: number;
-      name: string;
-      status: string;
-      venueName: string | null;
-      hasTicketUrl: boolean;
-      isPublished: boolean;
-    }>;
-  }>();
-
-  for (const row of rows) {
-    let comp = compMap.get(row.competition_code);
-    if (!comp) {
-      comp = {
-        id: row.division_id,
-        name: row.competition_name,
-        level: row.competition_tier,
-        code: row.competition_code,
-        isPublished: row.has_mapping === 1,
-        clubs: [],
-      };
-      compMap.set(row.competition_code, comp);
-    }
-    if (row.club_id !== null) {
-      comp.clubs.push({
-        id: row.club_id,
-        name: row.club_name!,
-        status: row.club_status!,
-        venueName: row.venue_name,
-        hasTicketUrl: !!row.generic_ticket_url,
-        isPublished: row.club_competition_code !== null && row.club_status === "known",
-      });
-    }
-  }
-
-  const summaries: CompetitionSummary[] = Array.from(compMap.values()).map((comp) => {
-    const missingVenue = comp.clubs.filter((c) => !c.venueName).length;
-    const missingTicket = comp.clubs.filter((c) => !c.hasTicketUrl).length;
-    return {
-      id: comp.id,
-      name: comp.name,
-      level: comp.level,
-      code: comp.isPublished ? comp.code : null,
-      isPublished: comp.isPublished,
-      totalClubs: comp.clubs.length,
-      missingVenueCount: missingVenue,
-      missingTicketUrlCount: missingTicket,
-      clubs: comp.clubs,
-    };
-  });
-
-  const tierMap = new Map<number, CompetitionSummary[]>();
-  for (const s of summaries) {
-    let tier = tierMap.get(s.level);
-    if (!tier) {
-      tier = [];
-      tierMap.set(s.level, tier);
-    }
-    tier.push(s);
-  }
-
-  const tiers: TierGroup[] = Array.from(tierMap.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([tier, competitions]) => ({ tier, competitions }));
-
-  return {
-    seasonLabel: season?.season_label ?? "",
-    tiers,
-    unassignedClubs: unassignedRows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      status: r.status,
-      venueName: r.venue_name,
-    })),
-  };
-}
-

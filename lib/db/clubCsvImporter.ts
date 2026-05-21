@@ -100,17 +100,15 @@ async function upsertClubRowAsync(db: AppDatabase, row: ClubCsvRow): Promise<voi
 
   await db.run(`
     INSERT INTO clubs (
-      id, name, football_data_team_id, aliases, short_name, competition_code, venue_id,
+      id, name, football_data_team_id, aliases, venue_id,
       official_site_url, generic_ticket_url, price_source_url, ground_source_url,
       coordinates_source_url, verified_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       football_data_team_id = excluded.football_data_team_id,
       aliases = excluded.aliases,
-      short_name = excluded.short_name,
-      competition_code = excluded.competition_code,
       venue_id = excluded.venue_id,
       official_site_url = excluded.official_site_url,
       generic_ticket_url = excluded.generic_ticket_url,
@@ -123,8 +121,6 @@ async function upsertClubRowAsync(db: AppDatabase, row: ClubCsvRow): Promise<voi
     row.club_name,
     row.football_data_team_id ? Number(row.football_data_team_id) : null,
     row.aliases,
-    row.club_name,
-    row.competition,
     venueId,
     row.official_site_url,
     row.ticket_url,

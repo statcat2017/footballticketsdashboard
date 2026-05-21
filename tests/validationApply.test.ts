@@ -23,6 +23,10 @@ function setupTestDb(): AppDatabase {
 
   // Insert seed data needed for tests
   db.exec(`
+    INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
+    INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
+    INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
+
     INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
     INSERT INTO competitions (code, name, tier) VALUES ('ELC', 'Championship', 2);
     INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (1, '2025-26', '2025-08-01', '2026-07-31', 1);
@@ -34,12 +38,18 @@ function setupTestDb(): AppDatabase {
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (5, 'Carrow Road', 'NR1 1JE', 52.6221, 1.3091);
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (6, 'St Andrew''s', 'B9 4RL', 52.4756, -1.8682);
 
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (1, 'Chelsea', 'PL', 1);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (2, 'Arsenal', 'PL', 3);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (3, 'Manchester United', 'PL', 4);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (4, 'Queens Park Rangers', 'ELC', 2);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (5, 'Norwich City', 'ELC', 5);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (6, 'Birmingham City', 'ELC', 6);
+    INSERT INTO clubs (id, name, venue_id) VALUES (1, 'Chelsea', 1);
+    INSERT INTO clubs (id, name, venue_id) VALUES (2, 'Arsenal', 3);
+    INSERT INTO clubs (id, name, venue_id) VALUES (3, 'Manchester United', 4);
+    INSERT INTO clubs (id, name, venue_id) VALUES (4, 'Queens Park Rangers', 2);
+    INSERT INTO clubs (id, name, venue_id) VALUES (5, 'Norwich City', 5);
+    INSERT INTO clubs (id, name, venue_id) VALUES (6, 'Birmingham City', 6);
+
+    INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (10, 'PL');
+
+    INSERT INTO division_assignments (club_id, division_id) VALUES (1, 10);
+    INSERT INTO division_assignments (club_id, division_id) VALUES (2, 10);
+    INSERT INTO division_assignments (club_id, division_id) VALUES (3, 10);
 
     INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (1, 1, 1, '2024-01-01', NULL);
     INSERT INTO club_venue_assignments (club_id, venue_id, is_primary, effective_from, effective_to) VALUES (2, 3, 1, '2024-01-01', NULL);

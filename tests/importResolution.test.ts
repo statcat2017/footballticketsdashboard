@@ -42,12 +42,12 @@ function setupTestDb(): AppDatabase {
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (5, 'Carrow Road', 'NR1 1JE', 52.6221, 1.3091);
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (6, 'St Andrew''s', 'B9 4RL', 52.4756, -1.8682);
 
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (1, 'Chelsea', 'PL', 1);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (2, 'Arsenal', 'PL', 3);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (3, 'Manchester United', 'PL', 4);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (4, 'Queens Park Rangers', 'ELC', 2);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (5, 'Norwich City', 'ELC', 5);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (6, 'Birmingham City', 'ELC', 6);
+    INSERT INTO clubs (id, name, venue_id) VALUES (1, 'Chelsea', 1);
+    INSERT INTO clubs (id, name, venue_id) VALUES (2, 'Arsenal', 3);
+    INSERT INTO clubs (id, name, venue_id) VALUES (3, 'Manchester United', 4);
+    INSERT INTO clubs (id, name, venue_id) VALUES (4, 'Queens Park Rangers', 2);
+    INSERT INTO clubs (id, name, venue_id) VALUES (5, 'Norwich City', 5);
+    INSERT INTO clubs (id, name, venue_id) VALUES (6, 'Birmingham City', 6);
 
     INSERT INTO club_aliases (id, club_id, alias, normalized_alias, source) VALUES (1, 1, 'Chelsea FC', 'chelsea fc', 'manual');
 

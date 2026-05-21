@@ -251,7 +251,7 @@ describe("admin venue service", () => {
       const db = createMinimalDb();
 
       db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES (200, 'New Club', 'known');
+      INSERT INTO clubs (id, name) VALUES (200, 'New Club');
       INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
       `);
 

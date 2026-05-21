@@ -181,29 +181,6 @@ async function divisionsOverMaxSize(db: AppDatabase): Promise<DataQualityIssue[]
   }));
 }
 
-async function divisionsWithoutCompetitionMapping(db: AppDatabase): Promise<DataQualityIssue[]> {
-  const rows = await db.all<{ id: number; name: string }>(
-    `SELECT d.id, d.name
-     FROM pyramid_divisions d
-     JOIN division_assignments da ON da.division_id = d.id
-     LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
-     WHERE dcm.id IS NULL
-     GROUP BY d.id
-     ORDER BY d.name`
-  );
-
-  return rows.map((r) => ({
-    id: `division-no-mapping-${r.id}`,
-    severity: "warning",
-    issueType: "Division not published",
-    category: "Division",
-    entity: r.name,
-    entityId: r.id,
-    summary: "Populated division has no competition mapping.",
-    actionUrl: `/admin/publish`
-  }));
-}
-
 async function fixturesMissingSourceUrl(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string }>(
     `SELECT id, source, source_id
@@ -432,7 +409,6 @@ const dataQualityChecks: DataQualityCheck[] = [
   { categories: ["Alias"], run: duplicateClubAliases },
   { categories: ["Club"], run: clubsWithoutTicketUrl },
   { categories: ["Division"], run: divisionsOverMaxSize },
-  { categories: ["Division"], run: divisionsWithoutCompetitionMapping },
   { categories: ["Fixture"], run: fixturesMissingSourceUrl },
   { categories: ["Fixture"], run: duplicateFixtures },
   { categories: ["Fixture"], run: fixturesWithAssumedKickoff },
