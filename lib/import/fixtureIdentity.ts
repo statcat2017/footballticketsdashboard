@@ -156,3 +156,122 @@ export async function findImportFixtureCandidateMatches(
     [...params, Math.max(1, limit)],
   );
 }
+
+export async function findImportFixtureCandidateMatchesForRows(
+  db: AppDatabase,
+  rows: ImportBatchRow[],
+  seasonLabel: string | null,
+  limit = 5,
+): Promise<Map<number, FixtureCandidateMatch[]>> {
+  const results = new Map<number, FixtureCandidateMatch[]>();
+
+  const eligible = rows.filter((row) => {
+    if (!row.competitionResolvedCode) return false;
+    let identityFieldCount = 0;
+    if (row.homeIsOneOff && row.homeParticipantRaw) identityFieldCount++;
+    else if (row.homeParticipantResolvedId) identityFieldCount++;
+    if (row.awayIsOneOff && row.awayParticipantRaw) identityFieldCount++;
+    else if (row.awayParticipantResolvedId) identityFieldCount++;
+    if (row.kickoffDate) identityFieldCount++;
+    return identityFieldCount > 0;
+  });
+
+  if (eligible.length === 0) return results;
+
+  const whereParts: string[] = [];
+  const params: (string | number | null)[] = [];
+
+  for (const row of eligible) {
+    const parts = ["f.competition_code = ?", "f.season_label = ?"];
+    params.push(row.competitionResolvedCode, seasonLabel);
+
+    if (row.homeIsOneOff && row.homeParticipantRaw) {
+      parts.push("f.home_one_off_name = ?");
+      params.push(row.homeParticipantRaw);
+    } else if (row.homeParticipantResolvedId) {
+      parts.push("f.home_club_id = ?");
+      params.push(row.homeParticipantResolvedId);
+    }
+
+    if (row.awayIsOneOff && row.awayParticipantRaw) {
+      parts.push("f.away_one_off_name = ?");
+      params.push(row.awayParticipantRaw);
+    } else if (row.awayParticipantResolvedId) {
+      parts.push("f.away_club_id = ?");
+      params.push(row.awayParticipantResolvedId);
+    }
+
+    if (row.kickoffDate) {
+      parts.push("f.fixture_date = ?");
+      params.push(row.kickoffDate);
+    }
+
+    whereParts.push(`(${parts.join(" AND ")})`);
+  }
+
+  const fixtures = await db.all<Record<string, unknown>>(
+    `SELECT
+       f.id,
+       COALESCE(h.name, f.home_one_off_name, 'Unknown') AS homeName,
+       COALESCE(a.name, f.away_one_off_name, 'Unknown') AS awayName,
+       v.name AS venueName,
+       f.fixture_date AS fixtureDate,
+       f.kickoff_time AS kickoffTime,
+       f.status,
+       f.competition_code AS competitionCode,
+       f.season_label AS seasonLabel,
+       f.home_club_id AS homeClubId,
+       f.away_club_id AS awayClubId,
+       f.home_one_off_name AS homeOneOffName,
+       f.away_one_off_name AS awayOneOffName
+     FROM fixtures f
+     LEFT JOIN clubs h ON h.id = f.home_club_id
+     LEFT JOIN clubs a ON a.id = f.away_club_id
+     LEFT JOIN venues v ON v.id = f.venue_id
+     WHERE ${whereParts.join(" OR ")}
+     ORDER BY f.fixture_date IS NULL, f.fixture_date ASC, f.id ASC`,
+    params,
+  );
+
+  for (const row of eligible) {
+    const rowMatches: FixtureCandidateMatch[] = [];
+    for (const f of fixtures) {
+      if (f.competitionCode !== row.competitionResolvedCode) continue;
+      if (f.seasonLabel !== seasonLabel) continue;
+
+      if (row.homeIsOneOff && row.homeParticipantRaw) {
+        if (f.homeOneOffName !== row.homeParticipantRaw) continue;
+      } else if (row.homeParticipantResolvedId) {
+        if (f.homeClubId !== row.homeParticipantResolvedId) continue;
+      } else if (!f.homeClubId && !f.homeOneOffName) {
+        continue;
+      }
+
+      if (row.awayIsOneOff && row.awayParticipantRaw) {
+        if (f.awayOneOffName !== row.awayParticipantRaw) continue;
+      } else if (row.awayParticipantResolvedId) {
+        if (f.awayClubId !== row.awayParticipantResolvedId) continue;
+      } else if (!f.awayClubId && !f.awayOneOffName) {
+        continue;
+      }
+
+      if (row.kickoffDate && f.fixtureDate !== row.kickoffDate) continue;
+
+      rowMatches.push({
+        id: f.id as number,
+        homeName: f.homeName as string,
+        awayName: f.awayName as string,
+        venueName: f.venueName as string | null,
+        fixtureDate: f.fixtureDate as string | null,
+        kickoffTime: f.kickoffTime as string | null,
+        status: f.status as string | null,
+      });
+
+      if (rowMatches.length >= limit) break;
+    }
+
+    if (rowMatches.length > 0) results.set(row.id, rowMatches);
+  }
+
+  return results;
+}

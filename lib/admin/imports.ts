@@ -98,10 +98,15 @@ export async function getImportUpdatePreviews(
     }
   }
 
-  for (const row of otherRows) {
-    const match = await findImportFixtureMatch(db, row, resolvedSeasonLabel);
+  const otherResults = await Promise.all(
+    otherRows.map(async (row) => {
+      const match = await findImportFixtureMatch(db, row, resolvedSeasonLabel);
+      return { rowId: row.id, match };
+    }),
+  );
+  for (const { rowId, match } of otherResults) {
     if (match.kind === "match") {
-      previews.set(row.id, { fixtureId: match.id, before: match.before });
+      previews.set(rowId, { fixtureId: match.id, before: match.before });
     }
   }
 
