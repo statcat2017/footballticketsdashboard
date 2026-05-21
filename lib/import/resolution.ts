@@ -1,7 +1,7 @@
 import type { AppDatabase, SqlWrite } from "../db/adapter.ts";
 import type { ImportBatchRow, RowEditFields, WarningIssue, WarningsPayload, KickoffAssumptionPolicy } from "./types.ts";
 import { getBatch, getBatchRow, getBatchRows, updateBatchRow, updateBatchStatus } from "./importBatch.ts";
-import { buildWarningsPayload, validateRow } from "./validation.ts";
+import { buildWarningsPayload, validateRow, buildValidationUpdateStatements } from "./validation.ts";
 import { buildAdminAuditLogWrite } from "../admin/audit.ts";
 import { buildFixtureInsert, buildFixtureUpdate } from "./apply.ts";
 import { getCurrentSeasonLabel } from "./shared";
@@ -55,26 +55,8 @@ export async function validateRowById(
 
   if (options?.skipReturn) {
     // Fast path: UPDATE directly without re-fetching the row
-    const fields: string[] = ["kickoff_date = ?", "kickoff_time = ?", "status = ?",
-      "match_result = ?", "warnings_json = ?",
-      "home_participant_resolved_id = ?", "away_participant_resolved_id = ?",
-      "competition_resolved_code = ?", "venue_resolved_id = ?"];
-    const params: (string | number | null)[] = [
-      updates.kickoffDate ?? row.kickoffDate,
-      updates.kickoffTime ?? row.kickoffTime,
-      updates.status ?? row.status,
-      validation.matchResult,
-      updates.warningsJson ?? null,
-      validation.homeParticipantResolvedId,
-      validation.awayParticipantResolvedId,
-      validation.competitionResolvedCode,
-      validation.venueResolvedId,
-      rowId,
-    ];
-    await db.run(
-      `UPDATE import_batch_rows SET ${fields.join(", ")} WHERE id = ?`,
-      params
-    );
+    const stmt = buildValidationUpdateStatements(validation, rowId);
+    await db.run(stmt.sql, stmt.params);
     return row;
   }
 
