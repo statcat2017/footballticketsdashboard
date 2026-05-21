@@ -36,7 +36,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await updateAdminClub(db, clubId, {
       name: readString(form.get("name")),
       aliases: readNullableString(form.get("aliases")),
-      status: readString(form.get("status")),
       source_url: readNullableString(form.get("source_url")),
       verified_at: readNullableString(form.get("verified_at"))
     });

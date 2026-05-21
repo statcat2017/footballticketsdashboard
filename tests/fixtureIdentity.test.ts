@@ -17,8 +17,8 @@ function setupTestDb(): AppDatabase {
     INSERT INTO competitions (code, name, tier) VALUES ('PL', 'Premier League', 1);
     INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (1, '2025-26', '2025-08-01', '2026-07-31', 1);
     INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (1, 'V', 'TE1 1ST', 51.5, -0.1);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (1, 'Chelsea', 'PL', 1);
-    INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (2, 'Arsenal', 'PL', 1);
+    INSERT INTO clubs (id, name, venue_id) VALUES (1, 'Chelsea', 1);
+    INSERT INTO clubs (id, name, venue_id) VALUES (2, 'Arsenal', 1);
 
     -- Normal two-club fixture
     INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)

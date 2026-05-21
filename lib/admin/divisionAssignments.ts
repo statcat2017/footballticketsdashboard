@@ -4,14 +4,11 @@ import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 export interface DivisionAssignedClub {
   id: number;
   name: string;
-  status: string;
   venueName: string | null;
   venuePostcode: string | null;
   venueLatitude: number | null;
   venueLongitude: number | null;
   hasTicketUrl: boolean;
-  isPublished: boolean;
-  isFriendlyOnly: boolean;
 }
 
 export interface DivisionGroup {
@@ -20,8 +17,6 @@ export interface DivisionGroup {
   level: number;
   maxSize: number;
   displayOrder: number | null;
-  competitionCode: string | null;
-  isPublished: boolean;
   clubs: DivisionAssignedClub[];
   clubCount: number;
 }
@@ -29,7 +24,6 @@ export interface DivisionGroup {
 export interface UnassignedClub {
   id: number;
   name: string;
-  status: string;
   venueName: string | null;
 }
 
@@ -50,115 +44,48 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
     division_level: number;
     max_size: number;
     display_order: number | null;
-    competition_code: string | null;
-    is_published: number;
     club_id: number | null;
     club_name: string | null;
-    club_status: string | null;
     venue_name: string | null;
     venue_postcode: string | null;
     venue_latitude: number | null;
     venue_longitude: number | null;
     generic_ticket_url: string | null;
-    club_competition_code: string | null;
-    is_friendly_only: number;
   }>(
-    `WITH
-    friendly_clubs AS (
-      SELECT c.id AS club_id FROM clubs c
-      JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
-      UNION
-      SELECT f.home_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    league_clubs AS (
-      SELECT f.home_club_id AS club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    friendly_only_clubs AS (
-      SELECT club_id FROM friendly_clubs
-      EXCEPT
-      SELECT club_id FROM league_clubs
-    )
-    SELECT
+    `SELECT
       d.id AS division_id,
       d.name AS division_name,
       d.level AS division_level,
       d.max_size,
       d.display_order,
-      dcm.competition_code,
-      CASE WHEN dcm.id IS NOT NULL THEN 1 ELSE 0 END AS is_published,
       c.id AS club_id,
       c.name AS club_name,
-      c.status AS club_status,
       v.name AS venue_name,
       v.postcode AS venue_postcode,
       v.latitude AS venue_latitude,
       v.longitude AS venue_longitude,
-      c.generic_ticket_url,
-      c.competition_code AS club_competition_code,
-      CASE WHEN c.id IN (SELECT club_id FROM friendly_only_clubs) THEN 1 ELSE 0 END AS is_friendly_only
+      c.generic_ticket_url
     FROM pyramid_divisions d
     LEFT JOIN division_assignments da ON da.division_id = d.id
     LEFT JOIN clubs c ON c.id = da.club_id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
-    LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
     ORDER BY d.level, d.display_order, c.name`
   );
 
   const unassignedRows = await db.all<{
     id: number;
     name: string;
-    status: string;
     venue_name: string | null;
   }>(
-    `WITH
-    friendly_clubs AS (
-      SELECT c.id AS club_id FROM clubs c
-      JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
-      UNION
-      SELECT f.home_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    league_clubs AS (
-      SELECT f.home_club_id AS club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    friendly_only_clubs AS (
-      SELECT club_id FROM friendly_clubs
-      EXCEPT
-      SELECT club_id FROM league_clubs
-    )
-    SELECT c.id, c.name, c.status, v.name AS venue_name
+    `SELECT c.id, c.name, v.name AS venue_name
     FROM clubs c
     LEFT JOIN division_assignments da ON da.club_id = c.id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
     WHERE da.id IS NULL
-      AND c.id NOT IN (SELECT club_id FROM friendly_only_clubs)
     ORDER BY c.name`
   );
 
@@ -173,8 +100,6 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
         level: row.division_level,
         maxSize: row.max_size,
         displayOrder: row.display_order,
-        competitionCode: row.competition_code,
-        isPublished: row.is_published === 1,
         clubs: [],
         clubCount: 0,
       };
@@ -184,14 +109,11 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
       group.clubs.push({
         id: row.club_id,
         name: row.club_name!,
-        status: row.club_status!,
         venueName: row.venue_name,
         venuePostcode: row.venue_postcode,
         venueLatitude: row.venue_latitude,
         venueLongitude: row.venue_longitude,
         hasTicketUrl: !!row.generic_ticket_url,
-        isPublished: row.club_competition_code !== null && row.club_status === "known",
-        isFriendlyOnly: row.is_friendly_only === 1,
       });
     }
   }
@@ -207,7 +129,6 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
     unassignedClubs: unassignedRows.map((r) => ({
       id: r.id,
       name: r.name,
-      status: r.status,
       venueName: r.venue_name,
     })),
   };
@@ -219,8 +140,8 @@ export async function assignClubToDivision(
   divisionId: number,
   actor: string
 ): Promise<{ warning?: string }> {
-  const club = await db.get<{ id: number; name: string; competition_code: string | null }>(
-    "SELECT id, name, competition_code FROM clubs WHERE id = ?",
+  const club = await db.get<{ id: number; name: string }>(
+    "SELECT id, name FROM clubs WHERE id = ?",
     [clubId]
   );
   if (!club) throw new Error(`Club ${clubId} not found.`);
@@ -263,13 +184,6 @@ export async function assignClubToDivision(
       params: [clubId, divisionId, now]
     }];
 
-  if (club.competition_code !== null) {
-    statements.push({
-      sql: "UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?",
-      params: [now, clubId]
-    });
-  }
-
   statements.push(buildAdminAuditLogWrite({
     action: existingAssignment ? "update" : "create",
     entityType: "division_assignment",
@@ -298,8 +212,8 @@ export async function unassignClub(
   clubId: number,
   actor: string
 ): Promise<void> {
-  const club = await db.get<{ id: number; name: string; competition_code: string | null }>(
-    "SELECT id, name, competition_code FROM clubs WHERE id = ?",
+  const club = await db.get<{ id: number; name: string }>(
+    "SELECT id, name FROM clubs WHERE id = ?",
     [clubId]
   );
   if (!club) throw new Error(`Club ${clubId} not found.`);
@@ -310,19 +224,10 @@ export async function unassignClub(
   );
   if (!existing) throw new Error(`Club ${clubId} is not assigned to any division.`);
 
-  const now = new Date().toISOString();
-
   const statements: SqlWrite[] = [{
     sql: "DELETE FROM division_assignments WHERE club_id = ?",
     params: [clubId]
   }];
-
-  if (club.competition_code !== null) {
-    statements.push({
-      sql: "UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?",
-      params: [now, clubId]
-    });
-  }
 
   statements.push(buildAdminAuditLogWrite({
     action: "delete",
@@ -342,14 +247,10 @@ export interface DivisionDetail {
   level: number;
   maxSize: number;
   displayOrder: number | null;
-  competitionCode: string | null;
-  isPublished: boolean;
   clubs: DivisionAssignedClub[];
   clubCount: number;
-  publishedCount: number;
   missingVenueCount: number;
   missingTicketUrlCount: number;
-  friendlyOnlyCount: number;
   seasonLabel: string;
 }
 
@@ -420,8 +321,8 @@ export async function moveClubWithSwap(
   movementType: "promote" | "relegate" | "migrate",
   actor: string
 ): Promise<{ warning?: string }> {
-  const club = await db.get<{ id: number; name: string; competition_code: string | null }>(
-    "SELECT id, name, competition_code FROM clubs WHERE id = ?",
+  const club = await db.get<{ id: number; name: string }>(
+    "SELECT id, name FROM clubs WHERE id = ?",
     [clubId]
   );
   if (!club) throw new Error(`Club ${clubId} not found.`);
@@ -516,13 +417,6 @@ export async function moveClubWithSwap(
     });
   }
 
-  if (club.competition_code !== null) {
-    statements.push({
-      sql: "UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?",
-      params: [now, clubId]
-    });
-  }
-
   statements.push(buildAdminAuditLogWrite({
     action: "update",
     entityType: "club_movement",
@@ -547,8 +441,8 @@ export async function unassignClubFromTier10(
   clubId: number,
   actor: string
 ): Promise<void> {
-  const club = await db.get<{ id: number; name: string; competition_code: string | null }>(
-    "SELECT id, name, competition_code FROM clubs WHERE id = ?",
+  const club = await db.get<{ id: number; name: string }>(
+    "SELECT id, name FROM clubs WHERE id = ?",
     [clubId]
   );
   if (!club) throw new Error(`Club ${clubId} not found.`);
@@ -566,19 +460,10 @@ export async function unassignClubFromTier10(
     throw new Error("Club is not at tier 10.");
   }
 
-  const now = new Date().toISOString();
-
   const statements: SqlWrite[] = [{
     sql: "DELETE FROM division_assignments WHERE club_id = ?",
     params: [clubId]
   }];
-
-  if (club.competition_code !== null) {
-    statements.push({
-      sql: "UPDATE clubs SET competition_code = NULL, admin_updated_at = ? WHERE id = ?",
-      params: [now, clubId]
-    });
-  }
 
   statements.push(buildAdminAuditLogWrite({
     action: "delete",
@@ -606,14 +491,9 @@ export async function getDivisionDetail(
     level: number;
     max_size: number;
     display_order: number | null;
-    competition_code: string | null;
-    is_published: number;
   }>(
-    `SELECT d.id, d.name, d.level, d.max_size, d.display_order,
-            dcm.competition_code,
-            CASE WHEN dcm.id IS NOT NULL THEN 1 ELSE 0 END AS is_published
+    `SELECT d.id, d.name, d.level, d.max_size, d.display_order
      FROM pyramid_divisions d
-     LEFT JOIN division_competition_mappings dcm ON dcm.division_id = d.id
      WHERE d.id = ?`,
     [divisionId]
   );
@@ -623,53 +503,20 @@ export async function getDivisionDetail(
   const clubRows = await db.all<{
     club_id: number;
     club_name: string;
-    club_status: string;
     venue_name: string | null;
     venue_postcode: string | null;
     venue_latitude: number | null;
     venue_longitude: number | null;
     generic_ticket_url: string | null;
-    club_competition_code: string | null;
-    is_friendly_only: number;
   }>(
-    `WITH
-    friendly_clubs AS (
-      SELECT c.id AS club_id FROM clubs c
-      JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
-      UNION
-      SELECT f.home_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    league_clubs AS (
-      SELECT f.home_club_id AS club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    friendly_only_clubs AS (
-      SELECT club_id FROM friendly_clubs
-      EXCEPT
-      SELECT club_id FROM league_clubs
-    )
-    SELECT
+    `SELECT
       c.id AS club_id,
       c.name AS club_name,
-      c.status AS club_status,
       v.name AS venue_name,
       v.postcode AS venue_postcode,
       v.latitude AS venue_latitude,
       v.longitude AS venue_longitude,
-      c.generic_ticket_url,
-      c.competition_code AS club_competition_code,
-      CASE WHEN c.id IN (SELECT club_id FROM friendly_only_clubs) THEN 1 ELSE 0 END AS is_friendly_only
+      c.generic_ticket_url
     FROM division_assignments da
     JOIN clubs c ON c.id = da.club_id
     LEFT JOIN club_venue_assignments cva
@@ -683,21 +530,16 @@ export async function getDivisionDetail(
   const clubs: DivisionAssignedClub[] = clubRows.map((r) => ({
     id: r.club_id,
     name: r.club_name,
-    status: r.club_status,
     venueName: r.venue_name,
     venuePostcode: r.venue_postcode,
     venueLatitude: r.venue_latitude,
     venueLongitude: r.venue_longitude,
     hasTicketUrl: !!r.generic_ticket_url,
-    isPublished: r.club_competition_code !== null && r.club_status === "known",
-    isFriendlyOnly: r.is_friendly_only === 1,
   }));
 
   const clubCount = clubs.length;
-  const publishedCount = clubs.filter((c) => c.isPublished).length;
   const missingVenueCount = clubs.filter((c) => !c.venueName).length;
   const missingTicketUrlCount = clubs.filter((c) => !c.hasTicketUrl).length;
-  const friendlyOnlyCount = clubs.filter((c) => c.isFriendlyOnly).length;
 
   return {
     id: division.id,
@@ -705,14 +547,10 @@ export async function getDivisionDetail(
     level: division.level,
     maxSize: division.max_size,
     displayOrder: division.display_order,
-    competitionCode: division.competition_code,
-    isPublished: division.is_published === 1,
     clubs,
     clubCount,
-    publishedCount,
     missingVenueCount,
     missingTicketUrlCount,
-    friendlyOnlyCount,
     seasonLabel: season?.season_label ?? "",
   };
 }

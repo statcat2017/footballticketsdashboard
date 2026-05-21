@@ -136,24 +136,22 @@ export function seedDatabase(db: SqliteDatabase): void {
 
     const insertClub = db.prepare(`
       INSERT INTO clubs (
-        id, name, football_data_team_id, aliases, short_name, competition_code, venue_id,
+        id, name, football_data_team_id, aliases, short_name, venue_id,
         official_site_url, generic_ticket_url, price_source_url, verified_at,
-        status, source_url, league_name, admin_updated_at,
+        source_url, league_name, admin_updated_at,
         coordinate_precision, coordinates_verified_at, coordinates_confidence, coordinates_notes
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         football_data_team_id = excluded.football_data_team_id,
         aliases = excluded.aliases,
         short_name = excluded.short_name,
-        competition_code = excluded.competition_code,
         venue_id = excluded.venue_id,
         official_site_url = excluded.official_site_url,
         generic_ticket_url = excluded.generic_ticket_url,
         price_source_url = excluded.price_source_url,
         verified_at = excluded.verified_at,
-        status = excluded.status,
         source_url = excluded.source_url,
         league_name = excluded.league_name,
         admin_updated_at = excluded.admin_updated_at,
@@ -167,9 +165,8 @@ export function seedDatabase(db: SqliteDatabase): void {
       const pyramidMatch = pyramidClubByName.get(cl.name);
       insertClub.run(
         cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name,
-        cl.competition_code, cl.venue_id, cl.official_site_url, cl.generic_ticket_url,
+        cl.venue_id, cl.official_site_url, cl.generic_ticket_url,
         cl.price_source_url, cl.verified_at,
-        pyramidMatch?.status ?? "partial",
         pyramidMatch?.source_url ?? null,
         pyramidMatch?.league_name ?? null,
         null, null, null, null, null
@@ -181,9 +178,9 @@ export function seedDatabase(db: SqliteDatabase): void {
         const newId = pyramidToClubId.get(pc.id)!;
         insertClub.run(
           newId, pc.name, null, pc.aliases, null,
-          null, null, null, null,
+          null, null, null,
           null, pc.verified_at,
-          pc.status, pc.source_url, pc.league_name,
+          pc.source_url, pc.league_name,
           null, null, null, null, null
         );
       }

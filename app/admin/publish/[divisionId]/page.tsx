@@ -11,60 +11,6 @@ import { DivisionGroundsMapWrapper } from "./_components/DivisionGroundsMapWrapp
 
 export const dynamic = "force-dynamic";
 
-function StatusBadge({ published }: { published: boolean }) {
-  if (published) {
-    return (
-      <span style={{
-        display: "inline-flex",
-        padding: "2px 8px",
-        borderRadius: "999px",
-        fontSize: "11px",
-        fontWeight: 750,
-        background: "#eef8f1",
-        color: "#0e5737",
-        border: "1px solid transparent",
-        lineHeight: 1.4
-      }}>
-        Published
-      </span>
-    );
-  }
-
-  return (
-    <span style={{
-      display: "inline-flex",
-      padding: "2px 8px",
-      borderRadius: "999px",
-      fontSize: "11px",
-      fontWeight: 750,
-      background: "#fde9e5",
-      color: "#a53a2d",
-      border: "1px solid transparent",
-      lineHeight: 1.4
-    }}>
-      Not published
-    </span>
-  );
-}
-
-function FriendlyBadge() {
-  return (
-    <span style={{
-      display: "inline-flex",
-      padding: "2px 8px",
-      borderRadius: "999px",
-      fontSize: "11px",
-      fontWeight: 600,
-      background: "#fff4d6",
-      color: "#a76800",
-      border: "1px solid transparent",
-      lineHeight: 1.4
-    }}>
-      Friendly only
-    </span>
-  );
-}
-
 function Metric({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
   const color = warn ? "#a53a2d" : "#6f7e7a";
   const bg = warn ? "#fde9e5" : "#eef1f1";
@@ -110,42 +56,14 @@ export default async function DivisionDetailPage(props: {
     notFound();
   }
 
-  const unassignedRows = await db.all<{ id: number; name: string; venue_name: string | null; status: string }>(
-    `WITH
-    friendly_clubs AS (
-      SELECT c.id AS club_id FROM clubs c
-      JOIN competitions comp ON comp.code = c.competition_code AND comp.kind = 'friendly'
-      UNION
-      SELECT f.home_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind = 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    league_clubs AS (
-      SELECT f.home_club_id AS club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.home_club_id IS NOT NULL
-      UNION
-      SELECT f.away_club_id FROM fixtures f
-      JOIN competitions comp ON comp.code = f.competition_code AND comp.kind != 'friendly'
-      WHERE f.away_club_id IS NOT NULL
-    ),
-    friendly_only_clubs AS (
-      SELECT club_id FROM friendly_clubs
-      EXCEPT
-      SELECT club_id FROM league_clubs
-    )
-    SELECT c.id, c.name, v.name AS venue_name, c.status
+  const unassignedRows = await db.all<{ id: number; name: string; venue_name: string | null }>(
+    `SELECT c.id, c.name, v.name AS venue_name
     FROM clubs c
     LEFT JOIN division_assignments da ON da.club_id = c.id
     LEFT JOIN club_venue_assignments cva
       ON cva.club_id = c.id AND cva.is_primary = 1 AND cva.effective_to IS NULL
     LEFT JOIN venues v ON v.id = cva.venue_id
     WHERE da.id IS NULL
-      AND c.id NOT IN (SELECT club_id FROM friendly_only_clubs)
     ORDER BY c.name`
   );
 
@@ -266,39 +184,17 @@ export default async function DivisionDetailPage(props: {
             Level {detail.level} &middot; Season {detail.seasonLabel}
           </p>
         </div>
-        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-          <StatusBadge published={detail.isPublished} />
-          {!detail.isPublished && (
-            <form method="post" action="/api/admin/publish/competition">
-              <input type="hidden" name="csrf" value={csrfToken} />
-              <input type="hidden" name="division_id" value={divId} />
-              <input type="hidden" name="redirect_division_id" value={divId} />
-              <button type="submit" style={{
-                border: "1px solid #147a4d",
-                borderRadius: "7px",
-                background: "#147a4d",
-                color: "#fff",
-                padding: "0.4rem 0.8rem",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer"
-              }}>
-                Publish competition
-              </button>
-            </form>
-          )}
-          <form method="post" action="/api/admin/logout">
-            <input type="hidden" name="csrf" value={csrfToken} />
-            <button type="submit" style={{
-              border: "1px solid #dce3e2",
-              borderRadius: "7px",
-              background: "#fff",
-              padding: "0.4rem 0.8rem",
-              fontSize: "13px",
-              cursor: "pointer"
-            }}>Log out</button>
-          </form>
-        </div>
+        <form method="post" action="/api/admin/logout">
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <button type="submit" style={{
+            border: "1px solid #dce3e2",
+            borderRadius: "7px",
+            background: "#fff",
+            padding: "0.4rem 0.8rem",
+            fontSize: "13px",
+            cursor: "pointer"
+          }}>Log out</button>
+        </form>
       </header>
 
       <div style={{
@@ -313,43 +209,11 @@ export default async function DivisionDetailPage(props: {
         alignItems: "center"
       }}>
         <Metric label="Clubs" value={`${clubCount}/${maxSize}`} warn={clubCount >= maxSize} />
-        <Metric label="Published" value={detail.publishedCount} />
-        <Metric label="Unpublished" value={clubCount - detail.publishedCount} warn={clubCount - detail.publishedCount > 0} />
         {detail.missingVenueCount > 0 && (
           <Metric label="Missing venue" value={detail.missingVenueCount} warn />
         )}
         {detail.missingTicketUrlCount > 0 && (
           <Metric label="No ticket URL" value={detail.missingTicketUrlCount} warn />
-        )}
-        {detail.friendlyOnlyCount > 0 && (
-          <Metric label="Friendly only" value={detail.friendlyOnlyCount} />
-        )}
-        {detail.isPublished && detail.competitionCode ? (
-          <span style={{
-            display: "inline-flex",
-            padding: "4px 12px",
-            borderRadius: "999px",
-            fontSize: "13px",
-            fontWeight: 600,
-            background: "#eef8f1",
-            color: "#0e5737",
-            lineHeight: 1.4
-          }}>
-            Competition: {detail.competitionCode}
-          </span>
-        ) : (
-          <span style={{
-            display: "inline-flex",
-            padding: "4px 12px",
-            borderRadius: "999px",
-            fontSize: "13px",
-            fontWeight: 600,
-            background: "#fff4d6",
-            color: "#a76800",
-            lineHeight: 1.4
-          }}>
-            No competition mapping
-          </span>
         )}
       </div>
 
@@ -378,31 +242,11 @@ export default async function DivisionDetailPage(props: {
                 id: r.id,
                 name: r.name,
                 venueName: r.venue_name,
-                status: r.status,
               }))}
               csrfToken={csrfToken}
               maxCapacity={maxSize}
               clubCount={clubCount}
             />
-            {detail.isPublished && (
-              <form method="post" action="/api/admin/publish/clubs" style={{ display: "inline" }}>
-                <input type="hidden" name="csrf" value={csrfToken} />
-                <input type="hidden" name="division_id" value={divId} />
-                <input type="hidden" name="redirect_division_id" value={divId} />
-                <button type="submit" style={{
-                  border: "1px solid #147a4d",
-                  borderRadius: "7px",
-                  background: "#147a4d",
-                  color: "#fff",
-                  padding: "0.3rem 0.7rem",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer"
-                }}>
-                  Publish all ready clubs
-                </button>
-              </form>
-            )}
           </div>
         </div>
         {remainingSpaces > 0 && (
@@ -424,7 +268,6 @@ export default async function DivisionDetailPage(props: {
               <thead>
                 <tr style={{ background: "#fbfcfc", borderBottom: "1px solid #dce3e2" }}>
                   <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Club</th>
-                  <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Status</th>
                   <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Venue</th>
                   <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Ticket URL</th>
                   <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}></th>
@@ -442,12 +285,6 @@ export default async function DivisionDetailPage(props: {
                         }}>
                           {club.name}
                         </Link>
-                      </td>
-                      <td style={{ padding: "0.6rem 1rem" }}>
-                        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
-                          <StatusBadge published={club.isPublished} />
-                          {club.isFriendlyOnly && <FriendlyBadge />}
-                        </div>
                       </td>
                       <td style={{ padding: "0.6rem 1rem", color: club.venueName ? "#34413e" : "#a53a2d" }}>
                         {club.venueName ?? (
@@ -474,40 +311,6 @@ export default async function DivisionDetailPage(props: {
                             migrateTargets={migrateTargets}
                             allClubsByDivision={allClubsByDivision}
                           />
-                          {!club.isPublished && club.venueName && detail.isPublished && !club.isFriendlyOnly && (
-                            <form method="post" action="/api/admin/publish/club">
-                              <input type="hidden" name="csrf" value={csrfToken} />
-                              <input type="hidden" name="club_id" value={club.id} />
-                              <input type="hidden" name="redirect_division_id" value={divId} />
-                              <button type="submit" style={{
-                                border: "1px solid #147a4d",
-                                borderRadius: "7px",
-                                background: "#147a4d",
-                                color: "#fff",
-                                padding: "0.3rem 0.7rem",
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                cursor: "pointer"
-                              }}>
-                                Publish
-                              </button>
-                            </form>
-                          )}
-                          {!club.isPublished && !club.venueName && (
-                            <span style={{ fontSize: "12px", color: "#a53a2d", fontWeight: 600 }}>
-                              No venue
-                            </span>
-                          )}
-                          {!club.isPublished && club.venueName && !detail.isPublished && !club.isFriendlyOnly && (
-                            <span style={{ fontSize: "12px", color: "#a76800", fontWeight: 600 }}>
-                              Unmapped
-                            </span>
-                          )}
-                          {club.isFriendlyOnly && !club.isPublished && (
-                            <span style={{ fontSize: "12px", color: "#a76800", fontWeight: 600 }}>
-                              Cannot publish friendly-only club
-                            </span>
-                          )}
                           <form method="post" action="/api/admin/unassign-club" style={{ display: "inline" }}>
                             <input type="hidden" name="csrf" value={csrfToken} />
                             <input type="hidden" name="club_id" value={club.id} />

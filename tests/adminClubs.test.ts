@@ -36,7 +36,7 @@ describe("admin club browser", () => {
     const db = createMinimalDb();
 
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES (200, 'Old Club', 'known');
+      INSERT INTO clubs (id, name) VALUES (200, 'Old Club');
     `);
 
     const detail = await getAdminClubDetail(db, 200);
@@ -75,7 +75,7 @@ describe("admin club browser", () => {
     const db = createMinimalDb();
 
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES (300, 'Homeless FC', 'partial');
+      INSERT INTO clubs (id, name) VALUES (300, 'Homeless FC');
       INSERT INTO division_assignments (club_id, division_id) VALUES (300, 10);
     `);
 
@@ -139,16 +139,14 @@ describe("updateAdminClub", () => {
 
     await updateAdminClub(db, 100, {
       name: "Test Town Renamed",
-      status: "partial",
       aliases: "TTU, Town"
     });
 
-    const club = await db.get<{ name: string; status: string; aliases: string; admin_updated_at: string | null }>(
-      "SELECT name, status, aliases, admin_updated_at FROM clubs WHERE id = ?", [100]
+    const club = await db.get<{ name: string; aliases: string; admin_updated_at: string | null }>(
+      "SELECT name, aliases, admin_updated_at FROM clubs WHERE id = ?", [100]
     );
 
     expect(club!.name).toBe("Test Town Renamed");
-    expect(club!.status).toBe("partial");
     expect(club!.aliases).toBe("TTU, Town");
     expect(club!.admin_updated_at).not.toBeNull();
   });
@@ -179,12 +177,11 @@ describe("updateAdminClub", () => {
 
     await updateAdminClub(db, 100, { source_url: "https://example.com" });
 
-    const club = await db.get<{ name: string; status: string; source_url: string | null }>(
-      "SELECT name, status, source_url FROM clubs WHERE id = ?", [100]
+    const club = await db.get<{ name: string; source_url: string | null }>(
+      "SELECT name, source_url FROM clubs WHERE id = ?", [100]
     );
 
     expect(club!.name).toBe("Test Town United");
-    expect(club!.status).toBe("known");
     expect(club!.source_url).toBe("https://example.com");
   });
 });

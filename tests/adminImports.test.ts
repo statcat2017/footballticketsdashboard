@@ -149,7 +149,7 @@ describe("repairs route - create_venue_and_assign cross-batch protection", () =>
     const crossBatchRowId = rowsB[0].id;
 
     // Create a club to assign venue to
-    await db.run(`INSERT INTO clubs (id, name, status) VALUES (999, 'Test Club', 'known')`);
+    await db.run(`INSERT INTO clubs (id, name) VALUES (999, 'Test Club')`);
 
     const form = new FormData();
     form.append("_action", "create_venue_and_assign");

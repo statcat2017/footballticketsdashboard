@@ -7,42 +7,6 @@ import { getDivisionAssignments } from "@/lib/admin/divisionAssignments";
 
 export const dynamic = "force-dynamic";
 
-function StatusBadge({ published }: { published: boolean }) {
-  if (published) {
-    return (
-      <span style={{
-        display: "inline-flex",
-        padding: "2px 8px",
-        borderRadius: "999px",
-        fontSize: "11px",
-        fontWeight: 750,
-        background: "#eef8f1",
-        color: "#0e5737",
-        border: "1px solid transparent",
-        lineHeight: 1.4
-      }}>
-        Published
-      </span>
-    );
-  }
-
-  return (
-    <span style={{
-      display: "inline-flex",
-      padding: "2px 8px",
-      borderRadius: "999px",
-      fontSize: "11px",
-      fontWeight: 750,
-      background: "#fde9e5",
-      color: "#a53a2d",
-      border: "1px solid transparent",
-      lineHeight: 1.4
-    }}>
-      Not published
-    </span>
-  );
-}
-
 function StatPill({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
   const color = warn ? "#a53a2d" : "#6f7e7a";
   const bg = warn ? "#fde9e5" : "#eef1f1";
@@ -62,7 +26,7 @@ function StatPill({ label, value, warn }: { label: string; value: number | strin
   );
 }
 
-export default async function AdminPublishPage(props: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function AdminClubsAndDivisionsPage(props: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdminPageSession();
   const csrfToken = await createAdminCsrfToken();
 
@@ -143,7 +107,7 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
             textDecoration: "none",
             fontWeight: 600
           }}>&larr; Dashboard</Link>
-          <h1 style={{ margin: "0.25rem 0 0", fontSize: "1.5rem" }}>Division Assignments</h1>
+          <h1 style={{ margin: "0.25rem 0 0", fontSize: "1.5rem" }}>Clubs & Divisions</h1>
           <p style={{ margin: "0.25rem 0 0", color: "#6f7e7a", fontSize: "14px" }}>
             Season {data.seasonLabel} &middot; {data.divisions.length} divisions &middot; {totalClubs} clubs
           </p>
@@ -238,31 +202,9 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                           <StatPill label="no ticket URL" value={missingTicketUrlCount} warn />
                         )}
                       </Link>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                        <StatusBadge published={div.isPublished} />
-                        {!div.isPublished && (
-                          <form method="post" action="/api/admin/publish/competition">
-                            <input type="hidden" name="csrf" value={csrfToken} />
-                            <input type="hidden" name="division_id" value={div.id} />
-                            <input type="hidden" name="redirect_division_id" value={div.id} />
-                            <button type="submit" style={{
-                              border: "1px solid #147a4d",
-                              borderRadius: "7px",
-                              background: "#147a4d",
-                              color: "#fff",
-                              padding: "0.4rem 0.8rem",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              cursor: "pointer"
-                            }}>
-                              Publish competition
-                            </button>
-                          </form>
-                        )}
-                        <span style={{ color: "#6f7e7a", fontSize: "12px", fontWeight: 600 }}>
-                          &rarr;
-                        </span>
-                      </div>
+                      <span style={{ color: "#6f7e7a", fontSize: "12px", fontWeight: 600 }}>
+                        &rarr;
+                      </span>
                     </div>
                   </div>
                 );
@@ -297,7 +239,6 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                   <thead>
                     <tr style={{ background: "#fbfcfc", borderBottom: "1px solid #dce3e2" }}>
                       <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Club</th>
-                      <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Status</th>
                       <th style={{ textAlign: "left", padding: "0.5rem 1rem", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#6f7e7a" }}>Ground</th>
                     </tr>
                   </thead>
@@ -310,21 +251,6 @@ export default async function AdminPublishPage(props: { searchParams?: Promise<R
                           }}>
                             {club.name}
                           </Link>
-                        </td>
-                        <td style={{ padding: "0.6rem 1rem" }}>
-                          <span style={{
-                            display: "inline-flex",
-                            padding: "2px 8px",
-                            borderRadius: "999px",
-                            fontSize: "11px",
-                            fontWeight: 750,
-                            background: club.status === "known" ? "#eef8f1" : club.status === "partial" ? "#fff4d6" : "#fde9e5",
-                            color: club.status === "known" ? "#0e5737" : club.status === "partial" ? "#a76800" : "#a53a2d",
-                            border: "1px solid transparent",
-                            lineHeight: 1.4
-                          }}>
-                            {club.status}
-                          </span>
                         </td>
                         <td style={{ padding: "0.6rem 1rem", color: club.venueName ? "#34413e" : "#a53a2d" }}>
                           {club.venueName ?? (

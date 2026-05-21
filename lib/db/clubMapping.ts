@@ -4,8 +4,6 @@ export interface ClubMappingResult {
   publicClubId: number | null;
   mappingType: "direct" | "alias" | "ambiguous" | "unknown";
   displayName: string;
-  status: string | null;
-  competitionCode: string | null;
 }
 
 export interface ClubAlias {
@@ -41,12 +39,12 @@ export async function resolveFixtureParticipant(
 ): Promise<ClubMappingResult> {
   const trimmed = teamName.trim();
   if (!trimmed) {
-    return { publicClubId: null, mappingType: "unknown", displayName: teamName, status: null, competitionCode: null };
+    return { publicClubId: null, mappingType: "unknown", displayName: teamName };
   }
 
   // 1. Try direct match on clubs
-  const directClub = await db.get<{ id: number; status: string | null; competition_code: string | null }>(
-    `SELECT id, status, competition_code FROM clubs WHERE name = ?`,
+  const directClub = await db.get<{ id: number }>(
+    `SELECT id FROM clubs WHERE name = ?`,
     [trimmed]
   );
   if (directClub) {
@@ -54,15 +52,13 @@ export async function resolveFixtureParticipant(
       publicClubId: directClub.id,
       mappingType: "direct",
       displayName: trimmed,
-      status: directClub.status,
-      competitionCode: directClub.competition_code,
     };
   }
 
   // 2. Try scoped alias if competition is known (scoped wins over global)
   if (options?.competitionCode) {
-    const aliasMatch = await db.get<{ club_id: number; name: string; status: string | null; competition_code: string | null }>(
-      `SELECT c.id AS club_id, c.name, c.status, c.competition_code
+    const aliasMatch = await db.get<{ club_id: number; name: string }>(
+      `SELECT c.id AS club_id, c.name
        FROM clubs c
        JOIN club_aliases ca ON ca.club_id = c.id
        WHERE ca.normalized_alias = ?
@@ -77,15 +73,13 @@ export async function resolveFixtureParticipant(
         publicClubId: aliasMatch.club_id,
         mappingType: "alias",
         displayName: aliasMatch.name,
-        status: aliasMatch.status,
-        competitionCode: aliasMatch.competition_code,
       };
     }
   }
 
   // 3. Try unscoped aliases
-  const aliasMatch = await db.get<{ club_id: number; name: string; status: string | null; competition_code: string | null }>(
-    `SELECT c.id AS club_id, c.name, c.status, c.competition_code
+  const aliasMatch = await db.get<{ club_id: number; name: string }>(
+    `SELECT c.id AS club_id, c.name
      FROM clubs c
      JOIN club_aliases ca ON ca.club_id = c.id
      WHERE ca.normalized_alias = ? AND ca.competition_code IS NULL AND ca.retired_at IS NULL`,
@@ -96,12 +90,10 @@ export async function resolveFixtureParticipant(
       publicClubId: aliasMatch.club_id,
       mappingType: "alias",
       displayName: aliasMatch.name,
-      status: aliasMatch.status,
-      competitionCode: aliasMatch.competition_code,
     };
   }
 
-  return { publicClubId: null, mappingType: "unknown", displayName: trimmed, status: null, competitionCode: null };
+  return { publicClubId: null, mappingType: "unknown", displayName: trimmed };
 }
 
 export async function resolveCompetitionFromDivision(
@@ -127,13 +119,16 @@ export async function resolveCompetitionFromFixture(
   );
   if (comp) return comp.code;
 
-  // If home club is known, look up their current competition
+  // If home club is known, look up their competition via division assignment
   if (homeClubId) {
-    const club = await db.get<{ competition_code: string }>(
-      `SELECT competition_code FROM clubs WHERE id = ?`,
+    const mapping = await db.get<{ competition_code: string }>(
+      `SELECT dcm.competition_code
+       FROM division_assignments da
+       JOIN division_competition_mappings dcm ON dcm.division_id = da.division_id
+       WHERE da.club_id = ?`,
       [homeClubId]
     );
-    if (club) return club.competition_code;
+    if (mapping) return mapping.competition_code;
   }
 
   return null;

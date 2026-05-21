@@ -49,12 +49,12 @@ function createMinimalDb(): AppDatabase {
     INSERT INTO competitions (code, name, tier, kind) VALUES
       ('PL', 'Premier League', 1, 'league');
 
-    INSERT INTO clubs (id, name, status, competition_code) VALUES
-      (100, 'Test Town United', 'known', 'PL'),
-      (101, 'City Athletic', 'known', 'PL'),
-      (102, 'Rovers FC', 'partial', NULL),
-      (103, 'Tier Nine Club', 'known', NULL),
-      (104, 'Tier Ten Club', 'known', NULL);
+    INSERT INTO clubs (id, name) VALUES
+      (100, 'Test Town United'),
+      (101, 'City Athletic'),
+      (102, 'Rovers FC'),
+      (103, 'Tier Nine Club'),
+      (104, 'Tier Ten Club');
   `);
 
   sqlite.exec("INSERT OR IGNORE INTO division_assignments (club_id, division_id) VALUES (100, 10), (101, 10), (102, 11), (103, 12), (104, 13)");
@@ -121,7 +121,7 @@ describe("getDivisionAssignments", () => {
         INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
         INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
         INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-        INSERT INTO clubs (id, name, status) VALUES (100, 'Backfill FC', 'known');
+        INSERT INTO clubs (id, name) VALUES (100, 'Backfill FC');
         INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES (100, 1, 1, 10, 100);
       `);
 
@@ -185,9 +185,9 @@ describe("getDivisionAssignments", () => {
         INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES (10, 1, 'premier', 'Premier Division', 1, 20);
         INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (1, 1, '2025-26');
         INSERT INTO pyramid_season_divisions (id, season_id, template_id, division_id, status) VALUES (10, 1, 1, 10, 'open');
-        INSERT INTO clubs (id, name, status) VALUES
-          (100, 'Assigned FC', 'known'),
-          (101, 'Manually Unassigned FC', 'known');
+        INSERT INTO clubs (id, name) VALUES
+          (100, 'Assigned FC'),
+          (101, 'Manually Unassigned FC');
         INSERT INTO pyramid_season_memberships (id, season_id, template_id, season_division_id, club_id) VALUES
           (100, 1, 1, 10, 100),
           (101, 1, 1, 10, 101);
@@ -285,7 +285,7 @@ describe("getDivisionAssignments", () => {
     // Only seed backfill should populate assignments. Since the migration
     // runs before our seed inserts pyramid_season_memberships, we manually
     // add a club that has no division_assignments row.
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (200, 'Unassigned FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (200, 'Unassigned FC')");
 
     const data = await getDivisionAssignments(db);
 
@@ -293,14 +293,14 @@ describe("getDivisionAssignments", () => {
     expect(unassignedNames).toContain("Unassigned FC");
   });
 
-  it("hides friendly-only clubs from assignment lists", async () => {
+  it("shows unfriendly-only clubs in assignment lists", async () => {
     const db = createMinimalDb();
     db.exec(`
       INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
-      INSERT INTO clubs (id, name, status, competition_code) VALUES
-        (200, 'Friendly Code FC', 'partial', 'FRIENDLY'),
-        (201, 'Friendly Fixture FC', 'partial', NULL),
-        (202, 'League Fixture FC', 'partial', NULL);
+      INSERT INTO clubs (id, name) VALUES
+        (200, 'Friendly Code FC'),
+        (201, 'Friendly Fixture FC'),
+        (202, 'League Fixture FC');
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, venue_id,
         fixture_date, status, is_demo_data, is_historical, away_one_off, away_one_off_name
@@ -313,16 +313,16 @@ describe("getDivisionAssignments", () => {
     const data = await getDivisionAssignments(db);
 
     const unassignedNames = data.unassignedClubs.map((c) => c.name);
-    expect(unassignedNames).not.toContain("Friendly Code FC");
-    expect(unassignedNames).not.toContain("Friendly Fixture FC");
+    expect(unassignedNames).toContain("Friendly Code FC");
+    expect(unassignedNames).toContain("Friendly Fixture FC");
     expect(unassignedNames).toContain("League Fixture FC");
   });
 
   it("does not hide clubs with only league away fixtures", async () => {
     const db = createMinimalDb();
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES
-        (200, 'League Away Only FC', 'partial');
+      INSERT INTO clubs (id, name) VALUES
+        (200, 'League Away Only FC');
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, venue_id,
         fixture_date, status, is_demo_data, is_historical, away_one_off, away_one_off_name
@@ -339,8 +339,8 @@ describe("getDivisionAssignments", () => {
     const db = createMinimalDb();
     db.exec(`
       INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
-      INSERT INTO clubs (id, name, status, competition_code) VALUES
-        (200, 'Friendly Code FC', 'partial', 'FRIENDLY');
+      INSERT INTO clubs (id, name) VALUES
+        (200, 'Friendly Code FC');
       INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
     `);
 
@@ -348,10 +348,6 @@ describe("getDivisionAssignments", () => {
     const premier = data.divisions.find((d) => d.id === 10);
     expect(premier).toBeDefined();
     expect(premier!.clubs.map((c) => c.name)).toContain("Friendly Code FC");
-
-    const friendlyClub = premier!.clubs.find((c) => c.name === "Friendly Code FC");
-    expect(friendlyClub).toBeDefined();
-    expect(friendlyClub!.isFriendlyOnly).toBe(true);
   });
 });
 
@@ -367,7 +363,6 @@ describe("getDivisionDetail", () => {
     expect(detail!.level).toBe(1);
     expect(detail!.maxSize).toBe(20);
     expect(detail!.clubCount).toBe(2);
-    expect(detail!.publishedCount).toBe(2);
     expect(detail!.missingVenueCount).toBe(0);
     expect(detail!.missingTicketUrlCount).toBe(2);
     expect(detail!.clubs.map((c) => c.name)).toContain("Test Town United");
@@ -385,7 +380,7 @@ describe("getDivisionDetail", () => {
   it("keeps assigned clubs without primary venues available for map unplaced lists", async () => {
     const db = createMinimalDb();
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES (200, 'Venue Missing FC', 'known');
+      INSERT INTO clubs (id, name) VALUES (200, 'Venue Missing FC');
       INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
     `);
 
@@ -410,8 +405,8 @@ describe("getDivisionDetail", () => {
     const db = createMinimalDb();
     db.exec(`
       INSERT INTO competitions (code, name, tier, kind) VALUES ('FRIENDLY', 'Friendlies', 10, 'friendly');
-      INSERT INTO clubs (id, name, status, competition_code) VALUES
-        (200, 'Friendly Assigned FC', 'partial', 'FRIENDLY');
+      INSERT INTO clubs (id, name) VALUES
+        (200, 'Friendly Assigned FC');
       INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10);
     `);
 
@@ -420,16 +415,14 @@ describe("getDivisionDetail", () => {
     expect(detail).not.toBeNull();
     const friendlyClub = detail!.clubs.find((c) => c.name === "Friendly Assigned FC");
     expect(friendlyClub).toBeDefined();
-    expect(friendlyClub!.isFriendlyOnly).toBe(true);
-    expect(detail!.friendlyOnlyCount).toBe(1);
   });
 
   it("computes metrics correctly for a division with issues", async () => {
     const db = createMinimalDb();
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES
-        (200, 'No Venue FC', 'partial'),
-        (201, 'No Tickets FC', 'known');
+        INSERT INTO clubs (id, name) VALUES
+          (200, 'No Venue FC'),
+        (201, 'No Tickets FC');
       INSERT INTO division_assignments (club_id, division_id) VALUES (200, 12), (201, 12);
     `);
 
@@ -439,14 +432,13 @@ describe("getDivisionDetail", () => {
     expect(detail!.clubCount).toBe(3);
     expect(detail!.missingVenueCount).toBe(3);
     expect(detail!.missingTicketUrlCount).toBe(3);
-    expect(detail!.publishedCount).toBe(0);
   });
 });
 
 describe("assignClubToDivision", () => {
   it("assigns an unassigned club to a division", async () => {
     const db = createMinimalDb();
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (200, 'Unassigned FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (200, 'Unassigned FC')");
 
     await assignClubToDivision(db, 200, 11, "test-admin");
 
@@ -469,23 +461,6 @@ describe("assignClubToDivision", () => {
     const first = data.divisions.find((d) => d.id === 11);
     expect(premier!.clubs.map((c) => c.name)).not.toContain("Test Town United");
     expect(first!.clubs.map((c) => c.name)).toContain("Test Town United");
-
-    const club = await db.get<{ competition_code: string | null }>(
-      "SELECT competition_code FROM clubs WHERE id = ?", [100]
-    );
-    expect(club!.competition_code).toBeNull();
-  });
-
-  it("clears clubs.competition_code when assigning", async () => {
-    const db = createMinimalDb();
-    db.exec("INSERT INTO clubs (id, name, status, competition_code) VALUES (200, 'Reset FC', 'known', 'PL')");
-
-    await assignClubToDivision(db, 200, 11, "test-admin");
-
-    const club = await db.get<{ competition_code: string | null }>(
-      "SELECT competition_code FROM clubs WHERE id = ?", [200]
-    );
-    expect(club!.competition_code).toBeNull();
   });
 
   it("warns when division is at capacity", async () => {
@@ -494,12 +469,12 @@ describe("assignClubToDivision", () => {
     // Division 12 has max_size=16 and currently 0 clubs assigned
     // Create 16 clubs and assign them to fill the division
     for (let i = 200; i < 216; i++) {
-      db.exec(`INSERT INTO clubs (id, name, status) VALUES (${i}, 'Fill Club ${i}', 'known')`);
+      db.exec(`INSERT INTO clubs (id, name) VALUES (${i}, 'Fill Club ${i}')`);
       await assignClubToDivision(db, i, 12, "test-admin");
     }
 
     // Now try to add one more
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (300, 'Overflow FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (300, 'Overflow FC')");
     const result = await assignClubToDivision(db, 300, 12, "test-admin");
 
     expect(result.warning).toBeDefined();
@@ -536,7 +511,7 @@ describe("assignClubToDivision", () => {
 
   it("writes an audit log entry", async () => {
     const db = createMinimalDb();
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (200, 'Audit FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (200, 'Audit FC')");
 
     await assignClubToDivision(db, 200, 10, "test-admin");
 
@@ -563,20 +538,9 @@ describe("unassignClub", () => {
     expect(unassignedNames).toContain("Test Town United");
   });
 
-  it("clears clubs.competition_code when unassigning", async () => {
-    const db = createMinimalDb();
-
-    await unassignClub(db, 100, "test-admin");
-
-    const club = await db.get<{ competition_code: string | null }>(
-      "SELECT competition_code FROM clubs WHERE id = ?", [100]
-    );
-    expect(club!.competition_code).toBeNull();
-  });
-
   it("throws when club is not assigned", async () => {
     const db = createMinimalDb();
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (200, 'Lone FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (200, 'Lone FC')");
 
     await expect(
       unassignClub(db, 200, "test-admin")
@@ -694,7 +658,7 @@ describe("moveClubWithSwap", () => {
     const db = createMinimalDb();
     db.exec("UPDATE pyramid_divisions SET max_size = 2 WHERE id = 10");
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES (200, 'Fill Club 1', 'known'), (201, 'Fill Club 2', 'known');
+      INSERT INTO clubs (id, name) VALUES (200, 'Fill Club 1'), (201, 'Fill Club 2');
       INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10), (201, 10);
     `);
 
@@ -710,11 +674,11 @@ describe("moveClubWithSwap", () => {
     const db = createMinimalDb();
     db.exec("UPDATE pyramid_divisions SET max_size = 2 WHERE id = 10");
     db.exec(`
-      INSERT INTO clubs (id, name, status) VALUES (200, 'Fill Club 1', 'known'), (201, 'Fill Club 2', 'known');
+      INSERT INTO clubs (id, name) VALUES (200, 'Fill Club 1'), (201, 'Fill Club 2');
       INSERT INTO division_assignments (club_id, division_id) VALUES (200, 10), (201, 10);
     `);
 
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (300, 'Overflow FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (300, 'Overflow FC')");
     db.exec("INSERT INTO division_assignments (club_id, division_id) VALUES (300, 11)");
 
     await expect(
@@ -755,7 +719,7 @@ describe("moveClubWithSwap", () => {
 
   it("throws when club is not assigned", async () => {
     const db = createMinimalDb();
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (300, 'Lone FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (300, 'Lone FC')");
     await expect(
       moveClubWithSwap(db, 300, 10, null, "promote", "test-admin")
     ).rejects.toThrow("not assigned to any division");
@@ -766,17 +730,6 @@ describe("moveClubWithSwap", () => {
     await expect(
       moveClubWithSwap(db, 102, 10, 102, "promote", "test-admin")
     ).rejects.toThrow("not in the target division");
-  });
-
-  it("clears competition_code on movement", async () => {
-    const db = createMinimalDb();
-
-    await moveClubWithSwap(db, 102, 10, null, "promote", "test-admin");
-
-    const club = await db.get<{ competition_code: string | null }>(
-      "SELECT competition_code FROM clubs WHERE id = 102"
-    );
-    expect(club!.competition_code).toBeNull();
   });
 
   it("writes an audit log entry", async () => {
@@ -813,7 +766,7 @@ describe("unassignClubFromTier10", () => {
 
   it("throws when club is not assigned", async () => {
     const db = createMinimalDb();
-    db.exec("INSERT INTO clubs (id, name, status) VALUES (300, 'Lone FC', 'known')");
+    db.exec("INSERT INTO clubs (id, name) VALUES (300, 'Lone FC')");
     await expect(
       unassignClubFromTier10(db, 300, "test-admin")
     ).rejects.toThrow("not assigned to any division");

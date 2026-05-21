@@ -270,7 +270,7 @@ async function resolveCompetition(
   }
 
   if (competitionRaw) {
-    warnings.push(makeIssue("unknown_competition", `Unknown competition: ${competitionRaw}. Publish the division first.`, { rawValue: competitionRaw }));
+    warnings.push(makeIssue("unknown_competition", `Unknown competition: ${competitionRaw}. Add a competition mapping for the club's division or specify a known competition.`, { rawValue: competitionRaw }));
   } else {
     warnings.push(makeIssue("missing_competition", "No competition specified and could not infer from home club."));
   }
@@ -408,19 +408,15 @@ export async function validateRow(
   let competitionCode: string | null = null;
   let competitionKind: string | null = null;
 
-  const compPass1 = await resolveCompetition(db, row.competitionRaw, null);
-  if (!compPass1.isBlocked) competitionCode = compPass1.code;
-  else warnings.push(...compPass1.warnings.filter((w) => w.field !== undefined || compPass1.isBlocked));
-
-  const home = await resolveParticipant(db, row.homeParticipantRaw, row.homeIsOneOff, competitionCode ?? undefined, "home");
+  const home = await resolveParticipant(db, row.homeParticipantRaw, row.homeIsOneOff, undefined, "home");
   warnings.push(...home.warnings);
   if (home.isBlocked) hasBlocker = true;
 
-  if (!competitionCode && home.clubId && !home.isBlocked) {
-    const inferred = await resolveCompetitionFromFixture(db, home.clubId, row.competitionRaw ?? "");
-    if (inferred) {
-      competitionCode = inferred;
-    }
+  const compResult = await resolveCompetition(db, row.competitionRaw, home.clubId);
+  competitionCode = compResult.code;
+  if (compResult.isBlocked) {
+    warnings.push(...compResult.warnings);
+    hasBlocker = true;
   }
 
   if (competitionCode) {
@@ -429,10 +425,6 @@ export async function validateRow(
       [competitionCode]
     );
     competitionKind = comp?.kind ?? null;
-  }
-
-  if (!competitionCode) {
-    hasBlocker = true;
   }
 
   const awayRaw = await resolveParticipant(db, row.awayParticipantRaw, row.awayIsOneOff, competitionCode ?? undefined, "away");

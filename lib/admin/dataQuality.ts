@@ -195,12 +195,12 @@ async function divisionsWithoutCompetitionMapping(db: AppDatabase): Promise<Data
   return rows.map((r) => ({
     id: `division-no-mapping-${r.id}`,
     severity: "warning",
-    issueType: "Division not published",
+    issueType: "Division missing competition mapping",
     category: "Division",
     entity: r.name,
     entityId: r.id,
-    summary: "Populated division has no competition mapping.",
-    actionUrl: `/admin/publish`
+    summary: "Populated division has no competition mapping. Fixture imports may fail to infer the competition code.",
+    actionUrl: `/admin/publish/${r.id}`
   }));
 }
 

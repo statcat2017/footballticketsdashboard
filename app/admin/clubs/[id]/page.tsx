@@ -9,8 +9,6 @@ import { listAliasesForClub } from "@/lib/db/clubMapping";
 
 export const dynamic = "force-dynamic";
 
-const statusOptions = ["known", "partial", "missing"] as const;
-
 export default async function AdminClubDetailPage(props: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ edit?: string; error?: string }>;
@@ -159,17 +157,6 @@ export default async function AdminClubDetailPage(props: {
               </div>
 
               <div style={{ display: "grid", gap: "0.25rem" }}>
-                <label htmlFor="status" style={{ fontWeight: 600, color: "#34413e" }}>Status</label>
-                <select id="status" name="status" defaultValue={data.club.status}
-                  style={{ padding: "0.5rem 0.75rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px", background: "#fff" }}
-                >
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ display: "grid", gap: "0.25rem" }}>
                 <label htmlFor="source_url" style={{ fontWeight: 600, color: "#34413e" }}>Source URL</label>
                 <input id="source_url" name="source_url" type="url" defaultValue={data.club.source_url ?? ""}
                   style={{ padding: "0.5rem 0.75rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}
@@ -210,10 +197,6 @@ export default async function AdminClubDetailPage(props: {
                   <span>{data.club.aliases}</span>
                 </div>
               )}
-              <div style={{ display: "grid", gridTemplateColumns: "8rem 1fr", gap: "0.5rem" }}>
-                <span style={{ color: "#6f7e7a", fontWeight: 600 }}>Status</span>
-                <span>{data.club.status}</span>
-              </div>
               {data.club.source_url && (
                 <div style={{ display: "grid", gridTemplateColumns: "8rem 1fr", gap: "0.5rem" }}>
                   <span style={{ color: "#6f7e7a", fontWeight: 600 }}>Source URL</span>
