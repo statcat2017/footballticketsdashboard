@@ -167,7 +167,13 @@ export async function findImportFixtureCandidateMatchesForRows(
 
   const eligible = rows.filter((row) => {
     if (!row.competitionResolvedCode) return false;
-    return !!(row.homeParticipantResolvedId || row.awayParticipantResolvedId || row.homeIsOneOff || row.awayIsOneOff || row.kickoffDate);
+    let identityFieldCount = 0;
+    if (row.homeIsOneOff && row.homeParticipantRaw) identityFieldCount++;
+    else if (row.homeParticipantResolvedId) identityFieldCount++;
+    if (row.awayIsOneOff && row.awayParticipantRaw) identityFieldCount++;
+    else if (row.awayParticipantResolvedId) identityFieldCount++;
+    if (row.kickoffDate) identityFieldCount++;
+    return identityFieldCount > 0;
   });
 
   if (eligible.length === 0) return results;
@@ -212,6 +218,8 @@ export async function findImportFixtureCandidateMatchesForRows(
        f.fixture_date AS fixtureDate,
        f.kickoff_time AS kickoffTime,
        f.status,
+       f.competition_code AS competitionCode,
+       f.season_label AS seasonLabel,
        f.home_club_id AS homeClubId,
        f.away_club_id AS awayClubId,
        f.home_one_off_name AS homeOneOffName,
@@ -228,6 +236,9 @@ export async function findImportFixtureCandidateMatchesForRows(
   for (const row of eligible) {
     const rowMatches: FixtureCandidateMatch[] = [];
     for (const f of fixtures) {
+      if (f.competitionCode !== row.competitionResolvedCode) continue;
+      if (f.seasonLabel !== seasonLabel) continue;
+
       if (row.homeIsOneOff && row.homeParticipantRaw) {
         if (f.homeOneOffName !== row.homeParticipantRaw) continue;
       } else if (row.homeParticipantResolvedId) {
