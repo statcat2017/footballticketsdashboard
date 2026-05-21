@@ -5,7 +5,7 @@ import { getDatabase } from "@/lib/db/client";
 import { getBatchDetail, getImportPreviewCounts, getImportUpdatePreviews } from "@/lib/admin/imports";
 import type { ImportUpdatePreview } from "@/lib/admin/imports";
 import type { ImportBatchRow, WarningIssue } from "@/lib/import/types";
-import { findImportFixtureCandidateMatches, type FixtureCandidateMatch } from "@/lib/import/fixtureIdentity";
+import { findImportFixtureCandidateMatchesForRows, type FixtureCandidateMatch } from "@/lib/import/fixtureIdentity";
 import { MapEditorWrapper } from "@/app/admin/venues/_components/MapEditorWrapper";
 
 export const dynamic = "force-dynamic";
@@ -69,11 +69,18 @@ export default async function AdminImportDetailPage({
   const competitions = await db.all<{ code: string; name: string; kind: string }>(
     `SELECT code, name, kind FROM competitions ORDER BY name`
   );
-  const possibleMatches = new Map<number, FixtureCandidateMatch[]>();
-  await Promise.all(blockedRows.map(async (row) => {
-    const candidates = await findImportFixtureCandidateMatches(db, row, batch.seasonLabel, 5);
-    if (candidates.length > 0) possibleMatches.set(row.id, candidates);
-  }));
+  const clubById = new Map(clubs.map(c => [c.id, c]));
+  const venueById = new Map(venues.map(v => [v.id, v]));
+  const venueByName = new Map(venues.map(v => [v.name.toLowerCase(), v]));
+  const compByCode = new Map(competitions.map(c => [c.code, c]));
+
+  const allActiveRows = [...blockedRows, ...insertRows, ...updateRows, ...pendingRows];
+  const warningsByRow = new Map<number, WarningIssue[]>();
+  for (const row of allActiveRows) {
+    warningsByRow.set(row.id, parseWarnings(row.warningsJson));
+  }
+
+  const possibleMatches = await findImportFixtureCandidateMatchesForRows(db, blockedRows, batch.seasonLabel, 5);
 
   // Fetch acknowledged issue keys so ticket acknowledgement has visible effect
   const resolutions = await db.all<{ issue_key: string; row_id: number | null }>(
@@ -149,9 +156,14 @@ export default async function AdminImportDetailPage({
               csrfToken={csrfToken}
               batchId={batchId}
               mode="blocked"
+              clubById={clubById}
+              venueById={venueById}
+              venueByName={venueByName}
+              compByCode={compByCode}
               clubs={clubs}
               venues={venues}
               competitions={competitions}
+              warnings={warningsByRow.get(row.id) ?? []}
               possibleMatches={possibleMatches.get(row.id) ?? []}
               acknowledgedKeys={acknowledgedKeys}
               acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
@@ -177,9 +189,14 @@ export default async function AdminImportDetailPage({
                   csrfToken={csrfToken}
                   batchId={batchId}
                   mode="ready"
+                  clubById={clubById}
+                  venueById={venueById}
+                  venueByName={venueByName}
+                  compByCode={compByCode}
                   clubs={clubs}
                   venues={venues}
                   competitions={competitions}
+                  warnings={warningsByRow.get(row.id) ?? []}
                   possibleMatches={possibleMatches.get(row.id) ?? []}
                   acknowledgedKeys={acknowledgedKeys}
                   acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
@@ -198,9 +215,14 @@ export default async function AdminImportDetailPage({
                   csrfToken={csrfToken}
                   batchId={batchId}
                   mode="ready"
+                  clubById={clubById}
+                  venueById={venueById}
+                  venueByName={venueByName}
+                  compByCode={compByCode}
                   clubs={clubs}
                   venues={venues}
                   competitions={competitions}
+                  warnings={warningsByRow.get(row.id) ?? []}
                   possibleMatches={possibleMatches.get(row.id) ?? []}
                   acknowledgedKeys={acknowledgedKeys}
                   acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
@@ -231,9 +253,14 @@ export default async function AdminImportDetailPage({
               csrfToken={csrfToken}
               batchId={batchId}
               mode="pending"
+              clubById={clubById}
+              venueById={venueById}
+              venueByName={venueByName}
+              compByCode={compByCode}
               clubs={clubs}
               venues={venues}
               competitions={competitions}
+              warnings={warningsByRow.get(row.id) ?? []}
               possibleMatches={possibleMatches.get(row.id) ?? []}
               acknowledgedKeys={acknowledgedKeys}
               acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
@@ -382,20 +409,24 @@ function SummaryBadge({ count, label, bg, fg }: { count: number; label: string; 
   );
 }
 
-function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competitions, possibleMatches, acknowledgedKeys, acknowledgedRowKeys, updatePreview }: {
+function FixtureCard({ row, csrfToken, batchId, mode, clubById, venueById, venueByName, compByCode, clubs, venues, competitions, warnings, possibleMatches, acknowledgedKeys, acknowledgedRowKeys, updatePreview }: {
   row: ImportBatchRow;
   csrfToken: string;
   batchId: number;
   mode: "blocked" | "ready" | "pending";
+  clubById: Map<number, { id: number; name: string }>;
+  venueById: Map<number, { id: number; name: string; postcode: string }>;
+  venueByName: Map<string, { id: number; name: string; postcode: string }>;
+  compByCode: Map<string, { code: string; name: string; kind: string }>;
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
   competitions: { code: string; name: string; kind: string }[];
+  warnings: WarningIssue[];
   possibleMatches: FixtureCandidateMatch[];
   acknowledgedKeys: Set<string>;
   acknowledgedRowKeys: Set<string>;
   updatePreview?: ImportUpdatePreview;
 }) {
-  const warnings = parseWarnings(row.warningsJson);
   const blockers = warnings.filter((w) => w.severity === "blocker");
   const nonBlockers = warnings.filter((w) => w.severity === "warning");
 
@@ -416,9 +447,9 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
   const blockerMap = new Map(uniqueBlockers.map((w) => [w.code, w]));
   const warningMap = new Map(uniqueWarnings.map((w) => [w.code, w]));
 
-  const homeClub = clubs.find((c) => c.id === row.homeParticipantResolvedId);
-  const awayClub = clubs.find((c) => c.id === row.awayParticipantResolvedId);
-  const resolvedVenue = venues.find((v) => v.id === row.venueResolvedId);
+  const homeClub = row.homeParticipantResolvedId ? clubById.get(row.homeParticipantResolvedId) : undefined;
+  const awayClub = row.awayParticipantResolvedId ? clubById.get(row.awayParticipantResolvedId) : undefined;
+  const resolvedVenue = row.venueResolvedId ? venueById.get(row.venueResolvedId) : undefined;
 
   interface ChecklistItem {
     field: string;
@@ -456,7 +487,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
 
   // Competition
   if (row.competitionResolvedCode) {
-    const comp = competitions.find((c) => c.code === row.competitionResolvedCode);
+    const comp = compByCode.get(row.competitionResolvedCode);
     checklist.push({ field: "Competition", status: "resolved", value: comp ? comp.name : row.competitionResolvedCode, message: "" });
   } else if (blockerMap.has("unknown_competition") || blockerMap.has("missing_competition")) {
     const blocker = blockerMap.get("unknown_competition") ?? blockerMap.get("missing_competition")!;
@@ -467,7 +498,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
 
   // Venue
   if (resolvedVenue) {
-    const isDefaulted = row.venueRaw && !venues.some((v) => v.name === row.venueRaw);
+    const isDefaulted = row.venueRaw && !venueByName.has(row.venueRaw.toLowerCase());
     checklist.push({
       field: "Venue", status: isDefaulted ? "warning" : "resolved",
       value: isDefaulted ? `${resolvedVenue.name} (defaulted from home club)` : resolvedVenue.name,
@@ -527,7 +558,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
   }
 
   const showRepairForms = mode === "blocked" && uniqueBlockers.length > 0;
-  const updatePreviewRows = updatePreview ? buildUpdatePreviewRows(row, updatePreview, venues) : [];
+  const updatePreviewRows = updatePreview ? buildUpdatePreviewRows(row, updatePreview, venueById) : [];
 
   return (
     <div id={`fixture-${row.id}`} style={{
@@ -694,14 +725,14 @@ function dedupeIssues(issues: WarningIssue[]): WarningIssue[] {
 function buildUpdatePreviewRows(
   row: ImportBatchRow,
   preview: ImportUpdatePreview,
-  venues: { id: number; name: string; postcode: string }[],
+  venueById: Map<number, { id: number; name: string; postcode: string }>,
 ): Array<{ field: string; current: string; proposed: string }> {
   const before = preview.before;
   const rows: Array<{ field: string; current: string; proposed: string }> = [];
 
   const venueName = (value: unknown) => {
     if (typeof value !== "number") return formatEmpty(value);
-    return venues.find((v) => v.id === value)?.name ?? `Venue #${value}`;
+    return venueById.get(value)?.name ?? `Venue #${value}`;
   };
 
   rows.push({ field: "Venue", current: venueName(before.venue_id), proposed: venueName(row.venueResolvedId) });
