@@ -196,20 +196,39 @@ select {
 
 .sort-select {
   height: 34px;
-  min-width: 156px;
+  min-width: 150px;
   padding: 0 10px;
   border: 1px solid var(--grey-300);
   border-radius: 7px;
   color: var(--grey-700);
   background: #ffffff;
   font-size: 13px;
+  cursor: pointer;
+}
+
+.meta-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-select {
+  height: 34px;
+  min-width: 130px;
+  padding: 0 10px;
+  border: 1px solid var(--grey-300);
+  border-radius: 7px;
+  color: var(--grey-700);
+  background: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .featured {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
-  align-items: center;
+  align-items: start;
   margin-bottom: 18px;
   padding: 16px 18px;
   border: 1px solid #bfdcc9;
@@ -220,7 +239,6 @@ select {
 .featured-badge {
   display: inline-flex;
   width: fit-content;
-  margin-bottom: 8px;
   padding: 3px 8px;
   border: 1px solid #afd2bd;
   border-radius: 999px;
@@ -231,16 +249,49 @@ select {
   text-transform: uppercase;
 }
 
+.featured-reason {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--green);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
 .featured h1 {
-  margin: 0 0 5px;
+  margin: 6px 0 4px;
   font-size: 20px;
   line-height: 1.2;
 }
 
-.featured p {
-  margin: 0;
+.featured-meta {
+  margin: 0 0 8px;
   color: var(--grey-700);
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.featured-travel {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.featured-distance {
+  color: var(--grey-500);
+  font-size: 13px;
+}
+
+.featured-actions {
+  align-self: center;
 }
 
 .ticket-button {
@@ -265,8 +316,8 @@ select {
 
 .grid-row {
   display: grid;
-  grid-template-columns: 2.1fr 1.1fr 1.35fr 1.1fr 1.35fr;
-  gap: 18px;
+  grid-template-columns: 2fr 0.9fr 1.2fr 1fr 1.2fr 0.7fr;
+  gap: 14px;
   align-items: center;
 }
 
@@ -295,6 +346,51 @@ select {
 
 .fixture-row:last-of-type {
   border-bottom: 0;
+}
+
+.date-group-header {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 16px;
+  background: var(--grey-50);
+  border-bottom: 1px solid var(--grey-200);
+  color: var(--grey-700);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.row-action {
+  text-align: center;
+}
+
+.view-link {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--grey-300);
+  border-radius: 6px;
+  color: var(--grey-700);
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.view-link:hover {
+  border-color: var(--green);
+  color: var(--green-dark);
+  background: var(--green-soft);
+}
+
+.view-placeholder {
+  color: var(--grey-500);
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
 }
 
 .primary {
@@ -340,6 +436,63 @@ select {
   background: var(--grey-100);
 }
 
+.comp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.comp-premier-league {
+  color: #ffffff;
+  background: var(--green);
+  border: 1px solid var(--green);
+}
+
+.comp-efl {
+  color: #1a4972;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+}
+
+.comp-non-league {
+  color: var(--grey-700);
+  background: var(--grey-50);
+  border: 1px solid var(--grey-300);
+}
+
+.comp-womens {
+  color: #6b21a8;
+  background: #f3e8ff;
+  border: 1px solid #d8b4fe;
+}
+
+.comp-cup {
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+}
+
+.comp-friendly {
+  color: var(--grey-500);
+  background: transparent;
+  border: 1px solid var(--grey-300);
+}
+
+.trust-line {
+  margin: 0;
+  color: var(--grey-500);
+  font-size: 12px;
+}
+
+.card-trust {
+  margin-top: 6px;
+}
+
 .travel-chips {
   display: flex;
   gap: 7px;
@@ -362,6 +515,7 @@ select {
 
 .chip-link {
   text-decoration: none;
+  cursor: pointer;
 }
 
 .chip svg {
@@ -553,6 +707,134 @@ select {
   }
 }
 
+.mobile-cards {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .desktop-table {
+    display: none;
+  }
+
+  .mobile-cards {
+    display: block;
+  }
+
+  .results {
+    padding: 16px;
+  }
+
+  .meta-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .meta-controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .meta-controls select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .featured {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .featured-actions {
+    justify-self: start;
+  }
+}
+
+.fixture-card {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--grey-200);
+  background: #ffffff;
+  display: grid;
+  gap: 6px;
+}
+
+.fixture-card:last-of-type {
+  border-bottom: 0;
+}
+
+.fixture-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fixture-card-distance {
+  color: var(--grey-500);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.fixture-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.fixture-card-meta {
+  margin: 0;
+  color: var(--grey-500);
+  font-size: 13px;
+}
+
+.fixture-card-venue {
+  margin: 0;
+  color: var(--grey-700);
+  font-size: 14px;
+}
+
+.fixture-card-travel {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 2px 0;
+}
+
+.fixture-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 2px 0;
+}
+
+.fixture-card-price {
+  color: var(--grey-500);
+  font-size: 13px;
+}
+
+.fixture-card-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  border: 1px solid var(--green);
+  border-radius: 7px;
+  color: #ffffff;
+  background: var(--green);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fixture-card-action-placeholder {
+  color: var(--grey-500);
+  background: var(--grey-25);
+  border-color: var(--grey-300);
+  cursor: default;
+}
+
 .division-club-table-wrapper {
   border: 1px solid var(--grey-200);
   border-radius: 8px;
@@ -644,4 +926,33 @@ select {
   text-align: center;
   color: var(--grey-500);
   font-size: 14px;
+}
+
+.ticket-button-disabled {
+  border-color: var(--grey-300);
+  color: var(--grey-500);
+  background: var(--grey-100);
+  cursor: default;
+  pointer-events: none;
+}
+
+.locate-button:focus-visible,
+.pill:focus-visible,
+.ticket-button:focus-visible,
+.show-more:focus-visible,
+.view-link:focus-visible,
+.chip-link:focus-visible,
+.fixture-card-action:focus-visible,
+.filter-select:focus-visible,
+.sort-select:focus-visible,
+.postcode-field input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
