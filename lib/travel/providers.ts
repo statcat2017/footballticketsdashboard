@@ -7,6 +7,10 @@ export interface TravelProvidersConfig {
   travelTimeApiKey?: string;
 }
 
+export interface TravelProvider {
+  estimate(from: Coordinate, to: Coordinate): Promise<TravelEstimate | null>;
+}
+
 export interface TravelEstimate {
   drivingMinutes: number | null;
   publicTransportMinutes: number | null;
