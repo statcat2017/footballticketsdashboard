@@ -79,8 +79,8 @@ describe("data quality checks", () => {
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO clubs (id, name, venue_id) VALUES (200, 'Pub A', 50), (201, 'Pub B', 50);
       INSERT INTO club_aliases (id, club_id, alias, normalized_alias, competition_code) VALUES
-        (1, 200, 'Same', 'same', NULL),
-        (2, 201, 'Same', 'same', NULL);
+        (1, 200, 'Same', 'same', 'PL'),
+        (2, 201, 'Same', 'same', 'ELC');
     `);
 
     const issues = await runDataQualityChecks(db);
