@@ -7,6 +7,12 @@ export type FinalAction = "insert" | "update" | "skip" | "blocked";
 export type FixtureStatus = "scheduled" | "postponed" | "cancelled" | "finished" | "unknown";
 export type Confidence = "verified" | "imported" | "inferred" | "approximate" | "unknown";
 
+export interface KickoffAssumptionPolicy {
+  enabled?: boolean;
+  weekend?: string | null;
+  midweek?: string | null;
+}
+
 export type IssueCode =
   | "unknown_competition"
   | "unknown_club"

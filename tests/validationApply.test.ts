@@ -355,6 +355,39 @@ describe("validateImportBatch", () => {
     expect(rows[0].warningsJson).toContain("19:45");
   });
 
+  it("uses custom weekend and midweek kickoff assumption policy", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Norwich City",
+        awayParticipantRaw: "Queens Park Rangers",
+        competitionRaw: "ELC",
+        kickoffDate: "2026-05-23", // Saturday
+        venueRaw: "Carrow Road",
+      },
+      {
+        homeParticipantRaw: "Birmingham City",
+        awayParticipantRaw: "Queens Park Rangers",
+        competitionRaw: "ELC",
+        kickoffDate: "2026-05-20", // Wednesday
+        venueRaw: "St Andrew's",
+      },
+    ]);
+
+    const result = await validateImportBatch(db, batchId, {
+      kickoffAssumptionPolicy: {
+        weekend: "12:30",
+        midweek: "20:00",
+      },
+    });
+    expect(result.insertCount).toBe(2);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].warningsJson).toContain("12:30");
+    expect(rows[1].warningsJson).toContain("20:00");
+  });
+
   it("blocks one-off home with no venue", async () => {
     const db = setupTestDb();
     const sourceId = await createTestSource(db);
@@ -455,6 +488,30 @@ describe("applyBatchRows", () => {
     const rows = await getBatchRows(db, batchId);
     expect(rows[0].finalAction).toBe("insert");
     expect(rows[0].finalFixtureId).toBe(fixtures[0].id);
+  });
+
+  it("applies custom assumed kickoff policy for inserted fixtures", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Norwich City",
+        awayParticipantRaw: "Queens Park Rangers",
+        competitionRaw: "ELC",
+        kickoffDate: "2026-05-20",
+        venueRaw: "Carrow Road",
+      },
+    ]);
+    const kickoffAssumptionPolicy = { midweek: "20:00" };
+
+    await validateImportBatch(db, batchId, { kickoffAssumptionPolicy });
+    await applyBatchRows(db, batchId, "test", { kickoffAssumptionPolicy });
+
+    const fixture = await db.get<{ kickoff_time: string | null; kickoff_time_status: string }>(
+      `SELECT kickoff_time, kickoff_time_status FROM fixtures WHERE source = 'import_batch'`
+    );
+    expect(fixture?.kickoff_time).toBe("20:00");
+    expect(fixture?.kickoff_time_status).toBe("assumed");
   });
 
   it("applies update rows and updates existing fixtures", async () => {
