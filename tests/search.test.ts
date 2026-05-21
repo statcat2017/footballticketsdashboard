@@ -329,11 +329,11 @@ describe("travel enrichment resilience", () => {
     }));
 
     const originalRun = db.run.bind(db);
-    vi.spyOn(db, "run").mockImplementation((sql: string, ...params: unknown[]) => {
+    vi.spyOn(db, "run").mockImplementation((sql: string, params?: QueryParam[]) => {
       if (sql.includes("INSERT INTO travel_cache")) {
         return Promise.reject(new Error("DB write failed"));
       }
-      return originalRun(sql, params as QueryParam[]);
+      return originalRun(sql, params);
     });
 
     await db.run(`
