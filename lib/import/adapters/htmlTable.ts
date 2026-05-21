@@ -1,6 +1,6 @@
-import type { AppDatabase } from "../../db/adapter.ts";
-import type { NormalizedFixtureRow, KickoffAssumptionPolicy } from "../types.ts";
-import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus, getOrCreateSource } from "../index.ts";
+import type { FixtureAdapterParseError, FixtureSourceAdapter, NormalizedFixtureRow, KickoffAssumptionPolicy } from "../types.ts";
+import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../importBatch.ts";
+import { getOrCreateSource } from "../sourceRegistry.ts";
 import { HEADER_ALIASES, parseDateField, parseTimeField, parseStatusField, parsePriceField } from "./csv.ts";
 
 export interface DetectedTable {
@@ -13,14 +13,20 @@ export interface DetectedTable {
   score: number;
 }
 
-interface HtmlRowParseError {
-  rowIndex: number;
-  message: string;
-}
+export type HtmlRowParseError = FixtureAdapterParseError;
 
-interface HtmlRowsResult {
+export interface HtmlRowsResult {
   rows: NormalizedFixtureRow[];
   errors: HtmlRowParseError[];
+}
+
+export interface HtmlTableParseOptions {
+  sourceUrl?: string;
+  selectedTableIndices?: number[];
+}
+
+export interface HtmlTableParseResult extends HtmlRowsResult {
+  tables: DetectedTable[];
 }
 
 export interface FetchPageError {
@@ -33,6 +39,13 @@ export interface HtmlImportResult {
   errors: string[];
   tables: DetectedTable[];
 }
+
+export type CreateBatchFromHtmlUrlOptions = {
+  seasonLabel?: string;
+  selectedTableIndices?: number[];
+  trustedDomains?: string[];
+  fetcher?: typeof fetch;
+};
 
 const PRIVATE_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/i;
 const PRIVATE_IPV6_RE = /^\[?(?:fe80|fc00|fd00|::1|f[cd])/i;
@@ -322,17 +335,42 @@ export function parseHtmlTableRows(
   return { rows, errors };
 }
 
+export function parseHtmlTables(
+  html: string,
+  options?: HtmlTableParseOptions
+): HtmlTableParseResult {
+  const allTables = extractTables(html);
+  const selected = options?.selectedTableIndices !== undefined
+    ? allTables.filter((t) => options.selectedTableIndices!.includes(t.tableIndex))
+    : allTables;
+
+  const allRows: NormalizedFixtureRow[] = [];
+  const allErrors: HtmlRowParseError[] = [];
+  const sourceUrl = options?.sourceUrl ?? "";
+
+  for (const table of selected) {
+    const { rows, errors } = parseHtmlTableRows(table, sourceUrl);
+    allRows.push(...rows);
+    allErrors.push(...errors);
+  }
+
+  if (sourceUrl && isFriendlyFixturesUrl(sourceUrl)) {
+    for (const row of allRows) {
+      if (!row.competitionRaw) {
+        row.competitionRaw = "Non-League Friendlies";
+      }
+      row.awayIsOneOff = true;
+    }
+  }
+
+  return { rows: allRows, errors: allErrors, tables: allTables };
+}
+
 export async function createImportBatchFromHtmlUrl(
   db: AppDatabase,
   url: string,
   actor: string,
-  options?: {
-    seasonLabel?: string;
-    selectedTableIndices?: number[];
-    trustedDomains?: string[];
-    fetcher?: typeof fetch;
-    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
-  }
+  options?: CreateBatchFromHtmlUrlOptions & { kickoffAssumptionPolicy?: KickoffAssumptionPolicy }
 ): Promise<HtmlImportResult> {
   const fetchResult = await fetchPage(url, {
     fetcher: options?.fetcher,
@@ -342,18 +380,20 @@ export async function createImportBatchFromHtmlUrl(
     return { batchId: 0, rowCount: 0, errors: [fetchResult.error], tables: [] };
   }
 
-  const allTables = extractTables(fetchResult.html);
+  const { rows: allRows, errors: allErrors, tables: allTables } = parseHtmlTables(fetchResult.html, {
+    sourceUrl: url,
+    selectedTableIndices: options?.selectedTableIndices,
+  });
 
   if (allTables.length === 0) {
     return { batchId: 0, rowCount: 0, errors: ["No fixture tables found in the page"], tables: [] };
   }
 
-  const selected = options?.selectedTableIndices !== undefined
-    ? allTables.filter((t) => options.selectedTableIndices!.includes(t.tableIndex))
-    : allTables;
-
-  if (selected.length === 0) {
-    return { batchId: 0, rowCount: 0, errors: ["No tables selected"], tables: allTables };
+  if (options?.selectedTableIndices !== undefined) {
+    const selectedTables = allTables.filter((t) => options.selectedTableIndices!.includes(t.tableIndex));
+    if (selectedTables.length === 0) {
+      return { batchId: 0, rowCount: 0, errors: ["No tables selected"], tables: allTables };
+    }
   }
 
   const parsedUrl = new URL(url);
@@ -362,24 +402,6 @@ export async function createImportBatchFromHtmlUrl(
     name: parsedUrl.origin,
     baseUrl: parsedUrl.origin,
   });
-
-  const allRows: NormalizedFixtureRow[] = [];
-  const allErrors: HtmlRowParseError[] = [];
-
-  for (const table of selected) {
-    const { rows, errors } = parseHtmlTableRows(table, url);
-    allRows.push(...rows);
-    allErrors.push(...errors);
-  }
-
-  if (isFriendlyFixturesUrl(url)) {
-    for (const row of allRows) {
-      if (!row.competitionRaw) {
-        row.competitionRaw = "Non-League Friendlies";
-      }
-      row.awayIsOneOff = true;
-    }
-  }
 
   const totalRows = allRows.length + allErrors.length;
 
@@ -423,6 +445,18 @@ export async function createImportBatchFromHtmlUrl(
     tables: allTables,
   };
 }
+
+export const htmlTableFixtureSourceAdapter: FixtureSourceAdapter<
+  HtmlTableParseResult,
+  HtmlImportResult,
+  HtmlTableParseOptions,
+  [actor: string, options?: CreateBatchFromHtmlUrlOptions]
+> = {
+  sourceType: "url_table_scrape",
+  name: "HTML table fixture import",
+  parse: parseHtmlTables,
+  createImportBatch: createImportBatchFromHtmlUrl,
+};
 
 function isFriendlyFixturesUrl(url: string): boolean {
   try {

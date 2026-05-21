@@ -1,11 +1,7 @@
-import type { AppDatabase } from "../../db/adapter.ts";
-import type { NormalizedFixtureRow, FixtureStatus, KickoffAssumptionPolicy } from "../types.ts";
-import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../index.ts";
+import type { FixtureAdapterParseError, FixtureSourceAdapter, NormalizedFixtureRow, FixtureStatus, KickoffAssumptionPolicy } from "../types.ts";
+import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../importBatch.ts";
 
-export interface CsvParseError {
-  rowIndex: number;
-  message: string;
-}
+export type CsvParseError = FixtureAdapterParseError;
 
 export interface CsvParseResult {
   rows: NormalizedFixtureRow[];
@@ -18,6 +14,10 @@ export interface CreateBatchFromCsvResult {
   rowCount: number;
   errors: CsvParseError[];
 }
+
+export type CreateBatchFromCsvOptions = {
+  seasonLabel?: string;
+};
 
 export const HEADER_ALIASES: Record<string, string> = {
   home: "homeParticipantRaw",
@@ -146,10 +146,7 @@ export async function createImportBatchFromCsv(
   csvText: string,
   sourceId: number,
   actor: string,
-  options?: {
-    seasonLabel?: string;
-    kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
-  }
+  options?: CreateBatchFromCsvOptions & { kickoffAssumptionPolicy?: KickoffAssumptionPolicy }
 ): Promise<CreateBatchFromCsvResult> {
   const result = parseCsv(csvText);
   const totalRows = result.rows.length + result.errors.length;
@@ -193,6 +190,18 @@ export async function createImportBatchFromCsv(
     errors: result.errors,
   };
 }
+
+export const csvFixtureSourceAdapter: FixtureSourceAdapter<
+  CsvParseResult,
+  CreateBatchFromCsvResult,
+  undefined,
+  [sourceId: number, actor: string, options?: CreateBatchFromCsvOptions]
+> = {
+  sourceType: "csv_paste",
+  name: "CSV fixture import",
+  parse: parseCsv,
+  createImportBatch: createImportBatchFromCsv,
+};
 
 function parseCsvRows(text: string): { cells: string[]; rowIndex: number }[] {
   if (text.length > 0 && text.charCodeAt(0) === 0xfeff) {
