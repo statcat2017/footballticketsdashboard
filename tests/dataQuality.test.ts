@@ -201,6 +201,25 @@ describe("data quality checks", () => {
     expect(match[0].summary).toContain("FAC identity");
   });
 
+  it("detects duplicate fixtures with mixed club and one-off identity", async () => {
+    const db = minimalDb();
+    db.exec(`
+      INSERT INTO fixture_seasons (id, label, starts_on, ends_on) VALUES (1, '2025-26', '2025-07-01', '2026-06-30');
+      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
+      INSERT INTO competitions (id, code, name, tier) VALUES (1, 'FAC', 'FA Cup', 1);
+      INSERT INTO clubs (id, name, competition_code, venue_id) VALUES (200, 'Home FC', 'FAC', 50), (201, 'Away FC', 'FAC', 50);
+      INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, fixture_date, kickoff_time_status, status, season_label, home_one_off, away_one_off, home_one_off_name, source_url) VALUES
+        (1, 'test', 'f1', 'FAC', 50, NULL, 201, '2026-05-20', 'confirmed', 'scheduled', '2025-26', 1, 0, 'Tourists FC', 'https://example.com/1'),
+        (2, 'test', 'f2', 'FAC', 50, NULL, 201, '2026-05-21', 'confirmed', 'scheduled', '2025-26', 1, 0, 'Tourists FC', 'https://example.com/2');
+    `);
+
+    const issues = await runDataQualityChecks(db);
+    const match = issues.filter((i) => i.id.startsWith("duplicate-fixture"));
+    expect(match).toHaveLength(1);
+    expect(match[0].entity).toBe("Tourists FC v Away FC");
+    expect(match[0].summary).toContain("FAC identity");
+  });
+
   it("detects fixtures with assumed kickoff", async () => {
     const db = minimalDb();
     db.exec(`
