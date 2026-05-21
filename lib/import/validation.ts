@@ -1,11 +1,11 @@
-import type { AppDatabase } from "../db/adapter.ts";
+import type { AppDatabase, SqlWrite } from "../db/adapter.ts";
 import type { ImportBatchRow, MatchResult, FixtureStatus, WarningIssue, IssueCode, KickoffAssumptionPolicy } from "./types.ts";
 import {
   resolveFixtureParticipant,
   resolveCompetitionFromFixture,
   normalizeName,
 } from "../db/clubMapping.ts";
-import { getBatch, getBatchRows, updateBatchRowOutcome } from "./importBatch.ts";
+import { getBatch, getBatchRows } from "./importBatch.ts";
 import { parseDateField, parseTimeField } from "./adapters/csv.ts";
 import { getCurrentSeasonLabel, isWeekend, getAssumedKickoffTime } from "./shared";
 import { findImportFixtureMatch } from "./fixtureIdentity";
@@ -61,6 +61,8 @@ export async function validateImportBatch(
   let blockedCount = 0;
   let skippedCount = 0;
 
+  const updateStatements: SqlWrite[] = [];
+
   for (const row of rows) {
     if (row.finalAction) {
       skippedCount++;
@@ -71,33 +73,49 @@ export async function validateImportBatch(
       kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
     });
 
-    const payload = validation.warnings.length > 0 ? buildWarningsPayload(validation.warnings) : undefined;
-    const outcomeUpdate: Parameters<typeof updateBatchRowOutcome>[2] = {
-      matchResult: validation.matchResult,
-      warnings: payload,
-      homeParticipantResolvedId: validation.homeParticipantResolvedId,
-      awayParticipantResolvedId: validation.awayParticipantResolvedId,
-      awayIsOneOff: validation.awayIsOneOff,
-      competitionResolvedCode: validation.competitionResolvedCode,
-      venueResolvedId: validation.venueResolvedId,
-    };
+    const payload = validation.warnings.length > 0 ? buildWarningsPayload(validation.warnings) : { issues: [], messages: [] };
+    const setClauses: string[] = [];
+    const params: (string | number | null)[] = [];
+
+    setClauses.push("match_result = ?", "warnings_json = ?");
+    params.push(validation.matchResult, JSON.stringify(payload));
+
+    setClauses.push("home_participant_resolved_id = ?", "away_participant_resolved_id = ?");
+    params.push(validation.homeParticipantResolvedId, validation.awayParticipantResolvedId);
+
+    setClauses.push("away_is_one_off = ?");
+    params.push(validation.awayIsOneOff ? 1 : 0);
+
+    setClauses.push("competition_resolved_code = ?", "venue_resolved_id = ?");
+    params.push(validation.competitionResolvedCode, validation.venueResolvedId);
 
     if (validation.normalizedDate !== undefined) {
-      outcomeUpdate.kickoffDate = validation.normalizedDate;
+      setClauses.push("kickoff_date = ?");
+      params.push(validation.normalizedDate);
     }
     if (validation.normalizedTime !== undefined) {
-      outcomeUpdate.kickoffTime = validation.normalizedTime;
+      setClauses.push("kickoff_time = ?");
+      params.push(validation.normalizedTime);
     }
     if (validation.normalizedStatus !== undefined) {
-      outcomeUpdate.status = validation.normalizedStatus;
+      setClauses.push("status = ?");
+      params.push(validation.normalizedStatus);
     }
 
-    await updateBatchRowOutcome(db, row.id, outcomeUpdate);
+    params.push(row.id);
+    updateStatements.push({
+      sql: `UPDATE import_batch_rows SET ${setClauses.join(", ")} WHERE id = ?`,
+      params,
+    });
 
     if (validation.matchResult === "insert") insertCount++;
     else if (validation.matchResult === "update") updateCount++;
     else if (validation.matchResult === "blocked") blockedCount++;
     else skippedCount++;
+  }
+
+  if (updateStatements.length > 0) {
+    await db.writeBatch(updateStatements);
   }
 
   return {

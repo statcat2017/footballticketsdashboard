@@ -269,7 +269,8 @@ export async function updateBatchRow(
     warningsJson: string | null;
     finalAction: ImportBatchRow["finalAction"];
     finalFixtureId: number | null;
-  }>
+  }>,
+  options?: { skipReturn?: boolean }
 ): Promise<ImportBatchRow> {
   const fields: string[] = [];
   const params: (string | number | null)[] = [];
@@ -342,6 +343,10 @@ export async function updateBatchRow(
     params
   );
 
+  if (options?.skipReturn) {
+    return { id } as unknown as ImportBatchRow;
+  }
+
   const updated = await getBatchRow(db, id);
   if (!updated) {
     throw new Error(`Import batch row ${id} not found after update.`);
@@ -368,7 +373,8 @@ export async function getBatchRowsByMatchResult(
 export async function updateBatchRowOutcome(
   db: AppDatabase,
   rowId: number,
-  outcome: BatchRowOutcomeUpdate
+  outcome: BatchRowOutcomeUpdate,
+  options?: { skipReturn?: boolean }
 ): Promise<ImportBatchRow> {
   return updateBatchRow(db, rowId, {
     matchResult: outcome.matchResult,
@@ -386,7 +392,7 @@ export async function updateBatchRowOutcome(
     kickoffDate: outcome.kickoffDate,
     kickoffTime: outcome.kickoffTime,
     status: outcome.status,
-  });
+  }, options);
 }
 
 export async function deleteBatch(db: AppDatabase, batchId: number): Promise<void> {
