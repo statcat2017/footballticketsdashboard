@@ -3,7 +3,7 @@ import type { QueryParam, SqlWrite } from "@/lib/db/adapter";
 
 import { ADMIN_ACTOR } from "./auth.ts";
 
-export type AdminAuditAction = "create" | "update" | "delete" | "login" | "logout" | "unlock" | "publish";
+export type AdminAuditAction = "create" | "update" | "delete" | "login" | "logout" | "unlock" | "publish" | "movement_slot_fill" | "movement_slot_unfill" | "movement_slot_delete" | "movement_slot_apply";
 
 export interface AdminAuditInput {
   actor?: string;

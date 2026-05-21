@@ -85,6 +85,21 @@ export default async function AdminDashboardPage() {
           }}>
             Clubs & Divisions &rarr;
           </Link>
+          <Link href="/admin/movements" style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #a76800",
+            borderRadius: "7px",
+            background: "#fdf3e9",
+            color: "#8a5a00",
+            padding: "0.5rem 1rem",
+            fontSize: "14px",
+            fontWeight: 700,
+            textDecoration: "none"
+          }}>
+            End-of-season movements &rarr;
+          </Link>
           <Link href="/admin/imports/sources" style={{
             display: "inline-flex",
             alignItems: "center",
