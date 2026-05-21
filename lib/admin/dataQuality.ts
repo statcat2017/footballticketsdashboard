@@ -226,6 +226,133 @@ async function fixturesMissingSourceUrl(db: AppDatabase): Promise<DataQualityIss
   }));
 }
 
+async function duplicateFixtures(db: AppDatabase): Promise<DataQualityIssue[]> {
+  const clubRows = await db.all<{
+    first_fixture_id: number;
+    fixture_count: number;
+    fixture_ids: string;
+    competition_code: string;
+    season_label: string | null;
+    fixture_date: string | null;
+    home_name: string;
+    away_name: string;
+  }>(
+    `SELECT
+       MIN(id) AS first_fixture_id,
+       COUNT(*) AS fixture_count,
+       group_concat(id, ', ') AS fixture_ids,
+       competition_code,
+       season_label,
+       fixture_date,
+       MIN(hc.name) AS home_name,
+       MIN(ac.name) AS away_name
+     FROM fixtures f
+     LEFT JOIN clubs hc ON hc.id = f.home_club_id
+     LEFT JOIN clubs ac ON ac.id = f.away_club_id
+     WHERE f.home_one_off = 0 AND f.away_one_off = 0 AND f.is_demo_data = 0
+     GROUP BY competition_code, season_label, fixture_date, f.home_club_id, f.away_club_id
+     HAVING COUNT(*) > 1
+     ORDER BY first_fixture_id
+     LIMIT 100`
+  );
+
+  const oneOffRows = await db.all<{
+    first_fixture_id: number;
+    fixture_count: number;
+    fixture_ids: string;
+    competition_code: string;
+    season_label: string | null;
+    fixture_date: string | null;
+    home_name: string;
+    away_name: string;
+  }>(
+    `SELECT
+       MIN(id) AS first_fixture_id,
+       COUNT(*) AS fixture_count,
+       group_concat(id, ', ') AS fixture_ids,
+       competition_code,
+       season_label,
+       MIN(fixture_date) AS fixture_date,
+       COALESCE(NULLIF(trim(f.home_one_off_name), ''), 'Unknown home') AS home_name,
+       COALESCE(NULLIF(trim(f.away_one_off_name), ''), 'Unknown away') AS away_name
+     FROM fixtures f
+     WHERE f.home_one_off = 1 AND f.away_one_off = 1 AND f.is_demo_data = 0
+     GROUP BY competition_code, season_label, lower(trim(f.home_one_off_name)), lower(trim(f.away_one_off_name))
+     HAVING COUNT(*) > 1
+     ORDER BY first_fixture_id
+     LIMIT 100`
+  );
+
+  const homeOneOffRows = await db.all<{
+    first_fixture_id: number;
+    fixture_count: number;
+    fixture_ids: string;
+    competition_code: string;
+    season_label: string | null;
+    fixture_date: string | null;
+    home_name: string;
+    away_name: string;
+  }>(
+    `SELECT
+       MIN(id) AS first_fixture_id,
+       COUNT(*) AS fixture_count,
+       group_concat(id, ', ') AS fixture_ids,
+       competition_code,
+       season_label,
+       MIN(fixture_date) AS fixture_date,
+       COALESCE(NULLIF(trim(f.home_one_off_name), ''), 'Unknown home') AS home_name,
+       MIN(ac.name) AS away_name
+     FROM fixtures f
+     LEFT JOIN clubs ac ON ac.id = f.away_club_id
+     WHERE f.home_one_off = 1 AND f.away_one_off = 0 AND f.is_demo_data = 0
+     GROUP BY competition_code, season_label, lower(trim(f.home_one_off_name)), f.away_club_id
+     HAVING COUNT(*) > 1
+     ORDER BY first_fixture_id
+     LIMIT 100`
+  );
+
+  const awayOneOffRows = await db.all<{
+    first_fixture_id: number;
+    fixture_count: number;
+    fixture_ids: string;
+    competition_code: string;
+    season_label: string | null;
+    fixture_date: string | null;
+    home_name: string;
+    away_name: string;
+  }>(
+    `SELECT
+       MIN(id) AS first_fixture_id,
+       COUNT(*) AS fixture_count,
+       group_concat(id, ', ') AS fixture_ids,
+       competition_code,
+       season_label,
+       MIN(fixture_date) AS fixture_date,
+       MIN(hc.name) AS home_name,
+       COALESCE(NULLIF(trim(f.away_one_off_name), ''), 'Unknown away') AS away_name
+     FROM fixtures f
+     LEFT JOIN clubs hc ON hc.id = f.home_club_id
+     WHERE f.home_one_off = 0 AND f.away_one_off = 1 AND f.is_demo_data = 0
+     GROUP BY competition_code, season_label, f.home_club_id, lower(trim(f.away_one_off_name))
+     HAVING COUNT(*) > 1
+     ORDER BY first_fixture_id
+     LIMIT 100`
+  );
+
+  const allRows = [...clubRows, ...oneOffRows, ...homeOneOffRows, ...awayOneOffRows];
+
+  return allRows.map((r) => ({
+    id: `duplicate-fixture-${r.first_fixture_id}`,
+    severity: "warning",
+    issueType: "Duplicate fixture",
+    category: "Fixture",
+    entity: `${r.home_name} v ${r.away_name}`,
+    entityId: r.first_fixture_id,
+    summary: `${r.fixture_count} fixtures share ${r.competition_code} identity for ${r.season_label ?? "unknown season"}${r.fixture_date ? ` on ${r.fixture_date}` : ""}: ${r.fixture_ids}.`,
+    actionUrl: null
+  }));
+}
+
 async function fixturesWithAssumedKickoff(db: AppDatabase): Promise<DataQualityIssue[]> {
   const rows = await db.all<{ id: number; source: string; source_id: string }>(
     `SELECT id, source, source_id
@@ -307,6 +434,7 @@ const dataQualityChecks: DataQualityCheck[] = [
   { categories: ["Division"], run: divisionsOverMaxSize },
   { categories: ["Division"], run: divisionsWithoutCompetitionMapping },
   { categories: ["Fixture"], run: fixturesMissingSourceUrl },
+  { categories: ["Fixture"], run: duplicateFixtures },
   { categories: ["Fixture"], run: fixturesWithAssumedKickoff },
   { categories: ["Fixture"], run: fixturesMissingTicketInfo },
   { categories: ["Fixture"], run: fixturesHiddenByLocation },
