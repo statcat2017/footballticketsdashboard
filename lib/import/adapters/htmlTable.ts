@@ -389,8 +389,11 @@ export async function createImportBatchFromHtmlUrl(
     return { batchId: 0, rowCount: 0, errors: ["No fixture tables found in the page"], tables: [] };
   }
 
-  if (options?.selectedTableIndices !== undefined && allRows.length === 0 && allErrors.length === 0) {
-    return { batchId: 0, rowCount: 0, errors: ["No tables selected"], tables: allTables };
+  if (options?.selectedTableIndices !== undefined) {
+    const selectedTables = allTables.filter((t) => options.selectedTableIndices!.includes(t.tableIndex));
+    if (selectedTables.length === 0) {
+      return { batchId: 0, rowCount: 0, errors: ["No tables selected"], tables: allTables };
+    }
   }
 
   const parsedUrl = new URL(url);
