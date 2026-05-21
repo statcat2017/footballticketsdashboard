@@ -156,7 +156,7 @@ export async function lookupPostcodeCoordinate(
   }
 }
 
-function districtFallbackCoordinate(district: string): Coordinate {
+export function districtFallbackCoordinate(district: string): Coordinate {
   const area = district.match(/^[A-Z]+/)?.[0];
 
   if (area && AREA_FALLBACK_COORDINATES[area]) {

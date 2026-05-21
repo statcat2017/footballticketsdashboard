@@ -4,6 +4,7 @@ import {
   resolvePostcodeOrigin,
   normalizePostcode,
   postcodeDistrict,
+  districtFallbackCoordinate,
   type PostcodeResolver,
   type ResolvedPostcodeOrigin
 } from "../postcode.ts";
@@ -75,6 +76,7 @@ export async function searchFixtures(
   options: {
     travelProviders?: TravelProviderRuntimeConfig;
     postcodeResolver?: PostcodeResolver;
+    /** Replaces the entire travel provider pipeline for testing. */
     travelProviderOverrides?: TravelProvider[];
   } = {}
 ): Promise<FixtureResult[]> {
@@ -92,10 +94,10 @@ export async function searchFixtures(
     const coordinate = await options.postcodeResolver.resolve(normalized);
 
     if (!coordinate) {
-      throw new Error("Could not resolve postcode.");
+      origin = { normalized, district, coordinate: districtFallbackCoordinate(district), source: "fallback" };
+    } else {
+      origin = { normalized, district, coordinate, source: "known" };
     }
-
-    origin = { normalized, district, coordinate, source: "known" };
   } else {
     origin = await resolvePostcodeOrigin(request.postcode);
   }

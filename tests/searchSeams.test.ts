@@ -51,7 +51,6 @@ describe("search service substitutable seams", () => {
     };
 
     const mockTravel: TravelProvider = {
-      name: "mock-driving",
       estimate: async () => ({
         drivingMinutes: 45,
         publicTransportMinutes: null,
@@ -89,7 +88,6 @@ describe("search service substitutable seams", () => {
     };
 
     const mockDriving: TravelProvider = {
-      name: "mock-driving",
       estimate: async () => ({
         drivingMinutes: 30,
         publicTransportMinutes: null,
@@ -98,7 +96,6 @@ describe("search service substitutable seams", () => {
     };
 
     const mockTransit: TravelProvider = {
-      name: "mock-transit",
       estimate: async () => ({
         drivingMinutes: null,
         publicTransportMinutes: 60,
@@ -139,5 +136,112 @@ describe("search service substitutable seams", () => {
 
     expect(results.length).toBeGreaterThan(0);
     expect(results[0]?.title).toBe("Chelsea vs Arsenal");
+  });
+
+  it("falls back gracefully when PostcodeResolver returns null", async () => {
+    const db = createAppDatabase();
+
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'seam-null-resolver', 'PL', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const nullResolver: PostcodeResolver = {
+      resolve: async () => null
+    };
+
+    const results = await searchFixtures(db, {
+      postcode: "ZZ99 9ZZ",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    }, { postcodeResolver: nullResolver });
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]?.title).toBe("Chelsea vs Arsenal");
+  });
+
+  it("continues when TravelProvider estimate returns null", async () => {
+    const db = createAppDatabase();
+
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'seam-null-estimate', 'ELC', 6, 4, 6, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const mockResolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 52.474936, longitude: -1.864108 })
+    };
+
+    const nullProvider: TravelProvider = {
+      estimate: async () => null
+    };
+
+    const goodProvider: TravelProvider = {
+      estimate: async () => ({
+        drivingMinutes: 55,
+        publicTransportMinutes: null,
+        provider: "good-provider"
+      })
+    };
+
+    const results = await searchFixtures(db, {
+      postcode: "B9 4RL",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    }, {
+      postcodeResolver: mockResolver,
+      travelProviderOverrides: [nullProvider, goodProvider]
+    });
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]?.travel.drivingMinutes).toBe(55);
+  });
+
+  it("continues when TravelProvider estimate rejects", async () => {
+    const db = createAppDatabase();
+
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'seam-reject-estimate', 'ELC', 6, 4, 6, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const mockResolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 52.474936, longitude: -1.864108 })
+    };
+
+    const failingProvider: TravelProvider = {
+      estimate: async () => {
+        throw new Error("provider unavailable");
+      }
+    };
+
+    const goodProvider: TravelProvider = {
+      estimate: async () => ({
+        drivingMinutes: 40,
+        publicTransportMinutes: null,
+        provider: "good-provider"
+      })
+    };
+
+    const results = await searchFixtures(db, {
+      postcode: "B9 4RL",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    }, {
+      postcodeResolver: mockResolver,
+      travelProviderOverrides: [failingProvider, goodProvider]
+    });
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]?.travel.drivingMinutes).toBe(40);
   });
 });

@@ -1,13 +1,37 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
-export default defineConfig({
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const aliasConfig = {
   resolve: {
     alias: {
-      "@": new URL(".", import.meta.url).pathname
+      "@": __dirname
     }
-  },
+  }
+};
+
+export default defineConfig({
   test: {
-    environment: "node",
-    include: ["tests/**/*.test.ts"]
+    projects: [
+      {
+        ...aliasConfig,
+        test: {
+          name: "node",
+          environment: "node",
+          include: ["tests/**/*.test.ts"]
+        }
+      },
+      {
+        ...aliasConfig,
+        test: {
+          name: "components",
+          environment: "jsdom",
+          include: ["tests/**/*.test.tsx"],
+          exclude: ["tests/**/*.test.ts"]
+        }
+      }
+    ]
   }
 });

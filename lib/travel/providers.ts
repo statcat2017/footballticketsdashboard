@@ -8,7 +8,6 @@ export interface TravelProvidersConfig {
 }
 
 export interface TravelProvider {
-  name: string;
   estimate(from: Coordinate, to: Coordinate): Promise<TravelEstimate | null>;
 }
 
