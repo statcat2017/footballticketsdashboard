@@ -6,6 +6,9 @@ export interface DivisionAssignedClub {
   name: string;
   status: string;
   venueName: string | null;
+  venuePostcode: string | null;
+  venueLatitude: number | null;
+  venueLongitude: number | null;
   hasTicketUrl: boolean;
   isPublished: boolean;
   isFriendlyOnly: boolean;
@@ -53,6 +56,9 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
     club_name: string | null;
     club_status: string | null;
     venue_name: string | null;
+    venue_postcode: string | null;
+    venue_latitude: number | null;
+    venue_longitude: number | null;
     generic_ticket_url: string | null;
     club_competition_code: string | null;
     is_friendly_only: number;
@@ -96,6 +102,9 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
       c.name AS club_name,
       c.status AS club_status,
       v.name AS venue_name,
+      v.postcode AS venue_postcode,
+      v.latitude AS venue_latitude,
+      v.longitude AS venue_longitude,
       c.generic_ticket_url,
       c.competition_code AS club_competition_code,
       CASE WHEN c.id IN (SELECT club_id FROM friendly_only_clubs) THEN 1 ELSE 0 END AS is_friendly_only
@@ -177,6 +186,9 @@ export async function getDivisionAssignments(db: AppDatabase): Promise<DivisionA
         name: row.club_name!,
         status: row.club_status!,
         venueName: row.venue_name,
+        venuePostcode: row.venue_postcode,
+        venueLatitude: row.venue_latitude,
+        venueLongitude: row.venue_longitude,
         hasTicketUrl: !!row.generic_ticket_url,
         isPublished: row.club_competition_code !== null && row.club_status === "known",
         isFriendlyOnly: row.is_friendly_only === 1,
@@ -613,6 +625,9 @@ export async function getDivisionDetail(
     club_name: string;
     club_status: string;
     venue_name: string | null;
+    venue_postcode: string | null;
+    venue_latitude: number | null;
+    venue_longitude: number | null;
     generic_ticket_url: string | null;
     club_competition_code: string | null;
     is_friendly_only: number;
@@ -649,6 +664,9 @@ export async function getDivisionDetail(
       c.name AS club_name,
       c.status AS club_status,
       v.name AS venue_name,
+      v.postcode AS venue_postcode,
+      v.latitude AS venue_latitude,
+      v.longitude AS venue_longitude,
       c.generic_ticket_url,
       c.competition_code AS club_competition_code,
       CASE WHEN c.id IN (SELECT club_id FROM friendly_only_clubs) THEN 1 ELSE 0 END AS is_friendly_only
@@ -667,6 +685,9 @@ export async function getDivisionDetail(
     name: r.club_name,
     status: r.club_status,
     venueName: r.venue_name,
+    venuePostcode: r.venue_postcode,
+    venueLatitude: r.venue_latitude,
+    venueLongitude: r.venue_longitude,
     hasTicketUrl: !!r.generic_ticket_url,
     isPublished: r.club_competition_code !== null && r.club_status === "known",
     isFriendlyOnly: r.is_friendly_only === 1,
