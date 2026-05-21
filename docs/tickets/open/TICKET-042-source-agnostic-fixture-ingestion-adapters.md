@@ -12,6 +12,7 @@ Implement the source adapter layer that lets API feeds, agentic web scrapes, URL
 ## Work
 
 - Define a normalized fixture import row contract shared by all adapters.
+- Document the adapter boundary: source-specific parsers produce `NormalizedFixtureRow[]`, create batches with the shared batch helpers, and rely on validation/apply for resolution and fixture identity.
 - Build adapter interfaces for:
   - API feed imports
   - agentic scrape output
@@ -29,10 +30,12 @@ Implement the source adapter layer that lets API feeds, agentic web scrapes, URL
   - static HTML table parsing only
 - Implement agentic scrape input as structured rows with evidence, confidence, source URL, and raw extraction metadata.
 - Ensure scrape failures create import review items after TICKET-044 is available, or record failed batch state before then.
+- Avoid fixture identity SQL in adapters. Existing fixture matching belongs in `findImportFixtureMatch()` and is reached through validation/apply so all sources make consistent insert/update decisions.
 
 ## Acceptance Criteria
 
 - Every adapter writes to the same import batch and row model.
+- New adapters can follow `docs/import-adapter-guide.md` without reimplementing club, competition, venue, duplicate, or fixture identity logic.
 - CSV is not required as an intermediate format for API or agent imports.
 - Static table scrape failure does not block manual paste/upload fallback.
 - Agentic scrape rows can carry evidence and confidence for later validation and auto-approval decisions.

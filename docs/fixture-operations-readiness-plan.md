@@ -59,6 +59,7 @@ public search display with clear caveats
 ### Fixture Identity And Updates
 
 - A fixture is uniquely identified by home participant, away participant, competition, and season.
+- Import-time fixture identity is centralized in `lib/import/fixtureIdentity.ts`; adapters must not duplicate fixture identity SQL.
 - Participants are normally mapped public clubs, but a participant can be explicitly marked as a one-off team for invitational, representative, academy, charity, or exhibition fixtures.
 - One-off teams must not require public club creation and must not be added to the club mapping layer.
 - One-off teams must be explicitly marked by an import source, agent output, or admin action. Unknown team names must not silently become one-off teams.
@@ -108,6 +109,8 @@ public search display with clear caveats
 - URL table scrape is a lightweight adapter for static HTML tables.
 - CSV upload and paste are manual fallback adapters.
 - Every adapter must produce the same normalized import batch and row structure.
+- Adapters parse to `NormalizedFixtureRow[]`, create batches through the shared `lib/import` helpers, and leave club/competition/venue resolution plus fixture identity matching to validation/apply.
+- New adapter guidance lives in [Import Adapter Guide](./import-adapter-guide.md).
 - URL scrape must use strict static fetch rules:
   - allow only `http://` and `https://`
   - reject localhost and private-network targets
