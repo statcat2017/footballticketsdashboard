@@ -1020,6 +1020,12 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
+  // Build map of existing clubs by name so re-seeds reuse stable IDs
+  const existingClubByName = new Map<string, number>();
+  for (const row of await db.all<{ id: number; name: string }>("SELECT id, name FROM clubs")) {
+    existingClubByName.set(row.name, row.id);
+  }
+
   // Build ID translation: old pyramid_club_id → new clubs.id
   const pyramidToClubId = new Map<number, number>();
   const maxPyramidId = Math.max(...MEN_PYRAMID_CLUBS.map((c) => c.id));
@@ -1030,11 +1036,17 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     if (pyramidClubNames.has(pc.name)) {
       const seedClub = SEED_DATA.clubs.find((c) => c.name === pc.name)!;
       pyramidToClubId.set(pc.id, seedClub.id);
-    } else if (usedClubIds.has(pc.id)) {
-      pyramidToClubId.set(pc.id, nextId++);
     } else {
-      pyramidToClubId.set(pc.id, pc.id);
-      usedClubIds.add(pc.id);
+      const existingId = existingClubByName.get(pc.name);
+      if (existingId !== undefined) {
+        pyramidToClubId.set(pc.id, existingId);
+        usedClubIds.add(existingId);
+      } else if (usedClubIds.has(pc.id)) {
+        pyramidToClubId.set(pc.id, nextId++);
+      } else {
+        pyramidToClubId.set(pc.id, pc.id);
+        usedClubIds.add(pc.id);
+      }
     }
   }
   const translateClubId = (pyramidClubId: number): number =>

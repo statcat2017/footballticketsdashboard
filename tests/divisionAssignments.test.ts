@@ -231,7 +231,7 @@ describe("getDivisionAssignments", () => {
 
       const reAdded = sqlite.prepare(
         "SELECT club_id FROM division_assignments WHERE club_id = ?"
-      ).get(assignment.club_id);
+      ).get(assignment.club_id) as { club_id: number } | undefined;
       const after = sqlite.prepare(
         "SELECT COUNT(*) AS count FROM division_assignments"
       ).get() as { count: number };

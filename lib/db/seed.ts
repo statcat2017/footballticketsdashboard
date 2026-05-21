@@ -150,9 +150,16 @@ export function seedDatabase(db: SqliteDatabase): void {
       pyramidClubByName.set(pc.name, pc);
     }
 
+    // Build map of existing clubs by name so re-seeds reuse stable IDs
+    const existingClubByName = new Map<string, number>();
+    for (const row of db.prepare("SELECT id, name FROM clubs").iterate() as IterableIterator<{ id: number; name: string }>) {
+      existingClubByName.set(row.name, row.id);
+    }
+
     // Build ID translation: old pyramid_club_id → new clubs.id
     // SEED_DATA.clubs keep their existing IDs (1-6)
     // Pyramid-only clubs get max(seed_id)+1, max(seed_id)+2, ...
+    // Existing DB clubs by name keep their current IDs for re-seed stability
     const pyramidToClubId = new Map<number, number>();
     const maxPyramidId = Math.max(...MEN_PYRAMID_CLUBS.map((c) => c.id));
     const usedClubIds = new Set(SEED_DATA.clubs.map((c) => c.id));
@@ -163,7 +170,11 @@ export function seedDatabase(db: SqliteDatabase): void {
         const seedClub = SEED_DATA.clubs.find((c) => c.name === pc.name)!;
         pyramidToClubId.set(pc.id, seedClub.id);
       } else {
-        if (usedClubIds.has(pc.id)) {
+        const existingId = existingClubByName.get(pc.name);
+        if (existingId !== undefined) {
+          pyramidToClubId.set(pc.id, existingId);
+          usedClubIds.add(existingId);
+        } else if (usedClubIds.has(pc.id)) {
           pyramidToClubId.set(pc.id, nextId++);
         } else {
           pyramidToClubId.set(pc.id, pc.id);
