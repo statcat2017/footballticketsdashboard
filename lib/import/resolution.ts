@@ -24,6 +24,7 @@ export async function validateRowById(
   seasonLabelArg?: string | null,
   options?: {
     kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
+    skipReturn?: boolean;
   }
 ): Promise<ImportBatchRow> {
   const row = await getBatchRow(db, rowId);
@@ -52,7 +53,7 @@ export async function validateRowById(
   if (validation.normalizedTime !== undefined) updates.kickoffTime = validation.normalizedTime;
   if (validation.normalizedStatus !== undefined) updates.status = validation.normalizedStatus;
 
-  return updateBatchRow(db, rowId, updates);
+  return updateBatchRow(db, rowId, updates, { skipReturn: options?.skipReturn });
 }
 
 export async function editAndRevalidateRow(
@@ -409,7 +410,7 @@ export async function revalidatePendingRowsForVenue(
 
   let revalidatedCount = 0;
   for (const row of rows) {
-    await validateRowById(db, row.id);
+    await validateRowById(db, row.id, undefined, { skipReturn: true });
     revalidatedCount++;
   }
 

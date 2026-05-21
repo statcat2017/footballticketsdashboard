@@ -38,12 +38,66 @@ export async function getImportUpdatePreviews(
   if (rows.length === 0) return previews;
 
   const resolvedSeasonLabel = (seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
+
+  // Batch standard rows (non-one-off with resolved IDs) into a single query
+  const standardRows: ImportBatchRow[] = [];
+  const otherRows: ImportBatchRow[] = [];
+
   for (const row of rows) {
+    if (!row.homeIsOneOff && !row.awayIsOneOff && row.homeParticipantResolvedId && row.awayParticipantResolvedId && row.competitionResolvedCode) {
+      standardRows.push(row);
+    } else {
+      otherRows.push(row);
+    }
+  }
+
+  if (standardRows.length > 0) {
+    const whereClauses: string[] = [];
+    const params: (string | number | null)[] = [];
+
+    for (const row of standardRows) {
+      whereClauses.push(`(home_club_id = ? AND away_club_id = ? AND competition_code = ? AND season_label = ? AND fixture_date = ?)`);
+      params.push(row.homeParticipantResolvedId, row.awayParticipantResolvedId, row.competitionResolvedCode, resolvedSeasonLabel, row.kickoffDate);
+    }
+
+    const fixtures = await db.all<Record<string, unknown>>(
+      `SELECT id, home_club_id, away_club_id, competition_code, season_label,
+              fixture_date, venue_id, kickoff_time, kickoff_time_status, status,
+              home_one_off, away_one_off, home_one_off_name, away_one_off_name,
+              source_url, ftpo.source_url AS ticket_url,
+              ftpo.adult_price_pence, ftpo.concession_price_pence
+       FROM fixtures
+       LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
+       WHERE ${whereClauses.join(" OR ")}`,
+      params
+    );
+
+    for (const row of standardRows) {
+      const match = fixtures.find((f) =>
+        f.home_club_id === row.homeParticipantResolvedId &&
+        f.away_club_id === row.awayParticipantResolvedId &&
+        f.competition_code === row.competitionResolvedCode &&
+        f.season_label === resolvedSeasonLabel &&
+        f.fixture_date === row.kickoffDate
+      );
+      if (match) {
+        const before: Record<string, unknown> = {};
+        const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url", "ticket_url", "adult_price_pence", "concession_price_pence"];
+        for (const f of fields) {
+          if (f in match) before[f] = match[f];
+        }
+        previews.set(row.id, { fixtureId: match.id as number, before });
+      }
+    }
+  }
+
+  for (const row of otherRows) {
     const match = await findImportFixtureMatch(db, row, resolvedSeasonLabel);
     if (match.kind === "match") {
       previews.set(row.id, { fixtureId: match.id, before: match.before });
     }
   }
+
   return previews;
 }
 
@@ -72,7 +126,6 @@ export interface BatchDetail {
   grouped: Record<string, ImportBatchRow[]>;
   activeGrouped: Record<string, ImportBatchRow[]>;
   finalizedRows: ImportBatchRow[];
-  activeIssues: WarningIssue[];
   seasons: SeasonOption[];
 }
 
@@ -138,10 +191,7 @@ export async function getBatchDetail(db: AppDatabase, batchId: number): Promise<
 
   const seasons = await getSeasons(db);
 
-  const { getActiveIssuesForBatch } = await import("../import/resolution.ts");
-  const activeIssues = await getActiveIssuesForBatch(db, batchId);
-
-  return { batch, source, grouped: activeGrouped, activeGrouped, finalizedRows, activeIssues, seasons };
+  return { batch, source, grouped: activeGrouped, activeGrouped, finalizedRows, seasons };
 }
 
 export async function getFixtureCardsData(

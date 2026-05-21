@@ -4,7 +4,6 @@ import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 import { addAlias, normalizeName } from "@/lib/db/clubMapping";
-import { getBatchRow, getBatchRows } from "@/lib/import/importBatch";
 import {
   createAdminVenue,
   assignAdminVenue,
@@ -720,10 +719,8 @@ async function handleEditRow(
     edits.competitionRaw = "Non-League Friendlies";
   }
 
-  await editAndRevalidateRow(db, rowId, edits as Parameters<typeof editAndRevalidateRow>[2], actor);
-
-  const updated = await getBatchRow(db, rowId);
-  const isBlocked = updated?.matchResult === "blocked";
+  const updated = await editAndRevalidateRow(db, rowId, edits as Parameters<typeof editAndRevalidateRow>[2], actor);
+  const isBlocked = updated.matchResult === "blocked";
   const result = isBlocked ? "still blocked" : "ready";
 
   return redirectTo(request, batchId, {
@@ -764,9 +761,11 @@ async function handleImportRow(
   }
 
   // Find next unresolved fixture
-  const rows = await getBatchRows(db, batchId);
-  const nextActive = rows.find((r) => !r.finalAction && r.id !== rowId);
-  const nextAnchor = nextActive ? `fixture-${nextActive.id}` : undefined;
+  const nextRow = await db.get<{ id: number }>(
+    `SELECT id FROM import_batch_rows WHERE batch_id = ? AND final_action IS NULL AND id != ? LIMIT 1`,
+    [batchId, rowId]
+  );
+  const nextAnchor = nextRow ? `fixture-${nextRow.id}` : undefined;
 
   return redirectTo(request, batchId, {
     success: `Fixture #${result.fixtureId} imported.`,
@@ -806,9 +805,11 @@ async function handleSkipRow(
   await skipRow(db, rowId, reason, actor, note ?? undefined);
 
   // Find next unresolved fixture
-  const rows = await getBatchRows(db, batchId);
-  const nextActive = rows.find((r) => !r.finalAction && r.id !== rowId);
-  const nextAnchor = nextActive ? `fixture-${nextActive.id}` : undefined;
+  const nextRow = await db.get<{ id: number }>(
+    `SELECT id FROM import_batch_rows WHERE batch_id = ? AND final_action IS NULL AND id != ? LIMIT 1`,
+    [batchId, rowId]
+  );
+  const nextAnchor = nextRow ? `fixture-${nextRow.id}` : undefined;
 
   return redirectTo(request, batchId, {
     success: "Fixture skipped.",
