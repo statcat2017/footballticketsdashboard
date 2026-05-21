@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getAdminVenue, updateAdminVenue } from "@/lib/admin/venues";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getAdminSessionFromRequest(request);
@@ -34,10 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const venueRow = await getAdminVenue(db, venueId);
 
   if (!venueRow) {
-    return NextResponse.redirect(
-      new URL("/admin/venues?error=Venue not found.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/venues?error=Venue not found.");
   }
 
   const confirmed = form.get("confirmed") === "true";
@@ -57,20 +55,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     !Number.isFinite(latNum) || latNum < -90 || latNum > 90 ||
     !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180
   ) {
-    return NextResponse.redirect(
-      new URL(`/admin/venues/${venueId}?error=Invalid coordinates.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/venues/${venueId}?error=Invalid coordinates.`);
   }
 
   const coordsChanged =
     latNum !== venueRow.venue.latitude || lngNum !== venueRow.venue.longitude;
 
   if (coordsChanged && !coordsConfirmed) {
-    return NextResponse.redirect(
-      new URL(`/admin/venues/${venueId}?error=Coordinate confirmation required when changing coordinates.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/venues/${venueId}?error=Coordinate confirmation required when changing coordinates.`);
   }
 
   const coordPrecision = typeof coordinatePrecision === "string" && coordinatePrecision.length > 0
@@ -97,12 +89,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const redirectUrl = `/admin/venues/${venueId}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
-    return NextResponse.redirect(new URL(redirectUrl, request.url), { status: 303 });
+    return adminRedirect(request, redirectUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/venues/${venueId}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/venues/${venueId}?error=${encodeURIComponent(message)}`);
   }
 }

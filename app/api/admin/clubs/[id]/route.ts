@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { updateAdminClub } from "@/lib/admin/clubs";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getAdminSessionFromRequest(request);
@@ -40,13 +41,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       verified_at: readNullableString(form.get("verified_at"))
     });
 
-    return NextResponse.redirect(new URL(`/admin/clubs/${clubId}`, request.url), { status: 303 });
+    return adminRedirect(request, `/admin/clubs/${clubId}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`);
   }
 }
 

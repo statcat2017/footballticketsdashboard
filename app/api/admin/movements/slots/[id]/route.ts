@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { deleteSlot } from "@/lib/admin/movements";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -67,15 +68,9 @@ export async function POST(request: Request, props: { params: Promise<{ id: stri
 
   try {
     await deleteSlot(db, slotId, session.actor);
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?success=Slot+deleted.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?success=Slot+deleted.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?error=${encodeURIComponent(message)}`);
   }
 }

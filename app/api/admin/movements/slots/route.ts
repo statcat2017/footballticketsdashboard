@@ -4,6 +4,7 @@ import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { createSlots } from "@/lib/admin/movements";
 import type { MovementType } from "@/lib/admin/movements";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -71,18 +72,12 @@ export async function POST(request: Request) {
       params.set("info", `${result.skipped} slot${result.skipped !== 1 ? "s" : ""} already existed.`);
     }
 
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?${params.toString()}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?${params.toString()}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const redirectPath = typeof redirectTier === "string" && redirectTier
       ? `/admin/movements/${redirectTier}`
       : "/admin/movements";
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?error=${encodeURIComponent(message)}`);
   }
 }

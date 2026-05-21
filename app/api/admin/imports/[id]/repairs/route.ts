@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import { adminUrl } from "@/lib/admin/redirect";
 import { addAlias, normalizeName } from "@/lib/db/clubMapping";
 import {
   createAdminVenue,
@@ -23,7 +24,7 @@ function redirectTo(
   batchId: number,
   params: Record<string, string>,
 ): NextResponse {
-  const url = new URL(`/admin/imports/${batchId}`, request.url);
+  const url = adminUrl(request, `/admin/imports/${batchId}`);
   for (const [key, value] of Object.entries(params)) {
     if (key !== "anchor") url.searchParams.set(key, value);
   }

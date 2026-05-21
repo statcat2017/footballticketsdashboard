@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(
   request: Request,
@@ -31,10 +32,7 @@ export async function POST(
 
   const confirm = form.get("confirm");
   if (confirm !== "1") {
-    return NextResponse.redirect(
-      new URL(`/admin/venues/${venueId}?error=Please confirm the delete action.`, request.url),
-      { status: 303 },
-    );
+    return adminRedirect(request, `/admin/venues/${venueId}?error=Please confirm the delete action.`);
   }
 
   const db = await getDatabase();
@@ -44,10 +42,7 @@ export async function POST(
       `SELECT id, name FROM venues WHERE id = ?`, [venueId]
     );
     if (!venue) {
-      return NextResponse.redirect(
-        new URL(`/admin/venues?error=Venue not found.`, request.url),
-        { status: 303 },
-      );
+      return adminRedirect(request, `/admin/venues?error=Venue not found.`);
     }
 
     // Check all FK references before deletion
@@ -55,10 +50,7 @@ export async function POST(
       `SELECT id, name FROM clubs WHERE venue_id = ? LIMIT 1`, [venueId]
     );
     if (publicClubs.length > 0) {
-      return NextResponse.redirect(
-        new URL(`/admin/venues/${venueId}?error=Cannot delete: "${venue.name}" is the primary ground for public club "${publicClubs[0].name}". Reassign the club's venue first.`, request.url),
-        { status: 303 },
-      );
+      return adminRedirect(request, `/admin/venues/${venueId}?error=Cannot delete: "${venue.name}" is the primary ground for public club "${publicClubs[0].name}". Reassign the club's venue first.`);
     }
 
     const pyramidAssignments = await db.all<{ id: number }>(
@@ -66,20 +58,14 @@ export async function POST(
       [venueId]
     );
     if (pyramidAssignments.length > 0) {
-      return NextResponse.redirect(
-        new URL(`/admin/venues/${venueId}?error=Cannot delete: venue is assigned as primary ground for a pyramid club. Remove the assignment first.`, request.url),
-        { status: 303 },
-      );
+      return adminRedirect(request, `/admin/venues/${venueId}?error=Cannot delete: venue is assigned as primary ground for a pyramid club. Remove the assignment first.`);
     }
 
     const fixtures = await db.all<{ id: number }>(
       `SELECT id FROM fixtures WHERE venue_id = ? LIMIT 1`, [venueId]
     );
     if (fixtures.length > 0) {
-      return NextResponse.redirect(
-        new URL(`/admin/venues/${venueId}?error=Cannot delete: venue is used by ${fixtures.length} fixture(s). Reassign fixtures first.`, request.url),
-        { status: 303 },
-      );
+      return adminRedirect(request, `/admin/venues/${venueId}?error=Cannot delete: venue is used by ${fixtures.length} fixture(s). Reassign fixtures first.`);
     }
 
     // Null out batch row venue references (nullable FK)
@@ -103,15 +89,9 @@ export async function POST(
       }),
     ]);
 
-    return NextResponse.redirect(
-      new URL(`/admin/venues?deleted=1`, request.url),
-      { status: 303 },
-    );
+    return adminRedirect(request, `/admin/venues?deleted=1`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/venues/${venueId}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 },
-    );
+    return adminRedirect(request, `/admin/venues/${venueId}?error=${encodeURIComponent(message)}`);
   }
 }

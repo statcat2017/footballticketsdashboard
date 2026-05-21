@@ -5,6 +5,7 @@ import { getDatabase } from "@/lib/db/client";
 import { createImportBatchFromHtmlUrl } from "@/lib/import";
 import { validateImportBatch } from "@/lib/import/validation";
 import { getTrustedImportDomains } from "@/lib/admin/imports";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -24,10 +25,7 @@ export async function POST(request: Request) {
 
   const url = form.get("url");
   if (typeof url !== "string" || url.trim().length === 0) {
-    return NextResponse.redirect(
-      new URL("/admin/imports/new?error=URL is required.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/imports/new?error=URL is required.");
   }
 
   const selectedTablesRaw = form.get("selected_tables");
@@ -37,10 +35,7 @@ export async function POST(request: Request) {
   }
 
   if (selectedTableIndices !== undefined && selectedTableIndices.length === 0) {
-    return NextResponse.redirect(
-      new URL("/admin/imports/new?error=Select at least one table to import.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/imports/new?error=Select at least one table to import.");
   }
 
   const seasonLabel = form.get("season_label");
@@ -57,23 +52,14 @@ export async function POST(request: Request) {
 
     if (result.batchId === 0 && result.errors.length > 0) {
       const errorParam = encodeURIComponent(result.errors.join("; "));
-      return NextResponse.redirect(
-        new URL(`/admin/imports/new?error=${errorParam}`, request.url),
-        { status: 303 }
-      );
+      return adminRedirect(request, `/admin/imports/new?error=${errorParam}`);
     }
 
     await validateImportBatch(db, result.batchId);
 
-    return NextResponse.redirect(
-      new URL(`/admin/imports/${result.batchId}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/imports/${result.batchId}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/imports/new?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/imports/new?error=${encodeURIComponent(message)}`);
   }
 }

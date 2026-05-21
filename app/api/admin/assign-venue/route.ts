@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { assignAdminVenue, isValidDate } from "@/lib/admin/venues";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -31,24 +32,15 @@ export async function POST(request: Request) {
   const venueId = typeof venueIdRaw === "string" ? Number(venueIdRaw) : NaN;
 
   if (!Number.isInteger(clubId) || clubId <= 0) {
-    return NextResponse.redirect(
-      new URL(`/admin/clubs?error=Invalid club ID.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/clubs?error=Invalid club ID.`);
   }
 
   if (!Number.isInteger(venueId) || venueId <= 0) {
-    return NextResponse.redirect(
-      new URL(`/admin/clubs/${clubId}?error=Invalid venue ID.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/clubs/${clubId}?error=Invalid venue ID.`);
   }
 
   if (typeof effectiveFrom !== "string" || !isValidDate(effectiveFrom)) {
-    return NextResponse.redirect(
-      new URL(`/admin/clubs/${clubId}?error=Valid effective date (YYYY-MM-DD) is required.`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/clubs/${clubId}?error=Valid effective date (YYYY-MM-DD) is required.`);
   }
 
   const db = await getDatabase();
@@ -56,12 +48,9 @@ export async function POST(request: Request) {
   try {
     await assignAdminVenue(db, clubId, venueId, effectiveFrom);
 
-    return NextResponse.redirect(new URL(`/admin/clubs/${clubId}`, request.url), { status: 303 });
+    return adminRedirect(request, `/admin/clubs/${clubId}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/clubs/${clubId}?error=${encodeURIComponent(message)}`);
   }
 }

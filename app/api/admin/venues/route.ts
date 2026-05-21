@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { createAdminVenue } from "@/lib/admin/venues";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -31,34 +32,22 @@ export async function POST(request: Request) {
   const coordinatePrecision = form.get("coordinate_precision");
 
   if (typeof name !== "string" || name.length === 0) {
-    return NextResponse.redirect(
-      new URL("/admin/venues/new?error=Venue name is required.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/venues/new?error=Venue name is required.");
   }
 
   if (typeof postcode !== "string" || postcode.length === 0) {
-    return NextResponse.redirect(
-      new URL("/admin/venues/new?error=Postcode is required.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/venues/new?error=Postcode is required.");
   }
 
   const latNum = typeof latitude === "string" ? Number(latitude) : NaN;
   const lngNum = typeof longitude === "string" ? Number(longitude) : NaN;
 
   if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90) {
-    return NextResponse.redirect(
-      new URL("/admin/venues/new?error=Invalid latitude. Must be between -90 and 90.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/venues/new?error=Invalid latitude. Must be between -90 and 90.");
   }
 
   if (!Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
-    return NextResponse.redirect(
-      new URL("/admin/venues/new?error=Invalid longitude. Must be between -180 and 180.", request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, "/admin/venues/new?error=Invalid longitude. Must be between -180 and 180.");
   }
 
   const db = await getDatabase();
@@ -75,12 +64,9 @@ export async function POST(request: Request) {
         : undefined
     });
 
-    return NextResponse.redirect(new URL(`/admin/venues/${venueId}`, request.url), { status: 303 });
+    return adminRedirect(request, `/admin/venues/${venueId}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`/admin/venues/new?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `/admin/venues/new?error=${encodeURIComponent(message)}`);
   }
 }

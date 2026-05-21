@@ -3,6 +3,7 @@ import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { applyAllFilledSlots } from "@/lib/admin/movements";
+import { adminRedirect } from "@/lib/admin/redirect";
 
 export async function POST(request: Request) {
   const session = await getAdminSessionFromRequest(request);
@@ -35,15 +36,9 @@ export async function POST(request: Request) {
     } else {
       params.set("info", "No movements to apply.");
     }
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?${params.toString()}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?${params.toString()}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.redirect(
-      new URL(`${redirectPath}?error=${encodeURIComponent(message)}`, request.url),
-      { status: 303 }
-    );
+    return adminRedirect(request, `${redirectPath}?error=${encodeURIComponent(message)}`);
   }
 }
