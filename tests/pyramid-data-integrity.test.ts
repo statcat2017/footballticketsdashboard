@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SEED_DATA } from "@/lib/db/d1";
+import { SEED_DATA } from "@/lib/db/seed-data";
 import {
   CLUB_VENUE_ASSIGNMENTS,
   MEN_PYRAMID_CLUBS,

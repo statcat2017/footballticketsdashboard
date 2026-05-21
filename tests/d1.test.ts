@@ -29,7 +29,7 @@ vi.mock("@/lib/db/pyramid", () => ({
   computeEdgeAllocationType: () => new Map()
 }));
 
-import { initializeD1Database } from "@/lib/db/d1";
+import { initializeD1Database } from "@/lib/db/seed-data";
 import type { D1RootDatabaseLike, D1PreparedStatement, D1TransactionLike } from "@/lib/db/adapter";
 
 describe("D1 initialization", () => {
