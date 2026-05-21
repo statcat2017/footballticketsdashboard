@@ -4,7 +4,10 @@ import Database from "better-sqlite3";
 export async function GET() {
   const dbPath = process.env.SQLITE_DB_PATH;
   if (!dbPath) {
-    return NextResponse.json({ ok: false, error: "SQLITE_DB_PATH not set" }, { status: 503 });
+    return NextResponse.json(
+      { ok: false, db: false },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   try {
@@ -13,16 +16,14 @@ export async function GET() {
     db.prepare("SELECT 1").get();
     db.close();
 
-    return NextResponse.json({
-      ok: true,
-      db: true,
-      version: process.env.npm_package_version ?? "unknown",
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
     return NextResponse.json(
-      { ok: false, db: false, error: String(err) },
-      { status: 503 }
+      { ok: true, db: true, timestamp: new Date().toISOString() },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch {
+    return NextResponse.json(
+      { ok: false, db: false },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
