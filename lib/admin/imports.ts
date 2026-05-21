@@ -39,12 +39,14 @@ export async function getImportUpdatePreviews(
 
   const resolvedSeasonLabel = (seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
 
-  // Batch standard rows (non-one-off with resolved IDs) into a single query
+  // Batch standard rows into a single query.
+  // Only rows with kickoffDate can be batched — rows without it fall through to
+  // individual findImportFixtureMatch calls (matching regardless of date).
   const standardRows: ImportBatchRow[] = [];
   const otherRows: ImportBatchRow[] = [];
 
   for (const row of rows) {
-    if (!row.homeIsOneOff && !row.awayIsOneOff && row.homeParticipantResolvedId && row.awayParticipantResolvedId && row.competitionResolvedCode) {
+    if (!row.homeIsOneOff && !row.awayIsOneOff && row.homeParticipantResolvedId && row.awayParticipantResolvedId && row.competitionResolvedCode && row.kickoffDate) {
       standardRows.push(row);
     } else {
       otherRows.push(row);
@@ -72,22 +74,27 @@ export async function getImportUpdatePreviews(
       params
     );
 
+    // Group fetched fixtures by composite identity key to detect ambiguity
+    const grouped = new Map<string, Record<string, unknown>[]>();
+    for (const f of fixtures) {
+      const key = `${f.home_club_id}|${f.away_club_id}|${f.competition_code}|${f.season_label}|${f.fixture_date ?? ""}`;
+      const group = grouped.get(key) ?? [];
+      group.push(f);
+      grouped.set(key, group);
+    }
+
     for (const row of standardRows) {
-      const match = fixtures.find((f) =>
-        f.home_club_id === row.homeParticipantResolvedId &&
-        f.away_club_id === row.awayParticipantResolvedId &&
-        f.competition_code === row.competitionResolvedCode &&
-        f.season_label === resolvedSeasonLabel &&
-        f.fixture_date === row.kickoffDate
-      );
-      if (match) {
-        const before: Record<string, unknown> = {};
-        const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url", "ticket_url", "adult_price_pence", "concession_price_pence"];
-        for (const f of fields) {
-          if (f in match) before[f] = match[f];
-        }
-        previews.set(row.id, { fixtureId: match.id as number, before });
+      const key = `${row.homeParticipantResolvedId}|${row.awayParticipantResolvedId}|${row.competitionResolvedCode}|${resolvedSeasonLabel}|${row.kickoffDate ?? ""}`;
+      const group = grouped.get(key);
+      // Only show a preview when exactly one fixture matches (preserve ambiguity handling)
+      if (!group || group.length !== 1) continue;
+      const match = group[0];
+      const before: Record<string, unknown> = {};
+      const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url", "ticket_url", "adult_price_pence", "concession_price_pence"];
+      for (const f of fields) {
+        if (f in match) before[f] = match[f];
       }
+      previews.set(row.id, { fixtureId: match.id as number, before });
     }
   }
 

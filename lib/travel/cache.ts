@@ -289,7 +289,8 @@ export async function fillTravelCacheForDistrict(
     rowsInserted,
     providerBackfilled,
     distanceOnlySkipped
-  };}
+  };
+}
 
 export async function fillTravelCacheForGroundDistricts(
   db: AppDatabase,

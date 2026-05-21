@@ -53,7 +53,32 @@ export async function validateRowById(
   if (validation.normalizedTime !== undefined) updates.kickoffTime = validation.normalizedTime;
   if (validation.normalizedStatus !== undefined) updates.status = validation.normalizedStatus;
 
-  return updateBatchRow(db, rowId, updates, { skipReturn: options?.skipReturn });
+  if (options?.skipReturn) {
+    // Fast path: UPDATE directly without re-fetching the row
+    const fields: string[] = ["kickoff_date = ?", "kickoff_time = ?", "status = ?",
+      "match_result = ?", "warnings_json = ?",
+      "home_participant_resolved_id = ?", "away_participant_resolved_id = ?",
+      "competition_resolved_code = ?", "venue_resolved_id = ?"];
+    const params: (string | number | null)[] = [
+      updates.kickoffDate ?? row.kickoffDate,
+      updates.kickoffTime ?? row.kickoffTime,
+      updates.status ?? row.status,
+      validation.matchResult,
+      updates.warningsJson ?? null,
+      validation.homeParticipantResolvedId,
+      validation.awayParticipantResolvedId,
+      validation.competitionResolvedCode,
+      validation.venueResolvedId,
+      rowId,
+    ];
+    await db.run(
+      `UPDATE import_batch_rows SET ${fields.join(", ")} WHERE id = ?`,
+      params
+    );
+    return row;
+  }
+
+  return updateBatchRow(db, rowId, updates);
 }
 
 export async function editAndRevalidateRow(

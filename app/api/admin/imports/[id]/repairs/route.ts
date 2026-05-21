@@ -762,7 +762,7 @@ async function handleImportRow(
 
   // Find next unresolved fixture
   const nextRow = await db.get<{ id: number }>(
-    `SELECT id FROM import_batch_rows WHERE batch_id = ? AND final_action IS NULL AND id != ? LIMIT 1`,
+    `SELECT id FROM import_batch_rows WHERE batch_id = ? AND final_action IS NULL AND id != ? ORDER BY row_index ASC LIMIT 1`,
     [batchId, rowId]
   );
   const nextAnchor = nextRow ? `fixture-${nextRow.id}` : undefined;
@@ -806,7 +806,7 @@ async function handleSkipRow(
 
   // Find next unresolved fixture
   const nextRow = await db.get<{ id: number }>(
-    `SELECT id FROM import_batch_rows WHERE batch_id = ? AND final_action IS NULL AND id != ? LIMIT 1`,
+    `SELECT id FROM import_batch_rows WHERE batch_id = ? AND final_action IS NULL AND id != ? ORDER BY row_index ASC LIMIT 1`,
     [batchId, rowId]
   );
   const nextAnchor = nextRow ? `fixture-${nextRow.id}` : undefined;
