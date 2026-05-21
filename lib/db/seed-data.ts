@@ -56,7 +56,22 @@ export const SEED_DATA: SeedData = {
     { code: "IL1SE", name: "Isthmian League Division One South East", tier: 8 },
     { code: "SL1C", name: "Southern League Division One Central", tier: 8 },
     { code: "SL1S", name: "Southern League Division One South", tier: 8 },
-    { code: "FRIENDLY", name: "Non-League Friendlies", tier: 10, kind: "friendly" }
+    { code: "FRIENDLY", name: "Non-League Friendlies", tier: 10, kind: "friendly" },
+    { code: "CC_PN", name: "Combined Counties League Premier Division North", tier: 9 },
+    { code: "CC_PS", name: "Combined Counties League Premier Division South", tier: 9 },
+    { code: "EC_PREM", name: "Eastern Counties League Premier Division", tier: 9 },
+    { code: "ESL", name: "Essex Senior League", tier: 9 },
+    { code: "HEL_PREM", name: "Hellenic League Premier Division", tier: 9 },
+    { code: "MFL_PREM", name: "Midland League Premier Division", tier: 9 },
+    { code: "NCE_PREM", name: "Northern Counties East League Premier Division", tier: 9 },
+    { code: "NL_D1", name: "Northern League Division One", tier: 9 },
+    { code: "SCE_PREM", name: "Southern Counties East League Premier Division", tier: 9 },
+    { code: "SSM_PREM", name: "Spartan South Midlands League Premier Division", tier: 9 },
+    { code: "SCO_PREM", name: "Southern Combination League Premier Division", tier: 9 },
+    { code: "UCL_PN", name: "United Counties League Premier Division North", tier: 9 },
+    { code: "UCL_PS", name: "United Counties League Premier Division South", tier: 9 },
+    { code: "WES_PREM", name: "Wessex League Premier Division", tier: 9 },
+    { code: "WESL_PREM", name: "Western League Premier Division", tier: 9 }
   ],
   venues: [
     { id: 1, name: "Stamford Bridge", postcode: "SW6 1HS", latitude: 51.4817, longitude: -0.191, is_approximate: 0 },
@@ -916,10 +931,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     await db.exec("ALTER TABLE venues ADD COLUMN is_approximate INTEGER NOT NULL DEFAULT 0 CHECK (is_approximate IN (0, 1))");
   }
 
-  const existingAssignments = await db.get<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM division_assignments"
-  );
-
   const divisionDisplayOrder = computeDivisionDisplayOrder();
   const edgeAllocationType = computeEdgeAllocationType();
   const latestPyramidSeasonId = Math.max(...MEN_PYRAMID_SEASONS.map((s) => s.id));
@@ -1047,7 +1058,7 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     }
   }
 
-  if (!existingAssignments || existingAssignments.count === 0) {
+  {
     const seasonDivisionById = new Map<number, { division_id: number }>();
     for (const sd of MEN_PYRAMID_SEASON_DIVISIONS) {
       seasonDivisionById.set(sd.id, { division_id: sd.division_id });
