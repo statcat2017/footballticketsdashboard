@@ -1,5 +1,5 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import { SEED_DATA } from "./d1.ts";
+import { SEED_DATA } from "./seed-data.ts";
 import {
   CLUB_VENUE_ASSIGNMENTS,
   computeDivisionDisplayOrder,

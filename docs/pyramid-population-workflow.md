@@ -94,7 +94,7 @@ Wikipedia's API rate-limits at roughly 1 request per second for batch queries. U
 
 ## Step 4 — Create the data
 
-You will modify `lib/db/pyramid.ts` and `lib/db/d1.ts`.
+You will modify `lib/db/pyramid.ts` and `lib/db/seed-data.ts`.
 
 ### 4a — Add clubs to `MEN_PYRAMID_CLUBS`
 
@@ -115,7 +115,7 @@ One per club:
 { id: <nextMembershipId>, season_id: 1, template_id: 1, season_division_id: <divisionId>, club_id: <clubId> },
 ```
 
-### 4c — Add venues to `SEED_DATA.venues` in `d1.ts`
+### 4c — Add venues to `SEED_DATA.venues` in `seed-data.ts`
 
 One per unique ground:
 
@@ -137,7 +137,7 @@ One per club:
 
 ### 4e — Add ticket prices (if possible)
 
-If the club has publicly listed general admission prices, add a row to `SEED_DATA.club_ticket_prices` in `d1.ts`:
+If the club has publicly listed general admission prices, add a row to `SEED_DATA.club_ticket_prices` in `seed-data.ts`:
 
 ```typescript
 { club_id: <clubId>, sale_mode: "all_ticket", adult_price_pence: <pence>, concession_price_pence: <pence>, source_url: "<url>", verified_at: "<today>", confidence: "unknown" },
@@ -180,7 +180,7 @@ If you encountered anything unexpected, add a note to the "Known quirks" table. 
 | File | What to add |
 |------|-------------|
 | `lib/db/pyramid.ts` | `MEN_PYRAMID_CLUBS` entries, `MEN_PYRAMID_MEMBERSHIPS` entries, `CLUB_VENUE_ASSIGNMENTS` entries |
-| `lib/db/d1.ts` | `SEED_DATA.venues` entries, optionally `SEED_DATA.club_ticket_prices` entries |
+| `lib/db/seed-data.ts` | `SEED_DATA.venues` entries, optionally `SEED_DATA.club_ticket_prices` entries |
 | `lib/db/seed.ts` | Usually automatic — feeds from the above |
 | `lib/db/schema.ts`, `lib/db/migrations/001-initial.sql`, `lib/db/migrations/002-pyramid-structure.sql` | Only if adding new pyramid divisions (rare) |
 
