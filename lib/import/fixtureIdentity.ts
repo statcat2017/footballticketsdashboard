@@ -88,6 +88,15 @@ export async function findImportFixtureMatch(
   };
 }
 
+/**
+ * Finds candidate fixtures for display in the import repair UI.
+ *
+ * Unlike findImportFixtureMatch (which requires both participants for strict
+ * matching during apply), this function allows matching with only one resolved
+ * participant to provide broader suggestions for the admin to review.
+ * This is intentional: display-only suggestions benefit from wider matching,
+ * while apply-time matching must be strict to avoid incorrect updates.
+ */
 export async function findImportFixtureCandidateMatches(
   db: AppDatabase,
   row: ImportBatchRow,

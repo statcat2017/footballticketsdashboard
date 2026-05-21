@@ -390,7 +390,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
   competitions: { code: string; name: string; kind: string }[];
-  possibleMatches?: FixtureCandidateMatch[];
+  possibleMatches: FixtureCandidateMatch[];
   acknowledgedKeys: Set<string>;
   acknowledgedRowKeys: Set<string>;
   updatePreview?: ImportUpdatePreview;
