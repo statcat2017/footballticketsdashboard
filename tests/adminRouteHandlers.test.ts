@@ -5,11 +5,13 @@ import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
 
+const mockGetAdminSession = vi.fn().mockResolvedValue({ user: "test-admin" });
+
 vi.mock("@/lib/admin/auth", async () => {
   const actual = await vi.importActual<typeof import("@/lib/admin/auth")>("@/lib/admin/auth");
   return {
     ...actual,
-    getAdminSessionFromRequest: vi.fn().mockResolvedValue({ user: "test-admin" })
+    getAdminSessionFromRequest: mockGetAdminSession
   };
 });
 
@@ -86,6 +88,7 @@ describe("admin route handlers", () => {
 
   afterEach(() => {
     getDatabase.mockReset();
+    mockGetAdminSession.mockReset().mockResolvedValue({ user: "test-admin" });
   });
 
   it("updates club fields from POST /api/admin/clubs/[id] form data", async () => {
@@ -224,6 +227,23 @@ describe("admin route handlers", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  it("returns 401 when admin session is missing", async () => {
+    const db = createAdminRouteDb();
+    getDatabase.mockResolvedValue(db);
+    mockGetAdminSession.mockResolvedValue(null);
+
+    const { POST } = await import("@/app/api/admin/clubs/[id]/route");
+    const response = await POST(
+      buildFormRequest("/api/admin/clubs/100", {
+        csrf: "test-csrf",
+        name: "Test"
+      }),
+      { params: Promise.resolve({ id: "100" }) }
+    );
+
+    expect(response.status).toBe(401);
   });
 
   it("redirects with error when club ID does not exist", async () => {
