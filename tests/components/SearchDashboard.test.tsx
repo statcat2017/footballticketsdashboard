@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchDashboard } from "@/app/components/SearchDashboard";
 import type { FixtureResult } from "@/lib/types";
 
 const fetchMock = vi.fn<typeof fetch>();
-const originalGeolocation = navigator.geolocation;
+let originalGeolocation: Geolocation | undefined;
 
 beforeEach(() => {
   fetchMock.mockReset();
@@ -16,15 +16,19 @@ beforeEach(() => {
   });
 });
 
+beforeAll(() => {
+  originalGeolocation = navigator.geolocation;
+});
+
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 
 afterAll(() => {
-  Object.defineProperty(navigator, "geolocation", {
-    configurable: true,
-    value: originalGeolocation
-  });
+  if (originalGeolocation !== undefined) {
+    Object.defineProperty(navigator, "geolocation", { value: originalGeolocation, writable: true, configurable: true });
+  }
 });
 
 describe("SearchDashboard", () => {
