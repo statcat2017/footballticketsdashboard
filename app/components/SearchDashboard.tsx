@@ -372,8 +372,10 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
             <div className="featured-actions">
               {featuredFixture.genericTicketUrl ? (
                 <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
+              ) : featuredFixture.officialSiteUrl ? (
+                <a className="ticket-button" href={featuredFixture.officialSiteUrl} target="_blank" rel="noreferrer">View match details</a>
               ) : (
-                <a className="ticket-button" href={featuredFixture.officialSiteUrl ?? "#"} target="_blank" rel="noreferrer">View match details</a>
+                <span className="ticket-button ticket-button-disabled">Details unavailable</span>
               )}
             </div>
           </section>
