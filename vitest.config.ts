@@ -8,6 +8,10 @@ const alias = {
   "@": __dirname
 };
 
+const alias = {
+  "@": new URL(".", import.meta.url).pathname
+};
+
 export default defineConfig({
   test: {
     projects: [
