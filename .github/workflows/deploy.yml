@@ -28,6 +28,7 @@ jobs:
           mkdir -p deploy
           cp -r .next/standalone/. deploy/
           mkdir -p deploy/.next
+          mkdir -p deploy/lib/db
           cp -r .next/static deploy/.next/static
           cp -r lib/db/migrations deploy/lib/db/migrations
           cp -r ./scripts deploy/scripts
@@ -51,5 +52,8 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
-            node scripts/db-migrate-prod.ts
+            set -a
+            . /etc/nearmefc.env
+            set +a
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-migrate-prod.ts
             sudo systemctl restart nearmefc
