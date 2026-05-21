@@ -245,20 +245,17 @@ export async function validateRow(
 ): Promise<RowValidationResult> {
   const ctx = createContext(row, seasonLabel, options);
 
+  // Collect all pre-match issues in a single pass so the admin sees every
+  // actionable problem at once instead of whack-a-mole.
   await resolveHomeParticipant(db, ctx);
-  if (ctx.hasBlocker) return toResult(ctx);
-
   await resolveCompetition(db, ctx);
-  if (ctx.hasBlocker) return toResult(ctx);
-
   await resolveAwayParticipant(db, ctx);
-  if (ctx.hasBlocker) return toResult(ctx);
-
   await resolveVenue(db, ctx);
-  if (ctx.hasBlocker) return toResult(ctx);
-
   normalizeDateTime(ctx);
   validateMetadata(ctx);
+
+  // Only attempt fixture matching when basic data quality passes.
+  if (ctx.hasBlocker) return toResult(ctx);
 
   await matchFixture(db, ctx);
   if (ctx.hasBlocker) return toResult(ctx);
