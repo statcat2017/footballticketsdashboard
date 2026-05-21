@@ -196,7 +196,7 @@ export const csvFixtureSourceAdapter: FixtureSourceAdapter<
   CsvParseResult,
   CreateBatchFromCsvResult,
   undefined,
-  [sourceId: number, actor: string, options?: CreateBatchFromCsvOptions]
+  [sourceId: number, actor: string, options?: CreateBatchFromCsvOptions & { kickoffAssumptionPolicy?: KickoffAssumptionPolicy }]
 > = {
   sourceType: "csv_paste",
   name: "CSV fixture import",
