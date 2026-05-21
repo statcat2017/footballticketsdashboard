@@ -84,10 +84,11 @@ function travelMinutes(value: number | null): string {
 
 function competitionCategory(name: string): CompetitionCategory {
   const lower = name.toLowerCase();
-  if (lower.includes("premier")) return "premier-league";
   if (lower.includes("women") || lower.includes("wsl") || lower.includes("fa wsl")) return "womens";
+  if (lower.includes("premier")) return "premier-league";
   if (lower.includes("fa cup") || lower.includes("efl cup") || lower.includes("carabao") || lower.includes("league cup")) return "cup";
   if (lower.includes("championship") || lower.includes("league one") || lower.includes("league two") || lower.includes("efl")) return "efl";
+  if (lower.includes("non-league")) return "non-league";
   if (lower.includes("friendly")) return "friendly";
   return "non-league";
 }
@@ -136,6 +137,10 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const [travelFilter, setTravelFilter] = useState<"all" | "under30" | "under60">("all");
   const abortRef = useRef<AbortController | null>(null);
 
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [compFilter, travelFilter, sortKey]);
+
   const filteredResults = useMemo(() => {
     let filtered = [...results];
     if (compFilter !== "all") {
@@ -174,16 +179,23 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
 
   const groupedResults = useMemo(() => {
     const visible = sortedResults.slice(0, visibleCount);
-    const groups = new Map<string, { label: string; items: FixtureResult[] }>();
+    const groups = new Map<string, FixtureResult[]>();
     for (const result of visible) {
       const dateKey = result.fixtureDate ?? result.kickoffAt?.slice(0, 10) ?? "unknown";
-      const label = formatDateGroup(result.kickoffAt);
       if (!groups.has(dateKey)) {
-        groups.set(dateKey, { label, items: [] });
+        groups.set(dateKey, []);
       }
-      groups.get(dateKey)!.items.push(result);
+      groups.get(dateKey)!.push(result);
     }
-    return groups;
+    const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
+      if (a === "unknown") return 1;
+      if (b === "unknown") return -1;
+      return a.localeCompare(b);
+    });
+    return sortedKeys.map((key) => ({
+      label: formatDateGroup(groups.get(key)![0].kickoffAt),
+      items: groups.get(key)!
+    }));
   }, [sortedResults, visibleCount]);
 
   const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
@@ -366,7 +378,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 <span className="featured-distance">{featuredFixture.travel.distanceMiles.toFixed(1)} miles away</span>
               </p>
               {featuredFixture.price.verifiedAt && (
-                <p className="trust-line">Last checked {formatVerifiedAt(featuredFixture.price.verifiedAt)}{featuredFixture.price.sourceUrl ? ` · Source: club website` : ""}</p>
+                <p className="trust-line">Last checked {formatVerifiedAt(featuredFixture.price.verifiedAt)}{featuredFixture.price.sourceUrl ? ` · Source link available` : ""}</p>
               )}
             </div>
             <div className="featured-actions">
@@ -393,11 +405,11 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               <div></div>
             </div>
 
-            {Array.from(groupedResults.entries()).map(([dateKey, group]) => {
+            {groupedResults.map((group, idx) => {
               if (group.items.length === 0) return null;
 
               return (
-                <div className="date-group" key={dateKey}>
+                <div className="date-group" key={idx}>
                   <div className="date-group-header">{group.label}</div>
                   {group.items.map((result) => {
                     const compCat = competitionCategory(result.competitionName);
@@ -466,11 +478,11 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         {/* Mobile cards */}
         {state === "ready" && (
           <section className="fixtures mobile-cards" aria-label="Fixture list">
-            {Array.from(groupedResults.entries()).map(([dateKey, group]) => {
+            {groupedResults.map((group, idx) => {
               if (group.items.length === 0) return null;
 
               return (
-                <div className="date-group" key={dateKey}>
+                <div className="date-group" key={idx}>
                   <div className="date-group-header">{group.label}</div>
                   {group.items.map((result) => {
                     const compCat = competitionCategory(result.competitionName);
