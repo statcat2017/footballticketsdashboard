@@ -784,4 +784,59 @@ describe("unassignClubFromTier10", () => {
     expect(audit).not.toBeNull();
     expect(audit!.entity_id).toBe("104");
   });
+
+  it("re-seed reuses existing club IDs and never overwrites manual clubs", () => {
+    const sqlite = new Database(":memory:");
+    sqlite.pragma("foreign_keys = ON");
+    applySchema(sqlite);
+
+    try {
+      // Simulate a previous seed where "Aston Villa" ended up at an old shifted ID (489)
+      // and an admin-imported club sits at the would-be nextId (784).
+      sqlite.prepare(
+        "INSERT INTO clubs (id, name) VALUES (489, 'Aston Villa')"
+      ).run();
+      sqlite.prepare(
+        "INSERT INTO clubs (id, name) VALUES (784, 'My Custom FC')"
+      ).run();
+
+      // This must not throw: the fix should detect existing club names and IDs
+      // and never try to insert a club with a name that already exists at a different ID.
+      seedDatabase(sqlite);
+
+      // Aston Villa should keep its existing ID — not get a new one that would
+      // conflict with the UNIQUE(name) constraint.
+      const astonVilla = sqlite.prepare(
+        "SELECT id FROM clubs WHERE name = 'Aston Villa'"
+      ).get() as { id: number } | undefined;
+      expect(astonVilla).toBeDefined();
+      expect(astonVilla!.id).toBe(489);
+
+      // My Custom FC should be untouched — the ID allocator must not assign 784
+      // (or any other existing ID) to a pyramid club, even when it falls within
+      // the pyramid ID range (489-783).
+      const manual = sqlite.prepare(
+        "SELECT id FROM clubs WHERE name = 'My Custom FC'"
+      ).get() as { id: number } | undefined;
+      expect(manual).toBeDefined();
+      expect(manual!.id).toBe(784);
+
+      // Abingdon United (pyramid id=489) should have been remapped away from 489
+      // since that ID is taken by Aston Villa in our pre-populated DB.
+      const abingdon = sqlite.prepare(
+        "SELECT id FROM clubs WHERE name = 'Abingdon United'"
+      ).get() as { id: number } | undefined;
+      expect(abingdon).toBeDefined();
+      expect(abingdon!.id).not.toBe(489);
+      expect(abingdon!.id).not.toBe(784);
+
+      // Total clubs should include all seed clubs + pyramid clubs + manual club
+      const total = sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM clubs"
+      ).get() as { count: number };
+      expect(total.count).toBe(784); // 6 seed clubs + 777 pyramid-only clubs + 1 manual
+    } finally {
+      sqlite.close();
+    }
+  });
 });
