@@ -215,7 +215,7 @@ describe("getDivisionAssignments", () => {
     }
   });
 
-  it("seed reruns do not recreate an individually unassigned club when assignments already exist", () => {
+  it("seed reruns re-add missing assignments via INSERT OR IGNORE", () => {
     const sqlite = setupDatabase(":memory:");
 
     try {
@@ -229,15 +229,16 @@ describe("getDivisionAssignments", () => {
       sqlite.prepare("DELETE FROM division_assignments WHERE club_id = ?").run(assignment.club_id);
       seedDatabase(sqlite);
 
-      const deletedAssignment = sqlite.prepare(
+      const reAdded = sqlite.prepare(
         "SELECT club_id FROM division_assignments WHERE club_id = ?"
       ).get(assignment.club_id);
       const after = sqlite.prepare(
         "SELECT COUNT(*) AS count FROM division_assignments"
       ).get() as { count: number };
 
-      expect(deletedAssignment).toBeUndefined();
-      expect(after.count).toBe(initial.count - 1);
+      expect(reAdded).toBeDefined();
+      expect(reAdded!.club_id).toBe(assignment.club_id);
+      expect(after.count).toBe(initial.count);
     } finally {
       sqlite.close();
     }

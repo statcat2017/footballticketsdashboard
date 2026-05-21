@@ -67,7 +67,7 @@ describe("database setup", () => {
 
     expect(fs.existsSync(filename)).toBe(true);
     expect(counts).toEqual({
-      competitions: 15,
+      competitions: 30,
       clubs: totalClubs,
       seedFixtures: 4,
       travelRows: 6,

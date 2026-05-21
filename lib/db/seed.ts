@@ -93,6 +93,44 @@ export function seedDatabase(db: SqliteDatabase): void {
       insertCompetition.run(c.code, c.name, c.tier, c.kind ?? "league");
     }
 
+    const insertDivisionCompMapping = db.prepare(`
+      INSERT INTO division_competition_mappings (division_id, competition_code)
+      VALUES (?, ?)
+      ON CONFLICT(division_id) DO UPDATE SET competition_code = excluded.competition_code
+    `);
+    const DIVISION_COMPETITION_MAPPINGS: Array<{ division_id: number; competition_code: string }> = [
+      { division_id: 8, competition_code: "NPLP" },
+      { division_id: 9, competition_code: "ILP" },
+      { division_id: 10, competition_code: "SLPC" },
+      { division_id: 11, competition_code: "SLPS" },
+      { division_id: 15, competition_code: "NPL1E" },
+      { division_id: 16, competition_code: "NPL1M" },
+      { division_id: 17, competition_code: "NPL1W" },
+      { division_id: 18, competition_code: "IL1N" },
+      { division_id: 19, competition_code: "IL1SC" },
+      { division_id: 20, competition_code: "IL1SE" },
+      { division_id: 21, competition_code: "SL1C" },
+      { division_id: 22, competition_code: "SL1S" },
+      { division_id: 23, competition_code: "CC_PN" },
+      { division_id: 24, competition_code: "CC_PS" },
+      { division_id: 25, competition_code: "EC_PREM" },
+      { division_id: 26, competition_code: "ESL" },
+      { division_id: 27, competition_code: "HEL_PREM" },
+      { division_id: 28, competition_code: "MFL_PREM" },
+      { division_id: 29, competition_code: "NCE_PREM" },
+      { division_id: 30, competition_code: "NL_D1" },
+      { division_id: 31, competition_code: "SCE_PREM" },
+      { division_id: 32, competition_code: "SSM_PREM" },
+      { division_id: 33, competition_code: "SCO_PREM" },
+      { division_id: 34, competition_code: "UCL_PN" },
+      { division_id: 35, competition_code: "UCL_PS" },
+      { division_id: 36, competition_code: "WES_PREM" },
+      { division_id: 37, competition_code: "WESL_PREM" },
+    ];
+    for (const m of DIVISION_COMPETITION_MAPPINGS) {
+      insertDivisionCompMapping.run(m.division_id, m.competition_code);
+    }
+
     const insertAppVenue = db.prepare(`
       INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -207,14 +245,11 @@ export function seedDatabase(db: SqliteDatabase): void {
       INSERT OR IGNORE INTO division_assignments (club_id, division_id)
       VALUES (?, ?)
     `);
-    const assignmentCount = db.prepare("SELECT COUNT(*) AS count FROM division_assignments").get() as { count: number };
-    if (assignmentCount.count === 0) {
-      for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
-        if (membership.season_id !== latestPyramidSeasonId) continue;
-        const seasonDivision = seasonDivisionById.get(membership.season_division_id);
-        if (!seasonDivision) continue;
-        insertDivisionAssignment.run(translateClubId(membership.club_id), seasonDivision.division_id);
-      }
+    for (const membership of MEN_PYRAMID_MEMBERSHIPS) {
+      if (membership.season_id !== latestPyramidSeasonId) continue;
+      const seasonDivision = seasonDivisionById.get(membership.season_division_id);
+      if (!seasonDivision) continue;
+      insertDivisionAssignment.run(translateClubId(membership.club_id), seasonDivision.division_id);
     }
 
     const insertPrice = db.prepare(`
