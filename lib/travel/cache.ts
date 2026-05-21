@@ -1,4 +1,4 @@
-import type { AppDatabase } from "../db/adapter.ts";
+import type { AppDatabase, SqlWrite } from "../db/adapter.ts";
 import { distanceMiles } from "../distance.ts";
 import { postcodeCoordinate, postcodeDistrict, type Coordinate } from "../postcode.ts";
 import { lookupTravelEstimate, type TravelProvidersConfig } from "./providers.ts";
@@ -171,6 +171,7 @@ export async function fillTravelCacheForPostcode(
   let rowsInserted = 0;
   let providerBackfilled = 0;
   let distanceOnlySkipped = 0;
+  const insertStatements: SqlWrite[] = [];
 
   for (const venue of venues) {
     const entry = await buildTravelCacheEntry({
@@ -186,18 +187,34 @@ export async function fillTravelCacheForPostcode(
       continue;
     }
 
-    await upsertTravelCacheRow(
-      db,
-      postcodeDistrictValue,
-      entry.venueId,
-      entry.distanceMiles,
-      entry.drivingMinutes,
-      entry.publicTransportMinutes,
-      entry.provider,
-      new Date().toISOString()
-    );
+    insertStatements.push({
+      sql: `INSERT INTO travel_cache (
+        postcode_district, venue_id, distance_miles, driving_minutes,
+        public_transport_minutes, provider, calculated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(postcode_district, venue_id) DO UPDATE SET
+        distance_miles = excluded.distance_miles,
+        driving_minutes = excluded.driving_minutes,
+        public_transport_minutes = excluded.public_transport_minutes,
+        provider = excluded.provider,
+        calculated_at = excluded.calculated_at`,
+      params: [
+        postcodeDistrictValue,
+        entry.venueId,
+        entry.distanceMiles,
+        entry.drivingMinutes,
+        entry.publicTransportMinutes,
+        entry.provider,
+        new Date().toISOString(),
+      ],
+    });
     rowsInserted += 1;
     providerBackfilled += 1;
+  }
+
+  if (insertStatements.length > 0) {
+    await db.writeBatch(insertStatements);
   }
 
   return {
@@ -220,6 +237,7 @@ export async function fillTravelCacheForDistrict(
   let rowsInserted = 0;
   let providerBackfilled = 0;
   let distanceOnlySkipped = 0;
+  const insertStatements: SqlWrite[] = [];
 
   for (const venue of venues) {
     const entry = await buildTravelCacheEntry({
@@ -235,18 +253,34 @@ export async function fillTravelCacheForDistrict(
       continue;
     }
 
-    await upsertTravelCacheRow(
-      db,
-      postcodeDistrictValue,
-      entry.venueId,
-      entry.distanceMiles,
-      entry.drivingMinutes,
-      entry.publicTransportMinutes,
-      entry.provider,
-      new Date().toISOString()
-    );
+    insertStatements.push({
+      sql: `INSERT INTO travel_cache (
+        postcode_district, venue_id, distance_miles, driving_minutes,
+        public_transport_minutes, provider, calculated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(postcode_district, venue_id) DO UPDATE SET
+        distance_miles = excluded.distance_miles,
+        driving_minutes = excluded.driving_minutes,
+        public_transport_minutes = excluded.public_transport_minutes,
+        provider = excluded.provider,
+        calculated_at = excluded.calculated_at`,
+      params: [
+        postcodeDistrictValue,
+        entry.venueId,
+        entry.distanceMiles,
+        entry.drivingMinutes,
+        entry.publicTransportMinutes,
+        entry.provider,
+        new Date().toISOString(),
+      ],
+    });
     rowsInserted += 1;
     providerBackfilled += 1;
+  }
+
+  if (insertStatements.length > 0) {
+    await db.writeBatch(insertStatements);
   }
 
   return {
