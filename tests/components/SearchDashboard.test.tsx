@@ -75,7 +75,8 @@ describe("SearchDashboard", () => {
     expect(buttonsAfter.length).toBe(0);
   });
 
-  it("groups fixtures by date with chronological order", async () => {
+  it("groups fixtures by date when sorted by kick-off", async () => {
+    const user = userEvent.setup();
     const fixtures = [
       customFixture(1, { title: "Match A", fixtureDate: "2026-06-01", kickoffAt: "2026-06-01T15:00:00.000Z", travel: { distanceMiles: 5, drivingMinutes: 30, publicTransportMinutes: 40, source: "cache", publicTransportUrl: null } }),
       customFixture(2, { title: "Match B", fixtureDate: "2026-06-02", kickoffAt: "2026-06-02T15:00:00.000Z", travel: { distanceMiles: 2, drivingMinutes: 15, publicTransportMinutes: 25, source: "cache", publicTransportUrl: null } }),
@@ -84,6 +85,9 @@ describe("SearchDashboard", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(fixtures));
 
     render(<SearchDashboard />);
+
+    const sortSelect = await screen.findByRole("combobox", { name: "Sort fixtures" });
+    await user.selectOptions(sortSelect, "kickoff");
 
     const headers = await screen.findAllByText(/Monday 1 June|Tuesday 2 June/);
     expect(headers.length).toBeGreaterThanOrEqual(2);

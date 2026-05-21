@@ -929,7 +929,9 @@ select {
 }
 
 .ticket-button-disabled {
-  opacity: 0.5;
+  border-color: var(--grey-300);
+  color: var(--grey-500);
+  background: var(--grey-100);
   cursor: default;
   pointer-events: none;
 }

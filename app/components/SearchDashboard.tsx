@@ -179,6 +179,11 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
 
   const groupedResults = useMemo(() => {
     const visible = sortedResults.slice(0, visibleCount);
+
+    if (sortKey !== "kickoff") {
+      return [{ label: "", items: visible }];
+    }
+
     const groups = new Map<string, FixtureResult[]>();
     for (const result of visible) {
       const dateKey = result.fixtureDate ?? result.kickoffAt?.slice(0, 10) ?? "unknown";
@@ -193,10 +198,10 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
       return a.localeCompare(b);
     });
     return sortedKeys.map((key) => ({
-      label: formatDateGroup(groups.get(key)![0].kickoffAt),
+      label: key === "unknown" ? "Date TBC" : formatDateGroup(`${key}T12:00:00.000Z`),
       items: groups.get(key)!
     }));
-  }, [sortedResults, visibleCount]);
+  }, [sortedResults, visibleCount, sortKey]);
 
   const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
   const remainingCount = sortedResults.length - visibleCount;
@@ -410,7 +415,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
 
               return (
                 <div className="date-group" key={idx}>
-                  <div className="date-group-header">{group.label}</div>
+                  {group.label && <div className="date-group-header">{group.label}</div>}
                   {group.items.map((result) => {
                     const compCat = competitionCategory(result.competitionName);
 
@@ -483,7 +488,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
 
               return (
                 <div className="date-group" key={idx}>
-                  <div className="date-group-header">{group.label}</div>
+                  {group.label && <div className="date-group-header">{group.label}</div>}
                   {group.items.map((result) => {
                     const compCat = competitionCategory(result.competitionName);
 
