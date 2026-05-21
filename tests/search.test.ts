@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { QueryParam } from "@/lib/db/adapter";
 import { createAppDatabase } from "@/lib/db/client";
 import { searchFixtures } from "@/lib/search/service";
 
@@ -328,11 +329,11 @@ describe("travel enrichment resilience", () => {
     }));
 
     const originalRun = db.run.bind(db);
-    vi.spyOn(db, "run").mockImplementation((sql: string, ...params: unknown[]) => {
+    vi.spyOn(db, "run").mockImplementation((sql: string, params?: QueryParam[]) => {
       if (sql.includes("INSERT INTO travel_cache")) {
         return Promise.reject(new Error("DB write failed"));
       }
-      return originalRun(sql, ...params);
+      return originalRun(sql, params);
     });
 
     await db.run(`

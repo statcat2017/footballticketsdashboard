@@ -169,7 +169,7 @@ export interface FixtureAdapterParseError {
 
 export interface FixtureAdapterParseResult {
   rows: NormalizedFixtureRow[];
-  errors: FixtureAdapterParseError[] | string[];
+  errors: FixtureAdapterParseError[];
 }
 
 export interface FixtureSourceAdapter<

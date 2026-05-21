@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+interface CloudflareError extends Error {
+  code?: string;
+}
+
 const MISSING_CONTEXT_CODE = "ERR_MISSING_CLOUDFLARE_CONTEXT";
 
 const { getCloudflareContextMock } = vi.hoisted(() => ({
@@ -26,8 +30,8 @@ describe("getCloudflareEnv", () => {
   });
 
   it("falls back to process.env when Cloudflare context is missing (error code)", async () => {
-    const err = new Error("not available");
-    (err as Record<string, string>).code = MISSING_CONTEXT_CODE;
+    const err = new Error("not available") as CloudflareError;
+    err.code = MISSING_CONTEXT_CODE;
     getCloudflareContextMock.mockRejectedValue(err);
 
     process.env.TEST_KEY = "env-value";
@@ -55,8 +59,8 @@ describe("getCloudflareEnv", () => {
   });
 
   it("returns undefined when both Cloudflare and process.env are missing", async () => {
-    const err = new Error("missing");
-    (err as Record<string, string>).code = MISSING_CONTEXT_CODE;
+    const err = new Error("missing") as CloudflareError;
+    err.code = MISSING_CONTEXT_CODE;
     getCloudflareContextMock.mockRejectedValue(err);
 
     const { getCloudflareEnv } = await import("@/lib/runtime-env");
@@ -92,8 +96,8 @@ describe("getTravelProviderRuntimeConfig", () => {
   });
 
   it("falls back to process.env when Cloudflare context is missing", async () => {
-    const err = new Error("getCloudflareContext not available");
-    (err as Record<string, string>).code = MISSING_CONTEXT_CODE;
+    const err = new Error("getCloudflareContext not available") as CloudflareError;
+    err.code = MISSING_CONTEXT_CODE;
     getCloudflareContextMock.mockRejectedValue(err);
 
     process.env.OPENROUTESERVICE_API_KEY = "ors-env";
@@ -110,8 +114,8 @@ describe("getTravelProviderRuntimeConfig", () => {
   });
 
   it("falls back to partial process.env when some Cloudflare keys are missing", async () => {
-    const err = new Error("getCloudflareContext missing");
-    (err as Record<string, string>).code = MISSING_CONTEXT_CODE;
+    const err = new Error("getCloudflareContext missing") as CloudflareError;
+    err.code = MISSING_CONTEXT_CODE;
     getCloudflareContextMock.mockRejectedValue(err);
 
     process.env.OPENROUTESERVICE_API_KEY = "ors-only";

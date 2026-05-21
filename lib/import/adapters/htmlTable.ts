@@ -451,7 +451,7 @@ export const htmlTableFixtureSourceAdapter: FixtureSourceAdapter<
   HtmlTableParseResult,
   HtmlImportResult,
   HtmlTableParseOptions,
-  [actor: string, options?: CreateBatchFromHtmlUrlOptions]
+  [actor: string, options?: CreateBatchFromHtmlUrlOptions & { kickoffAssumptionPolicy?: KickoffAssumptionPolicy }]
 > = {
   sourceType: "url_table_scrape",
   name: "HTML table fixture import",
