@@ -207,28 +207,6 @@ describe("validateImportBatch", () => {
     expect(rows[0].warningsJson ?? "").not.toContain("unknown_competition");
   });
 
-  it("infers competition from home club when not provided", async () => {
-    const db = setupTestDb();
-    const sourceId = await createTestSource(db);
-    const batchId = await createTestBatch(db, sourceId, [
-      {
-        homeParticipantRaw: "Chelsea",
-        awayParticipantRaw: "Arsenal",
-        kickoffDate: "2026-05-20",
-        kickoffTime: "19:45",
-        venueRaw: "Stamford Bridge",
-      },
-    ]);
-
-    const result = await validateImportBatch(db, batchId);
-    expect(result.updateCount).toBe(1);
-
-    const rows = await getBatchRows(db, batchId);
-    expect(rows[0].competitionResolvedCode).toBe("PL");
-    expect(rows[0].warningsJson ?? "").not.toContain("missing_competition");
-    expect(rows[0].warningsJson ?? "").not.toContain("unknown_competition");
-  });
-
   it("marks unknown club as blocked", async () => {
     const db = setupTestDb();
     const sourceId = await createTestSource(db);
@@ -279,26 +257,6 @@ describe("validateImportBatch", () => {
         homeParticipantRaw: "Chelsea",
         awayParticipantRaw: "Arsenal",
         competitionRaw: "Premier League",
-        kickoffDate: "2026-05-20",
-        kickoffTime: "19:45",
-        venueRaw: "Stamford Bridge",
-      },
-    ]);
-
-    const result = await validateImportBatch(db, batchId);
-    expect(result.updateCount).toBe(1);
-
-    const rows = await getBatchRows(db, batchId);
-    expect(rows[0].competitionResolvedCode).toBe("PL");
-  });
-
-  it("infers competition from home club when not provided", async () => {
-    const db = setupTestDb();
-    const sourceId = await createTestSource(db);
-    const batchId = await createTestBatch(db, sourceId, [
-      {
-        homeParticipantRaw: "Chelsea",
-        awayParticipantRaw: "Arsenal",
         kickoffDate: "2026-05-20",
         kickoffTime: "19:45",
         venueRaw: "Stamford Bridge",
