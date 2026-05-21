@@ -58,3 +58,13 @@ jobs:
             set +a
             node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-migrate-prod.ts
             sudo systemctl restart nearmefc
+
+      - name: Health check
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: appuser
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            sleep 3
+            curl -fsS --max-time 10 http://localhost:3000/api/health
