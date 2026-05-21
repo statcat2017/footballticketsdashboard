@@ -1,3 +1,4 @@
+import type { AppDatabase } from "../../db/adapter.ts";
 import type { FixtureAdapterParseError, FixtureSourceAdapter, NormalizedFixtureRow, FixtureStatus, KickoffAssumptionPolicy } from "../types.ts";
 import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../importBatch.ts";
 

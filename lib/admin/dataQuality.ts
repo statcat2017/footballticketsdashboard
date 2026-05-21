@@ -237,20 +237,20 @@ async function duplicateFixtures(db: AppDatabase): Promise<DataQualityIssue[]> {
     home_name: string;
     away_name: string;
   }>(
-    `SELECT
-       MIN(id) AS first_fixture_id,
+     `SELECT
+       MIN(f.id) AS first_fixture_id,
        COUNT(*) AS fixture_count,
-       group_concat(id, ', ') AS fixture_ids,
-       competition_code,
-       season_label,
-       fixture_date,
+       group_concat(f.id, ', ') AS fixture_ids,
+       f.competition_code,
+       f.season_label,
+       f.fixture_date,
        MIN(hc.name) AS home_name,
        MIN(ac.name) AS away_name
      FROM fixtures f
      LEFT JOIN clubs hc ON hc.id = f.home_club_id
      LEFT JOIN clubs ac ON ac.id = f.away_club_id
      WHERE f.home_one_off = 0 AND f.away_one_off = 0 AND f.is_demo_data = 0
-     GROUP BY competition_code, season_label, fixture_date, f.home_club_id, f.away_club_id
+     GROUP BY f.competition_code, f.season_label, f.fixture_date, f.home_club_id, f.away_club_id
      HAVING COUNT(*) > 1
      ORDER BY first_fixture_id
      LIMIT 100`
@@ -267,17 +267,17 @@ async function duplicateFixtures(db: AppDatabase): Promise<DataQualityIssue[]> {
     away_name: string;
   }>(
     `SELECT
-       MIN(id) AS first_fixture_id,
+       MIN(f.id) AS first_fixture_id,
        COUNT(*) AS fixture_count,
-       group_concat(id, ', ') AS fixture_ids,
-       competition_code,
-       season_label,
-       MIN(fixture_date) AS fixture_date,
+       group_concat(f.id, ', ') AS fixture_ids,
+       f.competition_code,
+       f.season_label,
+       MIN(f.fixture_date) AS fixture_date,
        COALESCE(NULLIF(trim(f.home_one_off_name), ''), 'Unknown home') AS home_name,
        COALESCE(NULLIF(trim(f.away_one_off_name), ''), 'Unknown away') AS away_name
      FROM fixtures f
      WHERE f.home_one_off = 1 AND f.away_one_off = 1 AND f.is_demo_data = 0
-     GROUP BY competition_code, season_label, lower(trim(f.home_one_off_name)), lower(trim(f.away_one_off_name))
+     GROUP BY f.competition_code, f.season_label, lower(trim(f.home_one_off_name)), lower(trim(f.away_one_off_name))
      HAVING COUNT(*) > 1
      ORDER BY first_fixture_id
      LIMIT 100`
@@ -294,18 +294,18 @@ async function duplicateFixtures(db: AppDatabase): Promise<DataQualityIssue[]> {
     away_name: string;
   }>(
     `SELECT
-       MIN(id) AS first_fixture_id,
+       MIN(f.id) AS first_fixture_id,
        COUNT(*) AS fixture_count,
-       group_concat(id, ', ') AS fixture_ids,
-       competition_code,
-       season_label,
-       MIN(fixture_date) AS fixture_date,
+       group_concat(f.id, ', ') AS fixture_ids,
+       f.competition_code,
+       f.season_label,
+       MIN(f.fixture_date) AS fixture_date,
        COALESCE(NULLIF(trim(f.home_one_off_name), ''), 'Unknown home') AS home_name,
        MIN(ac.name) AS away_name
      FROM fixtures f
      LEFT JOIN clubs ac ON ac.id = f.away_club_id
      WHERE f.home_one_off = 1 AND f.away_one_off = 0 AND f.is_demo_data = 0
-     GROUP BY competition_code, season_label, lower(trim(f.home_one_off_name)), f.away_club_id
+     GROUP BY f.competition_code, f.season_label, lower(trim(f.home_one_off_name)), f.away_club_id
      HAVING COUNT(*) > 1
      ORDER BY first_fixture_id
      LIMIT 100`
@@ -322,18 +322,18 @@ async function duplicateFixtures(db: AppDatabase): Promise<DataQualityIssue[]> {
     away_name: string;
   }>(
     `SELECT
-       MIN(id) AS first_fixture_id,
+       MIN(f.id) AS first_fixture_id,
        COUNT(*) AS fixture_count,
-       group_concat(id, ', ') AS fixture_ids,
-       competition_code,
-       season_label,
-       MIN(fixture_date) AS fixture_date,
+       group_concat(f.id, ', ') AS fixture_ids,
+       f.competition_code,
+       f.season_label,
+       MIN(f.fixture_date) AS fixture_date,
        MIN(hc.name) AS home_name,
        COALESCE(NULLIF(trim(f.away_one_off_name), ''), 'Unknown away') AS away_name
      FROM fixtures f
      LEFT JOIN clubs hc ON hc.id = f.home_club_id
      WHERE f.home_one_off = 0 AND f.away_one_off = 1 AND f.is_demo_data = 0
-     GROUP BY competition_code, season_label, f.home_club_id, lower(trim(f.away_one_off_name))
+     GROUP BY f.competition_code, f.season_label, f.home_club_id, lower(trim(f.away_one_off_name))
      HAVING COUNT(*) > 1
      ORDER BY first_fixture_id
      LIMIT 100`
