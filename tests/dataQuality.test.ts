@@ -79,8 +79,8 @@ describe("data quality checks", () => {
       INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES (50, 'V', 'TE1 1ST', 51.5, -0.1);
       INSERT INTO clubs (id, name, venue_id) VALUES (200, 'Pub A', 50), (201, 'Pub B', 50);
       INSERT INTO club_aliases (id, club_id, alias, normalized_alias, competition_code) VALUES
-        (1, 200, 'Same', 'same'),
-        (2, 201, 'Same', 'same');
+        (1, 200, 'Same', 'same', NULL),
+        (2, 201, 'Same', 'same', NULL);
     `);
 
     const issues = await runDataQualityChecks(db);
@@ -353,7 +353,7 @@ describe("data quality checks", () => {
       INSERT INTO competitions (id, code, name, tier) VALUES (1, 'PL', 'Premier League', 1);
       INSERT INTO clubs (id, name, venue_id, generic_ticket_url) VALUES
         (200, 'Healthy Public Club', 50, 'https://tickets.example.com');
-      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10);
+      INSERT INTO division_competition_mappings (id, division_id, competition_code) VALUES (1, 10, 'PL');
       INSERT INTO fixtures (id, source, source_id, competition_code, venue_id, home_club_id, away_club_id, kickoff_at, kickoff_time_status, status, source_url) VALUES
         (1, 'test', 'f1', 'PL', 50, 200, 200, '2026-05-20T15:00:00Z', 'confirmed', 'scheduled', 'https://example.com');
       INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, confidence) VALUES
