@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
-import { findImportFixtureMatch } from "@/lib/import/fixtureIdentity";
+import { findImportFixtureCandidateMatches, findImportFixtureMatch } from "@/lib/import/fixtureIdentity";
 import type { ImportBatchRow } from "@/lib/import/types";
 
 function setupTestDb(): AppDatabase {
@@ -210,5 +210,93 @@ describe("findImportFixtureMatch", () => {
     expect(match.kind).toBe("ambiguous");
     if (match.kind !== "ambiguous") return;
     expect(match.count).toBe(2);
+  });
+});
+
+describe("findImportFixtureCandidateMatches", () => {
+  it("returns displayable candidates using resolved fixture identity fields", async () => {
+    const db = setupTestDb();
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      homeParticipantResolvedId: 1,
+      awayParticipantResolvedId: 2,
+      competitionResolvedCode: "PL",
+      kickoffDate: "2026-05-20",
+    }), "2025-26");
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      id: 100,
+      homeName: "Chelsea",
+      awayName: "Arsenal",
+      venueName: "V",
+      fixtureDate: "2026-05-20",
+      status: "scheduled",
+    });
+  });
+
+  it("can suggest matches when one club is still unresolved but date and competition are available", async () => {
+    const db = setupTestDb();
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      awayParticipantResolvedId: 2,
+      competitionResolvedCode: "PL",
+      kickoffDate: "2026-05-20",
+    }), "2025-26");
+
+    expect(candidates.map((candidate) => candidate.id)).toEqual([100]);
+  });
+
+  it("does not return broad suggestions without an identity field beyond competition and season", async () => {
+    const db = setupTestDb();
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      competitionResolvedCode: "PL",
+    }), "2025-26");
+
+    expect(candidates).toEqual([]);
+  });
+
+  it("returns candidates for one-off participant matches", async () => {
+    const db = setupTestDb();
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      homeIsOneOff: true,
+      homeParticipantRaw: "Barcelona XI",
+      competitionResolvedCode: "PL",
+    }), "2025-26");
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].id).toBe(101);
+    expect(candidates[0].homeName).toBe("Barcelona XI");
+    expect(candidates[0].awayName).toBe("Chelsea");
+  });
+
+  it("respects the default limit of 5 candidates", async () => {
+    const db = setupTestDb();
+    db.exec(`
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (201, 'test', 'l1', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (202, 'test', 'l2', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (203, 'test', 'l3', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (204, 'test', 'l4', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (205, 'test', 'l5', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (206, 'test', 'l6', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (207, 'test', 'l7', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (208, 'test', 'l8', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (209, 'test', 'l9', 'PL', 1, 2, 1, '2026-05-20', '15:00', 'confirmed', '2025-26', 'scheduled', 0, 0, 0, 0, 'imported');
+    `);
+    const candidates = await findImportFixtureCandidateMatches(db, row({
+      homeParticipantResolvedId: 1,
+      awayParticipantResolvedId: 2,
+      competitionResolvedCode: "PL",
+      kickoffDate: "2026-05-20",
+    }), "2025-26");
+
+    expect(candidates).toHaveLength(5);
   });
 });
