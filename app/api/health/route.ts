@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 
 export async function GET() {
   const dbPath = process.env.SQLITE_DB_PATH;
@@ -10,11 +10,11 @@ export async function GET() {
     );
   }
 
+  let db: Database.Database | undefined;
+
   try {
-    const db = new Database(dbPath, { readonly: true });
-    db.pragma("journal_mode = WAL");
+    db = new Database(dbPath, { readonly: true });
     db.prepare("SELECT 1").get();
-    db.close();
 
     return NextResponse.json(
       { ok: true, db: true, timestamp: new Date().toISOString() },
@@ -25,5 +25,7 @@ export async function GET() {
       { ok: false, db: false },
       { status: 503, headers: { "Cache-Control": "no-store" } }
     );
+  } finally {
+    db?.close();
   }
 }
