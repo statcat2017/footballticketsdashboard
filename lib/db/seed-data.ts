@@ -1020,21 +1020,40 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
+  // Build map of existing clubs by name and set of all existing IDs
+  // so re-seeds reuse stable IDs and never overwrite manual/admin clubs
+  const existingClubByName = new Map<string, number>();
+  const existingClubIds = new Set<number>();
+  for (const row of await db.all<{ id: number; name: string }>("SELECT id, name FROM clubs")) {
+    existingClubByName.set(row.name, row.id);
+    existingClubIds.add(row.id);
+  }
+
   // Build ID translation: old pyramid_club_id → new clubs.id
   const pyramidToClubId = new Map<number, number>();
   const maxPyramidId = Math.max(...MEN_PYRAMID_CLUBS.map((c) => c.id));
-  const usedClubIds = new Set(SEED_DATA.clubs.map((c) => c.id));
+  const usedClubIds = new Set([...SEED_DATA.clubs.map((c) => c.id), ...existingClubIds]);
   let nextId = Math.max(maxPyramidId, ...usedClubIds) + 1;
+  const allocateNextId = (): number => {
+    while (usedClubIds.has(nextId)) nextId++;
+    usedClubIds.add(nextId);
+    return nextId++;
+  };
   const pyramidClubNames = new Set(SEED_DATA.clubs.map((c) => c.name));
   for (const pc of MEN_PYRAMID_CLUBS) {
     if (pyramidClubNames.has(pc.name)) {
       const seedClub = SEED_DATA.clubs.find((c) => c.name === pc.name)!;
       pyramidToClubId.set(pc.id, seedClub.id);
-    } else if (usedClubIds.has(pc.id)) {
-      pyramidToClubId.set(pc.id, nextId++);
     } else {
-      pyramidToClubId.set(pc.id, pc.id);
-      usedClubIds.add(pc.id);
+      const existingId = existingClubByName.get(pc.name);
+      if (existingId !== undefined) {
+        pyramidToClubId.set(pc.id, existingId);
+      } else if (usedClubIds.has(pc.id)) {
+        pyramidToClubId.set(pc.id, allocateNextId());
+      } else {
+        pyramidToClubId.set(pc.id, pc.id);
+        usedClubIds.add(pc.id);
+      }
     }
   }
   const translateClubId = (pyramidClubId: number): number =>

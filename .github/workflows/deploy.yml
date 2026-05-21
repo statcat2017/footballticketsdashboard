@@ -31,6 +31,7 @@ jobs:
           mkdir -p deploy/lib/db
           cp -r .next/static deploy/.next/static
           cp -r lib/db/migrations deploy/lib/db/migrations
+          cp lib/db/migrate.ts deploy/lib/db/migrate.ts
           cp -r ./scripts deploy/scripts
 
       - name: Deploy to VPS
