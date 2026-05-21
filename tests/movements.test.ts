@@ -448,7 +448,7 @@ describe("applyAllFilledSlots", () => {
     expect(applied).toBe(0);
   });
 
-  it("only applies filled slots, ignoring unfilled ones", async () => {
+  it("clears all slots after applying, including unfilled", async () => {
     const db = createMinimalDb();
     await createSlots(db, 2, 1, "promotion", 3, "test-admin");
 
@@ -463,12 +463,7 @@ describe("applyAllFilledSlots", () => {
     const remaining = await db.get<{ count: number }>(
       "SELECT COUNT(*) AS count FROM movement_slots"
     );
-    expect(remaining!.count).toBe(2);
-
-    const unfilledRows = await db.all<{ club_id: number | null }>(
-      "SELECT club_id FROM movement_slots WHERE club_id IS NULL"
-    );
-    expect(unfilledRows).toHaveLength(2);
+    expect(remaining!.count).toBe(0);
   });
 
   it("writes audit log entries", async () => {

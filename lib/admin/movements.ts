@@ -518,7 +518,7 @@ export async function applyAllFilledSlots(db: AppDatabase, actor: string): Promi
   }
 
   statements.push({
-    sql: "DELETE FROM movement_slots WHERE club_id IS NOT NULL",
+    sql: "DELETE FROM movement_slots",
     params: [],
   });
 

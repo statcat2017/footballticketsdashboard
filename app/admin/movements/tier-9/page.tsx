@@ -41,6 +41,7 @@ export default async function Tier9Page(props: { searchParams?: Promise<Record<s
   const db = await getDatabase();
   const view = await getMovementViewData(db, TIER_MIN, TIER_MAX);
   const divisions = await getDivisionsInTierRange(db, TIER_MIN, TIER_MAX);
+  const targetDivisions = await getDivisionsInTierRange(db, 8, 10);
 
   const clubsByDivision: Record<number, { id: number; name: string }[]> = {};
   for (const div of divisions) {
@@ -92,7 +93,7 @@ export default async function Tier9Page(props: { searchParams?: Promise<Record<s
             <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#6f7e7a", marginBottom: "0.25rem" }}>Target division</label>
             <input name="target_division_id" list="target-divisions" placeholder="Type to search..." style={{ padding: "0.4rem 0.6rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "13px", minWidth: "220px" }} />
             <datalist id="target-divisions">
-              {divisions.map((d) => <option key={d.id} value={String(d.id)}>{d.name} (Tier {d.level})</option>)}
+              {targetDivisions.map((d) => <option key={d.id} value={String(d.id)}>{d.name} (Tier {d.level})</option>)}
             </datalist>
           </div>
 
@@ -149,15 +150,22 @@ export default async function Tier9Page(props: { searchParams?: Promise<Record<s
                         </td>
                         <td style={{ padding: "0.6rem 1rem" }}>
                           {slot.clubId === null ? (
-                            <form method="post" action={`/api/admin/movements/slots/${slot.id}/fill`} style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center" }}>
-                              <input type="hidden" name="csrf" value={csrfToken} />
-                              <input type="hidden" name="redirect_tier" value={REDIRECT_TIER} />
-                              <input name="club_id" list={`clubs-${group.sourceDivisionId}`} placeholder="Pick club..." style={{ padding: "0.2rem 0.4rem", border: "1px solid #dce3e2", borderRadius: "4px", fontSize: "12px", minWidth: "160px" }} />
-                              <datalist id={`clubs-${group.sourceDivisionId}`}>
-                                {(clubsByDivision[group.sourceDivisionId] ?? []).map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-                              </datalist>
-                              <button type="submit" style={{ border: "1px solid #147a4d", borderRadius: "4px", background: "#fff", color: "#147a4d", padding: "0.15rem 0.4rem", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>Fill</button>
-                            </form>
+                            <div style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center" }}>
+                              <form method="post" action={`/api/admin/movements/slots/${slot.id}/fill`} style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center" }}>
+                                <input type="hidden" name="csrf" value={csrfToken} />
+                                <input type="hidden" name="redirect_tier" value={REDIRECT_TIER} />
+                                <input name="club_id" list={`clubs-${group.sourceDivisionId}`} placeholder="Pick club..." style={{ padding: "0.2rem 0.4rem", border: "1px solid #dce3e2", borderRadius: "4px", fontSize: "12px", minWidth: "160px" }} />
+                                <datalist id={`clubs-${group.sourceDivisionId}`}>
+                                  {(clubsByDivision[group.sourceDivisionId] ?? []).map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                                </datalist>
+                                <button type="submit" style={{ border: "1px solid #147a4d", borderRadius: "4px", background: "#fff", color: "#147a4d", padding: "0.15rem 0.4rem", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>Fill</button>
+                              </form>
+                              <form method="post" action={`/api/admin/movements/slots/${slot.id}`} style={{ display: "inline" }}>
+                                <input type="hidden" name="csrf" value={csrfToken} />
+                                <input type="hidden" name="redirect_tier" value={REDIRECT_TIER} />
+                                <button type="submit" style={{ border: "none", background: "none", color: "#6f7e7a", cursor: "pointer", fontSize: "11px", fontWeight: 600, padding: 0, textDecoration: "underline" }}>Delete</button>
+                              </form>
+                            </div>
                           ) : (
                             <form method="post" action={`/api/admin/movements/slots/${slot.id}/unfill`} style={{ display: "inline" }}>
                               <input type="hidden" name="csrf" value={csrfToken} />
