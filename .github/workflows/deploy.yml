@@ -22,10 +22,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Prepare standalone output
+      - name: Prepare standalone bundle
         run: |
-          cp -r .next/standalone/.next .next/standalone/package.json .next/standalone/node_modules .next/standalone/data .next/standalone/lib deploy/
-          mkdir -p deploy/data
+          rm -rf deploy
+          mkdir -p deploy
+          cp -r .next/standalone/. deploy/
+          mkdir -p deploy/.next
+          cp -r .next/static deploy/.next/static
+          cp -r lib/db/migrations deploy/lib/db/migrations
+          cp -r ./scripts deploy/scripts
 
       - name: Deploy to VPS
         uses: easingthemes/ssh-deploy@main
@@ -33,8 +38,9 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY }}
           REMOTE_HOST: ${{ secrets.DEPLOY_HOST }}
           REMOTE_USER: appuser
+          SOURCE: "deploy/"
           TARGET: ${{ secrets.DEPLOY_PATH }}
-          EXCLUDE: "node_modules/, .git/, .next/cache/"
+          EXCLUDE: "data/*.sqlite, data/*.sqlite-shm, data/*.sqlite-wal"
           ARGS: "-rlgoDzvc -i --delete"
 
       - name: Restart app
@@ -45,5 +51,5 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
-            npm run db:migrate
+            node scripts/db-migrate-prod.ts
             sudo systemctl restart nearmefc

@@ -11,7 +11,7 @@
     "import:football-data": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/import-football-data.ts",
     "travel:fill": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/fill-travel-cache.ts",
     "travel:fill:grounds": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/fill-travel-cache-grounds.ts",
-    "start": "node /srv/nearmefc/.next/standalone/server.js",
+    "start": "node .next/standalone/server.js",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
