@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import type Database from "better-sqlite3";
+import Database from "better-sqlite3";
+import type { Database as SqliteDatabase } from "better-sqlite3";
 
 export async function GET() {
   const dbPath = process.env.SQLITE_DB_PATH;
@@ -10,7 +11,7 @@ export async function GET() {
     );
   }
 
-  let db: Database.Database | undefined;
+  let db: SqliteDatabase | undefined;
 
   try {
     db = new Database(dbPath, { readonly: true });
