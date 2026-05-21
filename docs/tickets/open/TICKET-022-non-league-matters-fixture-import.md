@@ -1,6 +1,6 @@
 # TICKET-022: Non-League Matters Fixture Import Proposal
 
-Status: open
+Status: research complete; implementation deferred
 Owner: Offline/Partnership
 Priority: medium
 Depends on: TICKET-012
@@ -23,10 +23,17 @@ Evaluate `nonleaguematters.co.uk` as a practical fixture source for future non-l
 - Any required schema or import changes are identified before implementation.
 - Missing venue data remains explicit rather than silently fabricated.
 
+## Issue #58 Resolution
+
+Resolved as documentation/research. The current recommendation is not to build a dedicated Non League Matters adapter yet because reuse permission, robots constraints, and venue enrichment are unresolved. The existing import model can stage rows with missing venues, but published fixtures still require `venue_id`, so NLM rows should remain reference/review material until an approved venue source or schema/product change exists.
+
+Follow-up implementation, if the source is approved later, should use the source-agnostic HTML table or agentic import adapter rather than a bespoke scraper first.
+
 ## Verification
 
 - Sample scrape notes in the ticket.
 - Import/test plan linked from this ticket.
+- Current recommendation and blockers documented in the feasibility note.
 
 ## Links
 
