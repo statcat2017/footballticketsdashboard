@@ -44,7 +44,7 @@ for (const s of MEN_PYRAMID_SEASONS) {
 
 // Clubs
 for (const c of MEN_PYRAMID_CLUBS) {
-  lines.push(`INSERT INTO clubs (id, name, aliases, league_name, source_url, verified_at, status) VALUES (${c.id}, ${esc(c.name)}, ${esc(c.aliases)}, ${esc(c.league_name)}, ${esc(c.source_url)}, ${esc(c.verified_at)}, ${esc(c.status)}) ON CONFLICT(id) DO UPDATE SET name = excluded.name, aliases = excluded.aliases, league_name = excluded.league_name, source_url = excluded.source_url, verified_at = excluded.verified_at, status = excluded.status;`);
+  lines.push(`INSERT INTO clubs (id, name, aliases, league_name, source_url, verified_at) VALUES (${c.id}, ${esc(c.name)}, ${esc(c.aliases)}, ${esc(c.league_name)}, ${esc(c.source_url)}, ${esc(c.verified_at)}) ON CONFLICT(id) DO UPDATE SET name = excluded.name, aliases = excluded.aliases, league_name = excluded.league_name, source_url = excluded.source_url, verified_at = excluded.verified_at;`);
 }
 
 // Club venue assignments
