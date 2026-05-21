@@ -1,56 +1,13 @@
-import Database from "better-sqlite3";
-
 import { describe, expect, it } from "vitest";
 
-import { applySchema } from "@/lib/db/setup";
-import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import { getAdminClubList, getAdminClubDetail, updateAdminClub } from "@/lib/admin/clubs";
-import type { AppDatabase } from "@/lib/db/adapter";
+import { createAdminFixtureDatabase } from "./adminFixtures";
 
-function createMinimalDb(): AppDatabase {
-  const sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  applySchema(sqlite);
-  const db = createSqliteAppDatabase(sqlite);
-
-  db.exec(`
-    INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (1, 'mens', 'Men''s English Pyramid', 'mens', 'active');
-
-    INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size) VALUES
-      (10, 1, 'premier', 'Premier Division', 1, 20),
-      (11, 1, 'first', 'First Division', 2, 24);
-
-    INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES
-      (1, 1, '2024-25'),
-      (2, 1, '2025-26');
-
-    INSERT INTO clubs (id, name, status) VALUES
-      (100, 'Test Town United', 'known'),
-      (101, 'City Athletic', 'known'),
-      (102, 'Rovers FC', 'partial'),
-      (103, 'Albion FC', 'known');
-
-    INSERT INTO division_assignments (club_id, division_id) VALUES
-      -- 2025-26: Test Town + City + Albion in Premier; Rovers in First
-      (100, 10),
-      (101, 10),
-      (102, 11),
-      (103, 10);
-
-    INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES
-      (50, 'Test Park', 'TE1 1ST', 51.5, -0.1),
-      (51, 'City Ground', 'CT1 2AB', 52.0, -0.2),
-      (52, 'Rovers Stadium', 'RV1 3CD', 53.0, -0.3);
-
-    INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES
-      (100, 100, 50, '2025-08-01', NULL, 1),
-      (101, 101, 51, '2025-08-01', NULL, 1),
-      (102, 102, 52, '2025-08-01', NULL, 0),
-      -- Albion shares Test Park with Test Town
-      (103, 103, 50, '2025-08-01', NULL, 1);
-  `);
-
-  return db;
+function createMinimalDb() {
+  return createAdminFixtureDatabase({
+    includeAlbionGroundshare: true,
+    includePreviousSeason: true
+  });
 }
 
 describe("admin club browser", () => {
