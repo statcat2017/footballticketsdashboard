@@ -5,7 +5,7 @@ import type { FixtureResult } from "@/lib/types";
 import { computeDateRange } from "@/lib/date";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
-type Availability = "available" | "limited" | "check-club";
+type CompetitionCategory = "premier-league" | "efl" | "non-league" | "womens" | "cup" | "friendly";
 
 const moneyFormatter = new Intl.NumberFormat("en-GB", {
   style: "currency",
@@ -22,6 +22,13 @@ const kickoffFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/London"
 });
 
+const dateGroupFormatter = new Intl.DateTimeFormat("en-GB", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: "Europe/London"
+});
+
 const dateRangeFormatter = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
   day: "numeric",
@@ -30,56 +37,90 @@ const dateRangeFormatter = new Intl.DateTimeFormat("en-GB", {
 });
 
 function formatMoney(pence: number | null): string {
-  if (pence === null) {
-    return "TBC";
-  }
-
+  if (pence === null) return "TBC";
   return moneyFormatter.format(pence / 100);
 }
 
 function formatPriceLine(result: FixtureResult): string {
   if (result.price.adultPricePence === null && result.price.concessionPricePence === null) {
-    return "price TBC";
+    return "Price not confirmed";
   }
-
   return `${formatMoney(result.price.adultPricePence)} conc ${formatMoney(result.price.concessionPricePence)}`;
 }
 
 function formatKickoffDate(value: string | null): string {
-  if (value === null) {
-    return "Kick-off TBC";
-  }
-
+  if (value === null) return "Kick-off TBC";
   return kickoffFormatter.format(new Date(value));
+}
+
+function formatDateGroup(value: string | null): string {
+  if (value === null) return "Date TBC";
+  return dateGroupFormatter.format(new Date(value));
 }
 
 function formatDateRange(results: FixtureResult[]): string {
   const dates = results
-    .map((result) => result.kickoffAt)
-    .filter((value): value is string => value !== null)
+    .map((r) => r.kickoffAt)
+    .filter((v): v is string => v !== null)
     .sort();
-
-  if (dates.length === 0) {
-    return "";
-  }
-
+  if (dates.length === 0) return "";
   return `${dateRangeFormatter.format(new Date(dates[0]))} - ${dateRangeFormatter.format(new Date(dates[dates.length - 1]))}`;
 }
 
-function availability(result: FixtureResult): { label: string; tone: Availability } {
-  if (result.price.saleMode === null || result.price.confidence === "unknown") {
-    return { label: "Check club", tone: "check-club" };
-  }
-
-  if (result.price.saleMode === "pay_on_gate") {
-    return { label: "Pay on gate", tone: "limited" };
-  }
-
-  return { label: "All ticket", tone: "available" };
+function formatVerifiedAt(value: string | null): string {
+  if (value === null) return "";
+  const verified = new Date(value);
+  const now = new Date();
+  const diffHours = Math.round((now.getTime() - verified.getTime()) / (1000 * 60 * 60));
+  if (diffHours < 1) return "Just now";
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d ago`;
 }
 
 function travelMinutes(value: number | null): string {
   return value === null ? "TBC" : `${value} min`;
+}
+
+function competitionCategory(name: string): CompetitionCategory {
+  const lower = name.toLowerCase();
+  if (lower.includes("premier")) return "premier-league";
+  if (lower.includes("women") || lower.includes("wsl") || lower.includes("fa wsl")) return "womens";
+  if (lower.includes("fa cup") || lower.includes("efl cup") || lower.includes("carabao") || lower.includes("league cup")) return "cup";
+  if (lower.includes("championship") || lower.includes("league one") || lower.includes("league two") || lower.includes("efl")) return "efl";
+  if (lower.includes("friendly")) return "friendly";
+  return "non-league";
+}
+
+function competitionBadgeLabel(category: CompetitionCategory): string {
+  switch (category) {
+    case "premier-league": return "Premier League";
+    case "efl": return "EFL";
+    case "non-league": return "Non-league";
+    case "womens": return "Women's";
+    case "cup": return "Cup";
+    case "friendly": return "Friendly";
+  }
+}
+
+function featuredReason(result: FixtureResult, allResults: FixtureResult[]): string {
+  const closest = [...allResults].sort((a, b) => a.travel.distanceMiles - b.travel.distanceMiles)[0];
+  if (result.id === closest?.id) return "Closest to you";
+
+  const cheapest = [...allResults]
+    .filter((r) => r.price.adultPricePence !== null)
+    .sort((a, b) => (a.price.adultPricePence ?? Infinity) - (b.price.adultPricePence ?? Infinity))[0];
+  if (result.id === cheapest?.id) return "Best value";
+
+  const fastest = [...allResults]
+    .filter((r) => r.travel.drivingMinutes !== null)
+    .sort((a, b) => (a.travel.drivingMinutes ?? Infinity) - (b.travel.drivingMinutes ?? Infinity))[0];
+  if (result.id === fastest?.id) return "Shortest journey";
+
+  const category = competitionCategory(result.competitionName);
+  if (category === "premier-league") return "Top-flight match";
+
+  return "Recommended";
 }
 
 export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boolean }) {
@@ -89,35 +130,64 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const [results, setResults] = useState<FixtureResult[]>([]);
   const [geoState, setGeoState] = useState<"idle" | "locating" | "failed">("idle");
   const [visibleCount, setVisibleCount] = useState(12);
-  const [sortKey, setSortKey] = useState<"distance" | "kickoff" | "admission">("distance");
-  const [dateFilter, setDateFilter] = useState<"this-weekend" | "next-weekend" | "all-upcoming">("all-upcoming");
+  const [sortKey, setSortKey] = useState<"distance" | "kickoff" | "admission" | "travel">("distance");
+  const [dateFilter, setDateFilter] = useState<"this-weekend" | "next-weekend" | "all-upcoming">("this-weekend");
+  const [compFilter, setCompFilter] = useState<CompetitionCategory | "all">("all");
+  const [travelFilter, setTravelFilter] = useState<"all" | "under30" | "under60">("all");
   const abortRef = useRef<AbortController | null>(null);
 
+  const filteredResults = useMemo(() => {
+    let filtered = [...results];
+    if (compFilter !== "all") {
+      filtered = filtered.filter((r) => competitionCategory(r.competitionName) === compFilter);
+    }
+    if (travelFilter === "under30") {
+      filtered = filtered.filter((r) => r.travel.drivingMinutes !== null && r.travel.drivingMinutes <= 30);
+    } else if (travelFilter === "under60") {
+      filtered = filtered.filter((r) => r.travel.drivingMinutes !== null && r.travel.drivingMinutes <= 60);
+    }
+    return filtered;
+  }, [results, compFilter, travelFilter]);
+
   const sortedResults = useMemo(() => {
-    const sorted = [...results];
+    const sorted = [...filteredResults];
     sorted.sort((a, b) => {
-      if (sortKey === "distance") {
-        return a.travel.distanceMiles - b.travel.distanceMiles;
-      }
-      if (sortKey === "kickoff") {
-        return (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? "");
-      }
+      if (sortKey === "distance") return a.travel.distanceMiles - b.travel.distanceMiles;
+      if (sortKey === "kickoff") return (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? "");
       if (sortKey === "admission") {
         const aVal = a.price.adultPricePence ?? Number.MAX_SAFE_INTEGER;
         const bVal = b.price.adultPricePence ?? Number.MAX_SAFE_INTEGER;
         return aVal - bVal;
       }
+      if (sortKey === "travel") {
+        const aVal = a.travel.drivingMinutes ?? Number.MAX_SAFE_INTEGER;
+        const bVal = b.travel.drivingMinutes ?? Number.MAX_SAFE_INTEGER;
+        return aVal - bVal;
+      }
       return 0;
     });
     return sorted;
-  }, [results, sortKey]);
+  }, [filteredResults, sortKey]);
 
   const resultCount = sortedResults.length;
-  const featuredFixture = useMemo(() => {
-    return sortedResults.length > 0 ? sortedResults[0] : null;
-  }, [sortedResults]);
-  const visibleResults = useMemo(() => sortedResults.slice(0, visibleCount), [sortedResults, visibleCount]);
+  const featuredFixture = sortedResults.length > 0 ? sortedResults[0] : null;
+
+  const groupedResults = useMemo(() => {
+    const visible = sortedResults.slice(0, visibleCount);
+    const groups = new Map<string, { label: string; items: FixtureResult[] }>();
+    for (const result of visible) {
+      const dateKey = result.fixtureDate ?? result.kickoffAt?.slice(0, 10) ?? "unknown";
+      const label = formatDateGroup(result.kickoffAt);
+      if (!groups.has(dateKey)) {
+        groups.set(dateKey, { label, items: [] });
+      }
+      groups.get(dateKey)!.items.push(result);
+    }
+    return groups;
+  }, [sortedResults, visibleCount]);
+
   const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
+  const remainingCount = sortedResults.length - visibleCount;
 
   const runSearch = useCallback(async (searchPostcode: string, options?: { dateFrom?: string; dateTo?: string }) => {
     abortRef.current?.abort();
@@ -148,9 +218,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
       setVisibleCount(12);
       setState("ready");
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setError("Network error — check your connection.");
       setState("error");
     }
@@ -158,9 +226,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
 
   useEffect(() => {
     void runSearch(postcode, computeDateRange(dateFilter));
-    return () => {
-      abortRef.current?.abort();
-    };
+    return () => abortRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSearch]);
 
@@ -176,8 +242,6 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
       });
       const { latitude, longitude } = position.coords;
-      // postcodes.io is a free public API (no key required). Could be routed through a server proxy
-      // if a configured base URL is needed later, but direct client-side use is acceptable for the MVP.
       const res = await fetch(`https://api.postcodes.io/postcodes?latitude=${latitude}&longitude=${longitude}`);
       const data = await res.json();
       const pc: string | undefined = data.result?.[0]?.postcode;
@@ -230,19 +294,36 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         <div className="filters" aria-label="Date filters">
           <button className={`pill ${dateFilter === "this-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("this-weekend"); void runSearch(postcode, computeDateRange("this-weekend")); }}>This weekend</button>
           <button className={`pill ${dateFilter === "next-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("next-weekend"); void runSearch(postcode, computeDateRange("next-weekend")); }}>Next weekend</button>
-          <button className={`pill ${dateFilter === "all-upcoming" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("all-upcoming"); void runSearch(postcode, computeDateRange("all-upcoming")); }}>All upcoming</button>
+          <button className={`pill ${dateFilter === "all-upcoming" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("all-upcoming"); void runSearch(postcode, computeDateRange("all-upcoming")); }}>All dates</button>
         </div>
       </form>
 
       <main className="results" aria-live="polite">
         {state === "ready" && (
           <div className="meta-row">
-            <div><strong>{resultCount} fixtures</strong> within reach{dateRange ? ` · ${dateRange}` : ""}</div>
-            <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => setSortKey(event.target.value as typeof sortKey)}>
-              <option value="distance">Sort by distance</option>
-              <option value="kickoff">Sort by kick-off</option>
-              <option value="admission">Sort by admission</option>
-            </select>
+            <div><strong>{resultCount} fixtures</strong> near {postcode}{dateRange ? ` · ${dateRange}` : ""}</div>
+            <div className="meta-controls">
+              <select className="filter-select" aria-label="Competition filter" value={compFilter} onChange={(event) => setCompFilter(event.target.value as typeof compFilter)}>
+                <option value="all">All competitions</option>
+                <option value="premier-league">Premier League</option>
+                <option value="efl">EFL</option>
+                <option value="non-league">Non-league</option>
+                <option value="womens">Women&apos;s</option>
+                <option value="cup">Cup</option>
+                <option value="friendly">Friendly</option>
+              </select>
+              <select className="filter-select" aria-label="Travel time filter" value={travelFilter} onChange={(event) => setTravelFilter(event.target.value as typeof travelFilter)}>
+                <option value="all">Any travel time</option>
+                <option value="under30">Under 30 min</option>
+                <option value="under60">Under 60 min</option>
+              </select>
+              <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => setSortKey(event.target.value as typeof sortKey)}>
+                <option value="distance">Sort by distance</option>
+                <option value="travel">Sort by travel time</option>
+                <option value="kickoff">Sort by kick-off</option>
+                <option value="admission">Sort by admission</option>
+              </select>
+            </div>
           </div>
         )}
 
@@ -260,10 +341,10 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
           </div>
         )}
 
-        {state === "ready" && results.length === 0 && (
+        {state === "ready" && sortedResults.length === 0 && (
           <div className="state-panel">
-            <strong>No fixtures found for the selected dates.</strong>
-            <span>Try a different postcode, expand your search to &quot;All upcoming&quot;, or check back later for new fixtures.</span>
+            <strong>No fixtures found for the selected filters.</strong>
+            <span>Try expanding your filters or changing the date range.</span>
           </div>
         )}
 
@@ -271,83 +352,189 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
           <section className="featured" aria-label="Featured fixture">
             <div>
               <span className="featured-badge">Featured</span>
+              <span className="featured-reason">{featuredReason(featuredFixture, sortedResults)}</span>
               <h1>{featuredFixture.title}</h1>
-              <p>
-                {featuredFixture.competitionName} · {featuredFixture.venueName} · {formatKickoffDate(featuredFixture.kickoffAt)} · {featuredFixture.travel.distanceMiles.toFixed(1)} miles from {postcode}
+              <p className="featured-meta">
+                <CompetitionBadge category={competitionCategory(featuredFixture.competitionName)} />
+                {" "}{featuredFixture.venueName}{featuredFixture.venuePostcode ? `, ${featuredFixture.venuePostcode}` : ""} · {formatKickoffDate(featuredFixture.kickoffAt)}
               </p>
+              <p className="featured-travel">
+                <span className="chip"><CarIcon /> Drive {travelMinutes(featuredFixture.travel.drivingMinutes)}</span>
+                {featuredFixture.travel.publicTransportMinutes !== null && (
+                  <span className="chip"><TrainIcon /> Transit {travelMinutes(featuredFixture.travel.publicTransportMinutes)}</span>
+                )}
+                <span className="featured-distance">{featuredFixture.travel.distanceMiles.toFixed(1)} miles away</span>
+              </p>
+              {featuredFixture.price.verifiedAt && (
+                <p className="trust-line">Last checked {formatVerifiedAt(featuredFixture.price.verifiedAt)}{featuredFixture.price.sourceUrl ? ` · Source: club website` : ""}</p>
+              )}
             </div>
-            {featuredFixture.genericTicketUrl ? (
-              <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
-            ) : (
-              <button className="ticket-button" type="button">Get tickets</button>
-            )}
+            <div className="featured-actions">
+              {featuredFixture.genericTicketUrl ? (
+                <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
+              ) : (
+                <a className="ticket-button" href={featuredFixture.officialSiteUrl ?? "#"} target="_blank" rel="noreferrer">View match details</a>
+              )}
+            </div>
           </section>
         )}
 
+        {/* Desktop table */}
         {state === "ready" && (
-          <section className="fixtures" aria-label="Fixture list">
+          <section className="fixtures desktop-table" aria-label="Fixture list">
             <div className="grid-row grid-header">
               <div>Match</div>
               <div>Competition</div>
               <div>Venue</div>
               <div>Admission</div>
-              <div>Travel from you</div>
+              <div>Travel time</div>
+              <div></div>
             </div>
 
-            {visibleResults.map((result) => {
-              const ticketState = availability(result);
+            {Array.from(groupedResults.entries()).map(([dateKey, group]) => {
+              if (group.items.length === 0) return null;
 
               return (
-                <article className="grid-row fixture-row" key={result.id}>
-                  <div>
-                    <div className="primary">{result.title}</div>
-                    <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
-                  </div>
-                  <div>{result.competitionName}</div>
-                  <div>
-                    <div>{result.venueName}</div>
-                    <div className="secondary">{result.travel.distanceMiles.toFixed(1)} miles</div>
-                  </div>
-                  <div>
-                    <span className={`badge ${ticketState.tone}`}>{ticketState.label}</span>
-                    <div className="secondary">{formatPriceLine(result)}</div>
-                    {result.price.overrideNote && (
-                      <div className="secondary price-note">{result.price.overrideNote}</div>
-                    )}
-                  </div>
-                  <div className="travel-chips">
-                    <span className="chip">
-                      <CarIcon />
-                      {travelMinutes(result.travel.drivingMinutes)}
-                    </span>
-                    {result.travel.publicTransportUrl ? (
-                      <a className="chip chip-link" href={result.travel.publicTransportUrl} target="_blank" rel="noreferrer">
-                        <TrainIcon />
-                        Google Maps
-                      </a>
-                    ) : (
-                      <span className="chip">
-                        <TrainIcon />
-                        {travelMinutes(result.travel.publicTransportMinutes)}
-                      </span>
-                    )}
-                  </div>
-                </article>
+                <div className="date-group" key={dateKey}>
+                  <div className="date-group-header">{group.label}</div>
+                  {group.items.map((result) => {
+                    const compCat = competitionCategory(result.competitionName);
+
+                    return (
+                      <article className="grid-row fixture-row" key={result.id}>
+                        <div>
+                          <div className="primary">{result.title}</div>
+                          <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
+                        </div>
+                        <div>
+                          <CompetitionBadge category={compCat} />
+                        </div>
+                        <div>
+                          <div>{result.venueName}</div>
+                          <div className="secondary">{result.venuePostcode} · {result.travel.distanceMiles.toFixed(1)} miles</div>
+                        </div>
+                        <div>
+                          <span className="badge check-club">Check club for availability</span>
+                          <div className="secondary">{formatPriceLine(result)}</div>
+                          {result.price.verifiedAt && (
+                            <div className="secondary trust-line">Checked {formatVerifiedAt(result.price.verifiedAt)}</div>
+                          )}
+                        </div>
+                        <div className="travel-chips">
+                          <span className="chip">
+                            <CarIcon />
+                            Drive {travelMinutes(result.travel.drivingMinutes)}
+                          </span>
+                          {result.travel.publicTransportUrl ? (
+                            <a className="chip chip-link" href={result.travel.publicTransportUrl} target="_blank" rel="noreferrer">
+                              <TrainIcon />
+                              Transit {travelMinutes(result.travel.publicTransportMinutes)}
+                            </a>
+                          ) : (
+                            <span className="chip">
+                              <TrainIcon />
+                              Transit {travelMinutes(result.travel.publicTransportMinutes)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="row-action">
+                          {result.genericTicketUrl ? (
+                            <a className="view-link" href={result.genericTicketUrl} target="_blank" rel="noreferrer">Tickets</a>
+                          ) : result.officialSiteUrl ? (
+                            <a className="view-link" href={result.officialSiteUrl} target="_blank" rel="noreferrer">View</a>
+                          ) : (
+                            <span className="view-link view-placeholder">Details</span>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               );
             })}
 
             {visibleCount < sortedResults.length && (
-              <button className="show-more" type="button" onClick={() => setVisibleCount((prev) => prev + 12)}>Show more fixtures</button>
+              <button className="show-more" type="button" onClick={() => setVisibleCount((prev) => prev + 12)}>
+                Show {Math.min(12, remainingCount)} more of {sortedResults.length} fixtures
+              </button>
+            )}
+          </section>
+        )}
+
+        {/* Mobile cards */}
+        {state === "ready" && (
+          <section className="fixtures mobile-cards" aria-label="Fixture list">
+            {Array.from(groupedResults.entries()).map(([dateKey, group]) => {
+              if (group.items.length === 0) return null;
+
+              return (
+                <div className="date-group" key={dateKey}>
+                  <div className="date-group-header">{group.label}</div>
+                  {group.items.map((result) => {
+                    const compCat = competitionCategory(result.competitionName);
+
+                    return (
+                      <article className="fixture-card" key={result.id}>
+                        <div className="fixture-card-header">
+                          <CompetitionBadge category={compCat} />
+                          <span className="fixture-card-distance">{result.travel.distanceMiles.toFixed(1)} mi</span>
+                        </div>
+                        <h3 className="fixture-card-title">{result.title}</h3>
+                        <p className="fixture-card-meta">{formatKickoffDate(result.kickoffAt)}</p>
+                        <p className="fixture-card-venue">{result.venueName}{result.venuePostcode ? `, ${result.venuePostcode}` : ""}</p>
+                        <div className="fixture-card-travel">
+                          <span className="chip"><CarIcon /> Drive {travelMinutes(result.travel.drivingMinutes)}</span>
+                          {result.travel.publicTransportUrl ? (
+                            <a className="chip chip-link" href={result.travel.publicTransportUrl} target="_blank" rel="noreferrer">
+                              <TrainIcon /> Transit {travelMinutes(result.travel.publicTransportMinutes)}
+                            </a>
+                          ) : (
+                            <span className="chip"><TrainIcon /> Transit {travelMinutes(result.travel.publicTransportMinutes)}</span>
+                          )}
+                        </div>
+                        <div className="fixture-card-footer">
+                          <span className="badge check-club">Check club for availability</span>
+                          <span className="fixture-card-price">{formatPriceLine(result)}</span>
+                        </div>
+                        {result.genericTicketUrl ? (
+                          <a className="fixture-card-action" href={result.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
+                        ) : result.officialSiteUrl ? (
+                          <a className="fixture-card-action" href={result.officialSiteUrl} target="_blank" rel="noreferrer">View details</a>
+                        ) : (
+                          <span className="fixture-card-action fixture-card-action-placeholder">View details</span>
+                        )}
+                        {result.price.verifiedAt && (
+                          <p className="trust-line card-trust">Checked {formatVerifiedAt(result.price.verifiedAt)}</p>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              );
+            })}
+
+            {visibleCount < sortedResults.length && (
+              <button className="show-more" type="button" onClick={() => setVisibleCount((prev) => prev + 12)}>
+                Show {Math.min(12, remainingCount)} more of {sortedResults.length} fixtures
+              </button>
             )}
           </section>
         )}
 
         <footer className="footer-strip">
           <span>Pricing incorrect or missing?</span>
-          <a href="mailto:hello@nearme.fc">Let us know</a>
+          <a href="mailto:hello@nearme.fc">Report wrong information</a>
         </footer>
       </main>
     </>
+  );
+}
+
+function CompetitionBadge({ category }: { category: CompetitionCategory }) {
+  return (
+    <span className={`comp-badge comp-${category}`}>
+      {competitionBadgeLabel(category)}
+    </span>
   );
 }
 

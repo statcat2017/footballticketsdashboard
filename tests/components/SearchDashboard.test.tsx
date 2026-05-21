@@ -42,7 +42,7 @@ describe("SearchDashboard", () => {
     expect(screen.getByRole("button", { name: "Locate me" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "This weekend" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next weekend" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "All upcoming" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All dates" })).toBeInTheDocument();
   });
 
   it("shows the empty state when the search API returns no fixtures", async () => {
@@ -50,7 +50,7 @@ describe("SearchDashboard", () => {
 
     render(<SearchDashboard />);
 
-    expect(await screen.findByText("No fixtures found for the selected dates.")).toBeInTheDocument();
+    expect(await screen.findByText("No fixtures found for the selected filters.")).toBeInTheDocument();
     expect(screen.getByText("0 fixtures", { selector: "strong" })).toBeInTheDocument();
   });
 
@@ -61,15 +61,18 @@ describe("SearchDashboard", () => {
 
     render(<SearchDashboard />);
 
-    expect(await screen.findByText("Team 12 v Opponent 12")).toBeInTheDocument();
+    const showMoreButtons = await screen.findAllByRole("button", { name: /Show .+ more of .+ fixtures/ });
+    expect(showMoreButtons.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Team 12 v Opponent 12").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Team 13 v Opponent 13")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Show more fixtures" }));
+    await user.click(showMoreButtons[0]);
 
-    expect(screen.getByText("Team 13 v Opponent 13")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Show more fixtures" })).not.toBeInTheDocument();
+      expect(screen.getAllByText("Team 13 v Opponent 13").length).toBeGreaterThanOrEqual(1);
     });
+    const buttonsAfter = screen.queryAllByRole("button", { name: /Show .+ more of .+ fixtures/ });
+    expect(buttonsAfter.length).toBe(0);
   });
 });
 
