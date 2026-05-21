@@ -324,7 +324,7 @@ async function handleCreateClub(
 
   // Create club (competition_code nullable, no FRIENDLY workaround needed)
   const clubResult = await db.run(
-    `INSERT INTO clubs (name, venue_id, status) VALUES (?, ?, 'partial')`,
+    `INSERT INTO clubs (name, venue_id) VALUES (?, ?)`,
     [name, venueId]
   );
   const newClubId = clubResult.lastInsertRowid;
