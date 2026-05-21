@@ -1,6 +1,51 @@
 import type { AppDatabase } from "../db/adapter.ts";
 import type { ImportBatch, ImportBatchRow, FixtureSource, WarningIssue } from "../import/types.ts";
 import { getBatch, getBatchRows, listBatches, listSources } from "../import/index.ts";
+import { findImportFixtureMatch } from "../import/fixtureIdentity.ts";
+import { getCurrentSeasonLabel } from "../import/shared.ts";
+
+export interface ImportPreviewCounts {
+  insert: number;
+  update: number;
+  blocked: number;
+  skipped: number;
+  pending: number;
+}
+
+export interface ImportUpdatePreview {
+  fixtureId: number;
+  before: Record<string, unknown>;
+}
+
+const skippedPreviewKeys = ["skip", "duplicate_existing_fixture", "duplicate_pending_batch", "duplicate_same_batch"];
+
+export function getImportPreviewCounts(grouped: Record<string, ImportBatchRow[]>): ImportPreviewCounts {
+  return {
+    insert: (grouped.insert ?? []).length,
+    update: (grouped.update ?? []).length,
+    blocked: (grouped.blocked ?? []).length,
+    skipped: skippedPreviewKeys.reduce((sum, key) => sum + (grouped[key] ?? []).length, 0),
+    pending: (grouped.pending ?? []).length,
+  };
+}
+
+export async function getImportUpdatePreviews(
+  db: AppDatabase,
+  rows: ImportBatchRow[],
+  seasonLabel: string | null,
+): Promise<Map<number, ImportUpdatePreview>> {
+  const previews = new Map<number, ImportUpdatePreview>();
+  if (rows.length === 0) return previews;
+
+  const resolvedSeasonLabel = (seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
+  for (const row of rows) {
+    const match = await findImportFixtureMatch(db, row, resolvedSeasonLabel);
+    if (match.kind === "match") {
+      previews.set(row.id, { fixtureId: match.id, before: match.before });
+    }
+  }
+  return previews;
+}
 
 export interface SeasonOption {
   label: string;

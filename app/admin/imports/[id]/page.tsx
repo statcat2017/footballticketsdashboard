@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
-import { getBatchDetail } from "@/lib/admin/imports";
+import { getBatchDetail, getImportPreviewCounts, getImportUpdatePreviews } from "@/lib/admin/imports";
+import type { ImportUpdatePreview } from "@/lib/admin/imports";
 import type { ImportBatchRow, WarningIssue } from "@/lib/import/types";
 import { MapEditorWrapper } from "@/app/admin/venues/_components/MapEditorWrapper";
 
@@ -13,14 +14,6 @@ const sBlocked = { bg: "#fde9e5", fg: "#a53a2d", border: "#f0beb7", label: "Bloc
 const sSkip = { bg: "#f5f6f6", fg: "#6f7e7a", border: "#dce3e2", label: "Skip" };
 const sPending = { bg: "#fdf3e9", fg: "#8a5a00", border: "#f0d5b7", label: "Pending" };
 const sImported = { bg: "#e8f4f1", fg: "#0e5737", border: "#b8d9cf", label: "Imported" };
-
-function countActive(grouped: Record<string, ImportBatchRow[]>): { blocked: number; ready: number; pending: number } {
-  return {
-    blocked: (grouped.blocked ?? []).length,
-    ready: (grouped.insert ?? []).length + (grouped.update ?? []).length,
-    pending: (grouped.pending ?? []).length,
-  };
-}
 
 export default async function AdminImportDetailPage({
   params,
@@ -51,7 +44,7 @@ export default async function AdminImportDetailPage({
   }
 
   const { batch, source, activeGrouped, finalizedRows } = detail;
-  const counts = countActive(activeGrouped);
+  const counts = getImportPreviewCounts(activeGrouped);
   const finalizedInsert = finalizedRows.filter((r) => r.finalAction === "insert" || r.finalAction === "update");
   const finalizedSkip = finalizedRows.filter((r) => r.finalAction === "skip");
   const hasBeenApplied = batch.approvalStatus === "approved" || batch.approvalStatus === "partially_approved";
@@ -67,6 +60,7 @@ export default async function AdminImportDetailPage({
   const duplicatePendingRows = detail.grouped.duplicate_pending_batch ?? [];
   const duplicateSameBatchRows = detail.grouped.duplicate_same_batch ?? [];
   const applyableCount = insertRows.length + updateRows.length;
+  const updatePreviews = await getImportUpdatePreviews(db, updateRows, batch.seasonLabel);
 
   // Fetch data needed for inline forms
   const clubs = await db.all<{ id: number; name: string }>(`SELECT id, name FROM clubs ORDER BY name`);
@@ -163,11 +157,12 @@ export default async function AdminImportDetailPage({
       {(insertRows.length > 0 || updateRows.length > 0) && (
         <section style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.75rem", color: "#0e5737" }}>
-            Ready to import ({insertRows.length + updateRows.length})
+            Ready to import ({insertRows.length} insert, {updateRows.length} update)
           </h2>
 
           {insertRows.length > 0 && (
             <>
+              <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem", color: "#0e5737" }}>Insert ({insertRows.length})</h3>
               {insertRows.map((row) => (
                 <FixtureCard
                   key={row.id}
@@ -185,20 +180,26 @@ export default async function AdminImportDetailPage({
             </>
           )}
 
-          {updateRows.map((row) => (
-            <FixtureCard
-              key={row.id}
-              row={row}
-              csrfToken={csrfToken}
-              batchId={batchId}
-              mode="ready"
-              clubs={clubs}
-              venues={venues}
-              competitions={competitions}
-              acknowledgedKeys={acknowledgedKeys}
-              acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
-            />
-          ))}
+          {updateRows.length > 0 && (
+            <>
+              <h3 style={{ fontSize: "0.95rem", margin: insertRows.length > 0 ? "1rem 0 0.5rem" : "0 0 0.5rem", color: "#0e5737" }}>Update ({updateRows.length})</h3>
+              {updateRows.map((row) => (
+                <FixtureCard
+                  key={row.id}
+                  row={row}
+                  csrfToken={csrfToken}
+                  batchId={batchId}
+                  mode="ready"
+                  clubs={clubs}
+                  venues={venues}
+                  competitions={competitions}
+                  acknowledgedKeys={acknowledgedKeys}
+                  acknowledgedRowKeys={acknowledgedRowKeys.get(row.id) ?? new Set()}
+                  updatePreview={updatePreviews.get(row.id)}
+                />
+              ))}
+            </>
+          )}
 
           {applyableCount > 0 && (
             <div style={{ marginTop: "0.75rem" }}>
@@ -326,7 +327,7 @@ function MetaCard({ label, value }: { label: string; value: string }) {
 }
 
 function SummaryBar({ counts, finalizedInsert, finalizedSkip }: {
-  counts: { blocked: number; ready: number; pending: number };
+  counts: { insert: number; update: number; blocked: number; skipped: number; pending: number };
   finalizedInsert: number;
   finalizedSkip: number;
 }) {
@@ -337,8 +338,14 @@ function SummaryBar({ counts, finalizedInsert, finalizedSkip }: {
       {counts.blocked > 0 && (
         <SummaryBadge count={counts.blocked} label="Blocked" bg={sBlocked.bg} fg={sBlocked.fg} />
       )}
-      {counts.ready > 0 && (
-        <SummaryBadge count={counts.ready} label="Ready" bg={sInsert.bg} fg={sInsert.fg} />
+      {counts.insert > 0 && (
+        <SummaryBadge count={counts.insert} label="Insert" bg={sInsert.bg} fg={sInsert.fg} />
+      )}
+      {counts.update > 0 && (
+        <SummaryBadge count={counts.update} label="Update" bg={sInsert.bg} fg={sInsert.fg} />
+      )}
+      {counts.skipped > 0 && (
+        <SummaryBadge count={counts.skipped} label="Skipped" bg={sSkip.bg} fg={sSkip.fg} />
       )}
       {counts.pending > 0 && (
         <SummaryBadge count={counts.pending} label="Pending" bg={sPending.bg} fg={sPending.fg} />
@@ -365,7 +372,7 @@ function SummaryBadge({ count, label, bg, fg }: { count: number; label: string; 
   );
 }
 
-function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competitions, acknowledgedKeys, acknowledgedRowKeys }: {
+function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competitions, acknowledgedKeys, acknowledgedRowKeys, updatePreview }: {
   row: ImportBatchRow;
   csrfToken: string;
   batchId: number;
@@ -375,6 +382,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
   competitions: { code: string; name: string; kind: string }[];
   acknowledgedKeys: Set<string>;
   acknowledgedRowKeys: Set<string>;
+  updatePreview?: ImportUpdatePreview;
 }) {
   const warnings = parseWarnings(row.warningsJson);
   const blockers = warnings.filter((w) => w.severity === "blocker");
@@ -508,6 +516,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
   }
 
   const showRepairForms = mode === "blocked" && uniqueBlockers.length > 0;
+  const updatePreviewRows = updatePreview ? buildUpdatePreviewRows(row, updatePreview, venues) : [];
 
   return (
     <div id={`fixture-${row.id}`} style={{
@@ -554,6 +563,32 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubs, venues, competition
           </tbody>
         </table>
       </div>
+
+      {updatePreviewRows.length > 0 && (
+        <div style={{ padding: "0.5rem 1rem", borderTop: "1px solid #f0f1f1", background: "#fafbfb" }}>
+          <div style={{ fontSize: "12px", fontWeight: 700, color: "#0e5737", marginBottom: "0.35rem" }}>
+            Updating fixture #{updatePreview?.fixtureId}: current vs proposed
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+            <thead>
+              <tr style={{ color: "#6f7e7a", textAlign: "left" }}>
+                <th style={{ padding: "0.25rem 0.5rem 0.25rem 0" }}>Field</th>
+                <th style={{ padding: "0.25rem 0.5rem" }}>Current</th>
+                <th style={{ padding: "0.25rem 0.5rem" }}>Proposed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {updatePreviewRows.map((previewRow) => (
+                <tr key={previewRow.field} style={{ borderTop: "1px solid #eef1f1" }}>
+                  <td style={{ padding: "0.3rem 0.5rem 0.3rem 0", fontWeight: 700, color: "#6f7e7a" }}>{previewRow.field}</td>
+                  <td style={{ padding: "0.3rem 0.5rem", color: "#17221f" }}>{previewRow.current}</td>
+                  <td style={{ padding: "0.3rem 0.5rem", color: "#0e5737", fontWeight: 600 }}>{previewRow.proposed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Inline repair forms for blocked items */}
       {showRepairForms && (
@@ -639,6 +674,52 @@ function dedupeIssues(issues: WarningIssue[]): WarningIssue[] {
     seen.add(key);
     return true;
   });
+}
+
+function buildUpdatePreviewRows(
+  row: ImportBatchRow,
+  preview: ImportUpdatePreview,
+  venues: { id: number; name: string; postcode: string }[],
+): Array<{ field: string; current: string; proposed: string }> {
+  const before = preview.before;
+  const rows: Array<{ field: string; current: string; proposed: string }> = [];
+
+  const venueName = (value: unknown) => {
+    if (typeof value !== "number") return formatEmpty(value);
+    return venues.find((v) => v.id === value)?.name ?? `Venue #${value}`;
+  };
+
+  rows.push({ field: "Venue", current: venueName(before.venue_id), proposed: venueName(row.venueResolvedId) });
+  rows.push({ field: "Kickoff date", current: formatEmpty(before.fixture_date), proposed: formatEmpty(row.kickoffDate) });
+  rows.push({ field: "Kickoff time", current: formatKickoffTime(before.kickoff_time, before.kickoff_time_status), proposed: formatKickoffTime(row.kickoffTime, row.kickoffTime ? "confirmed" : null) });
+  rows.push({ field: "Status", current: formatEmpty(before.status), proposed: formatEmpty(row.status) });
+
+  if (row.ticketUrl || before.ticket_url) {
+    rows.push({ field: "Ticket URL", current: formatEmpty(before.ticket_url), proposed: formatEmpty(row.ticketUrl) });
+  }
+  if (row.adultPricePence !== null || before.adult_price_pence !== undefined) {
+    rows.push({ field: "Adult price", current: formatPence(before.adult_price_pence), proposed: formatPence(row.adultPricePence) });
+  }
+  if (row.concessionPricePence !== null || before.concession_price_pence !== undefined) {
+    rows.push({ field: "Concession price", current: formatPence(before.concession_price_pence), proposed: formatPence(row.concessionPricePence) });
+  }
+
+  return rows.filter((previewRow) => previewRow.current !== previewRow.proposed);
+}
+
+function formatKickoffTime(value: unknown, status: unknown): string {
+  const formatted = formatEmpty(value);
+  if (formatted === "—") return formatted;
+  return typeof status === "string" && status ? `${formatted} (${status})` : formatted;
+}
+
+function formatPence(value: unknown): string {
+  return typeof value === "number" ? `£${(value / 100).toFixed(2)}` : "—";
+}
+
+function formatEmpty(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
 }
 
 function parseWarnings(json: string | null): WarningIssue[] {
