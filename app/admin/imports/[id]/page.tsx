@@ -1,13 +1,22 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { requireAdminPageSession } from "@/lib/admin/auth";
-import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
 import { getImportPreviewCounts, getImportUpdatePreviews, type ImportUpdatePreview } from "@/lib/admin/imports";
 import type { ImportBatch, ImportBatchRow, WarningIssue } from "@/lib/import/types";
 import { getBatch, getBatchRows, listSources } from "@/lib/import/index";
 import { findImportFixtureCandidateMatchesForRows, type FixtureCandidateMatch } from "@/lib/import/fixtureIdentity";
-import { LazyMapEditor } from "@/app/components/LazyMapEditor";
+import { RevalidateAllButton } from "./_components/RevalidateAllButton";
+import { BulkApplyForm } from "./_components/BulkApplyForm";
+import { DeleteBatchForm } from "./_components/DeleteBatchForm";
+import { ImportButton } from "./_components/ImportButton";
+import { SkipForm } from "./_components/SkipForm";
+import { RowEditForm } from "./_components/RowEditForm";
+import { CreateCompetitionForm } from "./_components/CreateCompetitionForm";
+import { MatchClubForm } from "./_components/MatchClubForm";
+import { CreateClubForm } from "./_components/CreateClubForm";
+import { VenueRepairForm } from "./_components/VenueRepairForm";
+import { TicketRepairForm } from "./_components/TicketRepairForm";
 
 export const dynamic = "force-dynamic";
 
@@ -19,15 +28,11 @@ const sImported = { bg: "#e8f4f1", fg: "#0e5737", border: "#b8d9cf", label: "Imp
 
 export default async function AdminImportDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ [key: string]: string | undefined }>;
 }) {
   await requireAdminPageSession();
-  const csrfToken = await createAdminCsrfToken();
   const { id } = await params;
-  const sp = await searchParams;
 
   const batchId = parseInt(id, 10);
   if (isNaN(batchId)) return <div>Invalid batch ID.</div>;
@@ -48,9 +53,6 @@ export default async function AdminImportDetailPage({
   const allSources = await listSources(db);
   const source = allSources.find((s) => s.id === batch.sourceId);
 
-  const error = sp.error;
-  const success = sp.success;
-
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
       <header style={{
@@ -62,32 +64,8 @@ export default async function AdminImportDetailPage({
         <h1 style={{ margin: "0.25rem 0 0", fontSize: "1.5rem" }}>Batch #{batch.id}</h1>
       </header>
 
-      {error && (
-        <div style={{
-          border: "1px solid #f0beb7", borderRadius: "8px",
-          background: "#fde9e5", padding: "0.75rem 1rem",
-          marginBottom: "1rem", color: "#a53a2d", fontSize: "14px"
-        }}>{error}</div>
-      )}
-
-      {success && (
-        <div style={{
-          border: "1px solid #b8d9cf", borderRadius: "8px",
-          background: "#e8f4f1", padding: "0.75rem 1rem",
-          marginBottom: "1rem", color: "#0e5737", fontSize: "14px", fontWeight: 600
-        }}>{success}</div>
-      )}
-
       <div style={{ marginBottom: "1rem" }}>
-        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "inline-block" }}>
-          <input type="hidden" name="csrf" value={csrfToken} />
-          <input type="hidden" name="_action" value="revalidate_all" />
-          <button type="submit" style={{
-            border: "1px solid #dce3e2", borderRadius: "6px",
-            background: "#fff", color: "#17221f",
-            padding: "0.4rem 1rem", fontSize: "13px", fontWeight: 600, cursor: "pointer"
-          }}>Revalidate all</button>
-        </form>
+        <RevalidateAllButton batchId={batchId} />
       </div>
 
       {/* Meta */}
@@ -105,7 +83,7 @@ export default async function AdminImportDetailPage({
       </section>
 
       <Suspense fallback={<CardSkeleton />}>
-        <FixtureCardSection db={db} batchId={batchId} batch={batch} csrfToken={csrfToken} />
+        <FixtureCardSection db={db} batchId={batchId} batch={batch} />
       </Suspense>
     </main>
   );
@@ -127,12 +105,11 @@ function CardSkeleton() {
 }
 
 async function FixtureCardSection({
-  db, batchId, batch, csrfToken
+  db, batchId, batch
 }: {
   db: import("@/lib/db/adapter").AppDatabase;
   batchId: number;
   batch: ImportBatch;
-  csrfToken: string;
 }) {
   const allRows = await getBatchRows(db, batchId);
   const activeRows = allRows.filter((r) => !r.finalAction);
@@ -206,7 +183,6 @@ async function FixtureCardSection({
             <FixtureCard
               key={row.id}
               row={row}
-              csrfToken={csrfToken}
               batchId={batchId}
               mode="blocked"
               clubById={clubById}
@@ -238,7 +214,6 @@ async function FixtureCardSection({
                 <FixtureCard
                   key={row.id}
                   row={row}
-                  csrfToken={csrfToken}
                   batchId={batchId}
                   mode="ready"
                   clubById={clubById}
@@ -264,7 +239,6 @@ async function FixtureCardSection({
                 <FixtureCard
                   key={row.id}
                   row={row}
-                  csrfToken={csrfToken}
                   batchId={batchId}
                   mode="ready"
                   clubById={clubById}
@@ -286,7 +260,7 @@ async function FixtureCardSection({
 
           {applyableCount > 0 && (
             <div style={{ marginTop: "0.75rem" }}>
-              <BulkApplyForm batchId={batchId} csrfToken={csrfToken} applyableCount={applyableCount} />
+              <BulkApplyForm batchId={batchId} applyableCount={applyableCount} />
             </div>
           )}
         </section>
@@ -301,7 +275,6 @@ async function FixtureCardSection({
             <FixtureCard
               key={row.id}
               row={row}
-              csrfToken={csrfToken}
               batchId={batchId}
               mode="pending"
               clubById={clubById}
@@ -388,7 +361,7 @@ async function FixtureCardSection({
       )}
 
       {!hasBeenApplied && (
-        <DangerZone batchId={batchId} csrfToken={csrfToken} />
+        <DeleteBatchForm batchId={batchId} />
       )}
     </>
   );
@@ -454,9 +427,8 @@ function SummaryBadge({ count, label, bg, fg }: { count: number; label: string; 
   );
 }
 
-function FixtureCard({ row, csrfToken, batchId, mode, clubById, venueById, venueByName, compByCode, clubs, venues, competitions, warnings, possibleMatches, acknowledgedKeys, acknowledgedRowKeys, updatePreview }: {
+function FixtureCard({ row, batchId, mode, clubById, venueById, venueByName, compByCode, clubs, venues, competitions, warnings, possibleMatches, acknowledgedKeys, acknowledgedRowKeys, updatePreview }: {
   row: ImportBatchRow;
-  csrfToken: string;
   batchId: number;
   mode: "blocked" | "ready" | "pending";
   clubById: Map<number, { id: number; name: string }>;
@@ -690,7 +662,6 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubById, venueById, venue
                 issue={issue}
                 rowId={row.id}
                 batchId={batchId}
-                csrfToken={csrfToken}
                 homeResolvedId={row.homeParticipantResolvedId}
                 competitionResolvedCode={row.competitionResolvedCode}
                 clubs={clubs}
@@ -705,7 +676,7 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubById, venueById, venue
       {/* Ticket info repair form inline (for ready/blocked with missing tickets) */}
       {(mode === "ready" || mode === "blocked") && warningMap.has("missing_ticket_info") && (
         <div style={{ padding: "0 1rem 0.75rem" }}>
-          <TicketRepairForm rowId={row.id} batchId={batchId} csrfToken={csrfToken}
+          <TicketRepairForm rowId={row.id} batchId={batchId}
             homeResolvedId={row.homeParticipantResolvedId} />
         </div>
       )}
@@ -716,24 +687,15 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubById, venueById, venue
           padding: "0.5rem 1rem", borderTop: "1px solid #eef1f1",
           display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap"
         }}>
-          <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "inline" }}>
-            <input type="hidden" name="csrf" value={csrfToken} />
-            <input type="hidden" name="_action" value="import_row" />
-            <input type="hidden" name="row_id" value={row.id} />
-            <button type="submit" style={{
-              border: "1px solid #147a4d", borderRadius: "6px",
-              background: "#147a4d", color: "#fff",
-              padding: "0.4rem 1rem", fontSize: "13px", fontWeight: 700, cursor: "pointer"
-            }}>Import this fixture</button>
-          </form>
+          <ImportButton batchId={batchId} rowId={row.id} />
 
-          <SkipForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} />
+          <SkipForm batchId={batchId} rowId={row.id} />
 
           <details style={{ display: "inline-block" }}>
             <summary style={{
               cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
             }}>Edit fields</summary>
-            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} competitions={competitions} />
+            <RowEditForm batchId={batchId} rowId={row.id} row={row} competitions={competitions} />
           </details>
         </div>
       )}
@@ -743,13 +705,13 @@ function FixtureCard({ row, csrfToken, batchId, mode, clubById, venueById, venue
           padding: "0.5rem 1rem", borderTop: "1px solid #eef1f1",
           display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap"
         }}>
-          <SkipForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} />
+          <SkipForm batchId={batchId} rowId={row.id} />
 
           <details style={{ display: "inline-block" }}>
             <summary style={{
               cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a", padding: "0.25rem 0.5rem"
             }}>Edit fields</summary>
-            <RowEditForm rowId={row.id} batchId={batchId} csrfToken={csrfToken} row={row} competitions={competitions} />
+            <RowEditForm batchId={batchId} rowId={row.id} row={row} competitions={competitions} />
           </details>
         </div>
       )}
@@ -861,11 +823,10 @@ function formatCandidateKickoff(candidate: FixtureCandidateMatch): string {
 
 /* ── Issue Repair Forms ── */
 
-function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competitionResolvedCode, clubs, venues, competitions }: {
+function IssueRepair({ issue, rowId, batchId, homeResolvedId, competitionResolvedCode, clubs, venues, competitions }: {
   issue: WarningIssue;
   rowId: number;
   batchId: number;
-  csrfToken: string;
   homeResolvedId: number | null;
   competitionResolvedCode: string | null;
   clubs: { id: number; name: string }[];
@@ -874,464 +835,27 @@ function IssueRepair({ issue, rowId, batchId, csrfToken, homeResolvedId, competi
 }) {
   switch (issue.code) {
     case "unknown_competition":
-      return <CompetitionRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""} competitions={competitions ?? []} />;
+      return (
+        <div style={{ marginTop: "0.25rem" }}>
+          <RowEditForm batchId={batchId} rowId={rowId} row={{ competitionRaw: issue.rawValue ?? "" } as ImportBatchRow} competitions={competitions ?? []} />
+          <CreateCompetitionForm batchId={batchId} rawValue={issue.rawValue ?? ""} code={issue.rawValue?.replace(/[^a-z0-9]/gi, "_").toUpperCase() ?? ""} />
+        </div>
+      );
     case "unknown_club":
       return (
         <div>
-          <MatchClubForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
+          <MatchClubForm batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
             competitionCode={competitionResolvedCode} clubs={clubs} />
-          <CreateClubForm csrfToken={csrfToken} batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
+          <CreateClubForm batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""}
             venues={venues} />
         </div>
       );
     case "missing_primary_venue":
-      return <VenueRepairForm csrfToken={csrfToken} batchId={batchId} rowId={rowId}
+      return <VenueRepairForm batchId={batchId} rowId={rowId}
         clubId={homeResolvedId} venues={venues} />;
     default:
       return null;
   }
-}
-
-function CompetitionRepairForm({ csrfToken, batchId, rowId, rawValue, competitions }: {
-  csrfToken: string; batchId: number; rowId: number; rawValue: string;
-  competitions: { code: string; name: string; kind: string }[];
-}) {
-  const code = rawValue.replace(/[^a-z0-9]/gi, "_").toUpperCase();
-  const compDefault = (() => {
-    const match = competitions.find(
-      (c) => c.code === rawValue || c.name === rawValue
-    );
-    return match?.code ?? "";
-  })();
-  return (
-    <div style={{ marginTop: "0.25rem" }}>
-      {/* Select existing competition or friendly */}
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-        display: "grid", gap: "0.5rem",
-        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-        border: "1px solid #dce3e2"
-      }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="edit_row" />
-        <input type="hidden" name="row_id" value={rowId} />
-
-        <label style={labelStyle}>Competition
-          <select name="competitionRaw" defaultValue={compDefault} style={inputStyle} id={`comp-select-${rowId}`}>
-            <option value="">-- Select competition --</option>
-            {competitions.map((c) => (
-              <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
-            ))}
-          </select>
-        </label>
-
-        <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
-          <input type="checkbox" name="isFriendly" value="1" style={{ transform: "scale(1.2)" }} />
-          This is a friendly (no formal competition)
-        </label>
-
-        <button type="submit" style={greenBtnStyle}>Set competition & revalidate</button>
-      </form>
-
-      {/* Create formal competition (advanced) */}
-      <details style={{ marginTop: "0.5rem" }}>
-        <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#6f7e7a" }}>
-          Create new competition instead
-        </summary>
-        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
-          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-          border: "1px solid #dce3e2"
-        }}>
-          <input type="hidden" name="csrf" value={csrfToken} />
-          <input type="hidden" name="_action" value="create_competition" />
-          <input type="hidden" name="redirect_row_id" value={rowId} />
-
-          <label style={labelStyle}>Code
-            <input name="code" defaultValue={code} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>Name
-            <input name="name" defaultValue={rawValue} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>Kind
-            <select name="kind" defaultValue="cup" style={inputStyle}>
-              <option value="cup">Cup</option>
-              <option value="league">League</option>
-            </select>
-          </label>
-          <label style={labelStyle}>Tier <span style={{ fontWeight: 400, color: "#6f7e7a" }}>(only used for league)</span>
-            <input name="tier" type="number" min="1" max="10" defaultValue={code.startsWith("T") ? code.slice(1) : "7"} style={inputStyle} />
-          </label>
-          <button type="submit" style={greenBtnStyle}>Create & revalidate batch</button>
-        </form>
-      </details>
-    </div>
-  );
-}
-
-function MatchClubForm({ csrfToken, batchId, rowId, rawValue, competitionCode, clubs }: {
-  csrfToken: string; batchId: number; rowId: number; rawValue: string;
-  competitionCode: string | null;
-  clubs: { id: number; name: string }[];
-}) {
-  return (
-    <details style={{ marginTop: "0.25rem" }}>
-      <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
-        Fix: Match club
-      </summary>
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-        marginTop: "0.5rem", display: "grid", gap: "0.5rem",
-        padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-        border: "1px solid #dce3e2", maxWidth: "400px"
-      }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="match_existing_club" />
-        <input type="hidden" name="redirect_row_id" value={rowId} />
-
-        <label style={labelStyle}>Alias (raw name from import)
-          <input name="alias" defaultValue={rawValue} style={inputStyle} />
-        </label>
-        <label style={labelStyle}>Match to club
-          <select name="club_id" required style={inputStyle}>
-            <option value="">Select club...</option>
-            {clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
-        <label style={labelStyle}>Scope
-          <select name="competition_code" style={inputStyle}>
-            <option value="">Global (unscoped)</option>
-            {competitionCode && <option value={competitionCode}>{competitionCode}</option>}
-          </select>
-        </label>
-        <button type="submit" style={greenBtnStyle}>Add alias & revalidate</button>
-      </form>
-    </details>
-  );
-}
-
-function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
-  csrfToken: string; batchId: number; rowId: number; rawValue: string;
-  venues: { id: number; name: string; postcode: string }[];
-}) {
-  const p = "create_venue_";
-  const latId = `${p}lat-${rowId}`;
-  const lngId = `${p}lng-${rowId}`;
-  const approxId = `${p}approx-${rowId}`;
-  const precId = `${p}precision-${rowId}`;
-  return (
-    <details style={{ marginTop: "0.25rem" }}>
-      <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#a53a2d" }}>
-        Fix: Create new club
-      </summary>
-        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
-          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-          border: "1px solid #dce3e2"
-        }}>
-          <input type="hidden" name="csrf" value={csrfToken} />
-          <input type="hidden" name="_action" value="create_club" />
-        <input type="hidden" name="redirect_row_id" value={rowId} />
-        <input type="hidden" name="alias" value={rawValue} />
-
-        <label style={labelStyle}>Club name
-          <input name="name" defaultValue={rawValue} required style={inputStyle} />
-        </label>
-
-        <fieldset style={{ border: "1px solid #dce3e2", borderRadius: "6px", padding: "0.5rem", margin: 0 }}>
-          <legend style={{ fontSize: "12px", fontWeight: 600, color: "#34413e" }}>Venue</legend>
-            <label style={labelStyle}>Use existing venue
-            <select name="venue_id" style={inputStyle}>
-              <option value="">-- Create new venue below --</option>
-              {venues.map((v) => <option key={v.id} value={v.id}>#{v.id} {v.name}, {v.postcode}</option>)}
-            </select>
-          </label>
-
-          <div style={{ marginTop: "0.5rem", display: "grid", gap: "0.4rem" }}>
-            <label style={labelStyle}>New venue name
-              <input name={`${p}name`} style={inputStyle} />
-            </label>
-
-            <LazyMapEditor
-              isApproximate={false}
-              latInputId={latId}
-              lngInputId={lngId}
-              approxInputId={approxId}
-              precisionInputId={precId}
-              mode="create"
-              postcodeName={`${p}postcode`}
-            />
-
-            <input id={latId} name={`${p}latitude`} type="number" step="any" style={{ ...inputStyle, display: "none" }} />
-            <input id={lngId} name={`${p}longitude`} type="number" step="any" style={{ ...inputStyle, display: "none" }} />
-            <input id={approxId} name={`${p}is_approximate`} type="checkbox" value="1" defaultChecked style={{ display: "none" }} />
-            <select id={precId} name={`${p}coordinate_precision`} style={{ ...inputStyle, display: "none" }} defaultValue="ground_approximate">
-              <option value="ground_approximate" />
-            </select>
-
-            <label style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input name={`${p}set_primary`} type="checkbox" value="1" defaultChecked />
-              Set as home club&apos;s primary venue
-            </label>
-          </div>
-        </fieldset>
-
-        <button type="submit" style={greenBtnStyle}>Create club & revalidate</button>
-      </form>
-    </details>
-  );
-}
-
-function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
-  csrfToken: string; batchId: number; rowId: number; clubId: number | null;
-  venues: { id: number; name: string; postcode: string }[];
-}) {
-  const latId = `crv-lat-${rowId}`;
-  const lngId = `crv-lng-${rowId}`;
-  const approxId = `crv-approx-${rowId}`;
-  const precId = `crv-precision-${rowId}`;
-  return (
-    <div style={{ marginTop: "0.25rem" }}>
-      <details>
-        <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#147a4d" }}>
-          Fix: Assign existing venue
-        </summary>
-        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
-          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-          border: "1px solid #dce3e2"
-        }}>
-          <input type="hidden" name="csrf" value={csrfToken} />
-          <input type="hidden" name="_action" value="assign_existing_venue" />
-          <input type="hidden" name="redirect_row_id" value={rowId} />
-          {clubId && <input type="hidden" name="club_id" value={clubId} />}
-
-          <label style={labelStyle}>Venue
-            <select name="venue_id" required style={inputStyle}>
-              <option value="">Select venue...</option>
-              {venues.map((v) => <option key={v.id} value={v.id}>#{v.id} {v.name}, {v.postcode}</option>)}
-            </select>
-          </label>
-          <label style={labelStyle}>Effective from
-            <input name="effective_from" type="date" style={inputStyle}
-              defaultValue={new Date(new Date().getFullYear(), 6, 1).toISOString().split("T")[0]} />
-          </label>
-          <button type="submit" style={greenBtnStyle}>Assign venue & revalidate</button>
-        </form>
-      </details>
-      <details>
-        <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: "#a53a2d" }}>
-          Fix: Create venue and assign to home club
-        </summary>
-        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-          marginTop: "0.5rem", display: "grid", gap: "0.5rem",
-          padding: "0.75rem", background: "#fafbfb", borderRadius: "6px",
-          border: "1px solid #dce3e2"
-        }}>
-          <input type="hidden" name="csrf" value={csrfToken} />
-          <input type="hidden" name="_action" value="create_venue_and_assign" />
-          <input type="hidden" name="redirect_row_id" value={rowId} />
-          {clubId && <input type="hidden" name="club_id" value={clubId} />}
-
-          <label style={labelStyle}>Venue name
-            <input name="name" required style={inputStyle} />
-          </label>
-          <label style={labelStyle}>Postcode
-            <input name="postcode" required style={inputStyle} placeholder="e.g. SW1A 1AA" />
-          </label>
-
-          <LazyMapEditor
-            isApproximate={false}
-            latInputId={latId}
-            lngInputId={lngId}
-            approxInputId={approxId}
-            precisionInputId={precId}
-            mode="create"
-          />
-
-          <input id={latId} name="latitude" type="number" step="any" required style={{ ...inputStyle, display: "none" }} />
-          <input id={lngId} name="longitude" type="number" step="any" required style={{ ...inputStyle, display: "none" }} />
-          <input id={approxId} name="is_approximate" type="checkbox" value="1" style={{ display: "none" }} />
-          <select id={precId} name="coordinate_precision" style={{ ...inputStyle, display: "none" }} defaultValue="ground_approximate">
-            <option value="ground_approximate" />
-          </select>
-
-          <label style={labelStyle}>Effective from
-            <input name="effective_from" type="date" style={inputStyle}
-              defaultValue={new Date(new Date().getFullYear(), 6, 1).toISOString().split("T")[0]} />
-          </label>
-          <button type="submit" style={greenBtnStyle}>Create venue, assign & revalidate</button>
-        </form>
-      </details>
-    </div>
-  );
-}
-
-function TicketRepairForm({ rowId, batchId, csrfToken, homeResolvedId }: {
-  rowId: number; batchId: number; csrfToken: string; homeResolvedId: number | null;
-}) {
-  return (
-    <div style={{
-      marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
-      border: "1px solid #dce3e2", maxWidth: "400px"
-    }}>
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "grid", gap: "0.5rem" }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="add_club_ticket_info" />
-        <input type="hidden" name="redirect_row_id" value={rowId} />
-        {homeResolvedId && <input type="hidden" name="club_id" value={homeResolvedId} />}
-
-        <label style={labelStyle}>Ticket URL (required)
-          <input name="generic_ticket_url" type="url" required style={inputStyle} />
-        </label>
-        <label style={labelStyle}>Sale mode
-          <select name="sale_mode" style={inputStyle}>
-            <option value="">Unknown</option>
-            <option value="all_ticket">All ticket</option>
-            <option value="pay_on_gate">Pay on gate</option>
-          </select>
-        </label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-          <label style={labelStyle}>Adult price (pence)
-            <input name="adult_price_pence" type="number" style={inputStyle} />
-          </label>
-          <label style={labelStyle}>Concession price (pence)
-            <input name="concession_price_pence" type="number" style={inputStyle} />
-          </label>
-        </div>
-        <button type="submit" style={greenBtnStyle}>Save ticket info</button>
-      </form>
-
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ marginTop: "0.5rem" }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="acknowledge_missing_ticket_info" />
-        <input type="hidden" name="issue_key" value="missing_ticket_info" />
-        <input type="hidden" name="row_id" value={rowId} />
-        <button type="submit" style={{ ...smallBtn, color: "#6f7e7a", border: "1px solid #dce3e2" }}>
-          Acknowledge (batch only)
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function SkipForm({ rowId, batchId, csrfToken }: {
-  rowId: number; batchId: number; csrfToken: string;
-}) {
-  return (
-    <details style={{ display: "inline-block" }}>
-      <summary style={{
-        cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#a53a2d", padding: "0.25rem 0.5rem"
-      }}>Skip</summary>
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{
-        marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
-        border: "1px solid #dce3e2", display: "grid", gap: "0.5rem", maxWidth: "300px"
-      }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="skip_row" />
-        <input type="hidden" name="row_id" value={rowId} />
-        <label style={labelStyle}>Reason
-          <select name="reason" required style={inputStyle}>
-            <option value="">Select...</option>
-            <option value="duplicate">Duplicate</option>
-            <option value="bad_source_row">Bad source row</option>
-            <option value="not_relevant">Not relevant</option>
-            <option value="needs_later_review">Needs later review</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
-        <label style={labelStyle}>Note
-          <input name="note" style={inputStyle} />
-        </label>
-        <button type="submit" style={{ ...smallBtn, color: "#a53a2d", border: "1px solid #f0beb7" }}>Skip fixture</button>
-      </form>
-    </details>
-  );
-}
-
-function RowEditForm({ rowId, batchId, csrfToken, row, competitions }: {
-  rowId: number; batchId: number; csrfToken: string; row: ImportBatchRow;
-  competitions: { code: string; name: string; kind: string }[];
-}) {
-  const isFriendly = row.competitionResolvedCode === "FRIENDLY" || (row.competitionRaw ?? "").toLowerCase().includes("friendly");
-  const compDefault = (() => {
-    if (row.competitionResolvedCode) return row.competitionResolvedCode;
-    const match = competitions.find(
-      (c) => c.code === row.competitionRaw || c.name === row.competitionRaw
-    );
-    return match?.code ?? "";
-  })();
-  return (
-    <div style={{
-      marginTop: "0.25rem", padding: "0.5rem", background: "#fafbfb", borderRadius: "6px",
-      border: "1px solid #dce3e2"
-    }}>
-      <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "grid", gap: "0.35rem" }}>
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="edit_row" />
-        <input type="hidden" name="row_id" value={rowId} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
-          <label style={labelStyle}>Home
-            <input name="homeParticipantRaw" defaultValue={row.homeParticipantRaw ?? ""} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>Away
-            <input name="awayParticipantRaw" defaultValue={row.awayParticipantRaw ?? ""} style={inputStyle} />
-          </label>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
-          <label style={labelStyle}>Competition
-            <select name="competitionRaw" defaultValue={compDefault} style={inputStyle} id={`edit-comp-${rowId}`}>
-              <option value="">-- Select --</option>
-              {competitions.map((c) => (
-                <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
-              ))}
-            </select>
-          </label>
-          <label style={labelStyle}>Venue
-            <input name="venueRaw" defaultValue={row.venueRaw ?? ""} style={inputStyle} />
-          </label>
-        </div>
-        <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
-          <input type="checkbox" name="isFriendly" value="1" defaultChecked={isFriendly} style={{ transform: "scale(1.2)" }} />
-          This is a friendly (no formal competition)
-        </label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
-          <label style={labelStyle}>Date
-            <input name="kickoffDate" defaultValue={row.kickoffDate ?? ""} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>Time
-            <input name="kickoffTime" defaultValue={row.kickoffTime ?? ""} style={inputStyle} />
-          </label>
-        </div>
-        <label style={labelStyle}>Ticket URL
-          <input name="ticketUrl" defaultValue={row.ticketUrl ?? ""} style={inputStyle} />
-        </label>
-        <button type="submit" style={greenBtnStyle}>Save & revalidate</button>
-      </form>
-    </div>
-  );
-}
-
-function BulkApplyForm({ batchId, csrfToken, applyableCount }: {
-  batchId: number; csrfToken: string; applyableCount: number;
-}) {
-  return (
-    <form method="post" action={`/api/admin/imports/${batchId}`} style={{
-      border: "1px solid #147a4d", borderRadius: "8px",
-      background: "#f0faf6", padding: "0.75rem 1rem"
-    }}>
-      <input type="hidden" name="csrf" value={csrfToken} />
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "13px", cursor: "pointer" }}>
-          <input type="checkbox" name="confirm" value="1" required />
-          Import all {applyableCount} ready fixtures
-        </label>
-        <button type="submit" style={{
-          border: "1px solid #147a4d", borderRadius: "6px",
-          background: "#147a4d", color: "#fff",
-          padding: "0.4rem 1rem", fontSize: "13px", fontWeight: 700, cursor: "pointer"
-        }}>Import all ready</button>
-      </div>
-    </form>
-  );
 }
 
 function FinalizedRow({ row }: { row: ImportBatchRow; batchId?: number }) {
@@ -1370,52 +894,4 @@ function DuplicateRow({ row }: { row: ImportBatchRow }) {
   );
 }
 
-function DangerZone({ batchId, csrfToken }: { batchId: number; csrfToken: string }) {
-  return (
-    <section style={{
-      border: "1px solid #e0b3a8", borderRadius: "8px",
-      background: "#fdf6f5", padding: "1rem", marginTop: "1.5rem"
-    }}>
-      <p style={{ margin: "0 0 0.5rem", fontWeight: 600, fontSize: "14px", color: "#a53a2d" }}>
-        Danger zone
-      </p>
-      <form method="post" action={`/api/admin/imports/${batchId}`} id="delete-batch-form">
-        <input type="hidden" name="csrf" value={csrfToken} />
-        <input type="hidden" name="_action" value="delete" />
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "14px", cursor: "pointer", marginBottom: "0.75rem" }}>
-          <input type="checkbox" name="confirm" value="1" required />
-          I understand this will permanently delete this batch.
-        </label>
-        <button type="submit" style={{
-          border: "1px solid #c0392b", borderRadius: "7px",
-          background: "#e74c3c", color: "#fff",
-          padding: "0.5rem 1.25rem", fontSize: "14px", fontWeight: 700, cursor: "pointer"
-        }}>
-          Delete batch
-        </button>
-      </form>
-    </section>
-  );
-}
 
-/* ── Shared Styles ── */
-
-const labelStyle: React.CSSProperties = {
-  fontSize: "12px", fontWeight: 600, color: "#34413e", display: "grid", gap: "0.15rem"
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: "0.35rem 0.5rem", border: "1px solid #dce3e2", borderRadius: "4px",
-  fontSize: "13px", background: "#fff"
-};
-
-const greenBtnStyle: React.CSSProperties = {
-  justifySelf: "start", border: "1px solid #147a4d", borderRadius: "6px",
-  background: "#147a4d", color: "#fff", padding: "0.35rem 0.9rem",
-  fontSize: "13px", fontWeight: 700, cursor: "pointer"
-};
-
-const smallBtn: React.CSSProperties = {
-  borderRadius: "6px", padding: "0.3rem 0.7rem",
-  fontSize: "12px", fontWeight: 600, cursor: "pointer", background: "#fff"
-};

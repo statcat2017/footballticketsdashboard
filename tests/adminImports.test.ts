@@ -11,12 +11,7 @@ import type { ImportBatchRow, NormalizedFixtureRow } from "@/lib/import";
 
 vi.mock("@/lib/admin/auth", async () => {
   const actual = await vi.importActual<typeof import("@/lib/admin/auth")>("@/lib/admin/auth");
-  return { ...actual, getAdminSessionFromRequest: vi.fn().mockResolvedValue({}) };
-});
-
-vi.mock("@/lib/admin/csrf", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/admin/csrf")>("@/lib/admin/csrf");
-  return { ...actual, verifyAdminCsrfToken: vi.fn().mockResolvedValue(true) };
+  return { ...actual, getAdminSessionFromCookies: vi.fn().mockResolvedValue({ actor: "test" }) };
 });
 
 const { getDatabase } = vi.hoisted(() => ({
@@ -126,7 +121,7 @@ describe("getSources", () => {
   });
 });
 
-describe("repairs route - create_venue_and_assign cross-batch protection", () => {
+describe("server action - createVenueAndAssign cross-batch protection", () => {
   afterEach(() => { getDatabase.mockReset(); });
 
   it("rejects redirect_row_id from a different batch", async () => {
@@ -152,8 +147,6 @@ describe("repairs route - create_venue_and_assign cross-batch protection", () =>
     await db.run(`INSERT INTO clubs (id, name) VALUES (999, 'Test Club')`);
 
     const form = new FormData();
-    form.append("_action", "create_venue_and_assign");
-    form.append("csrf", "test-csrf");
     form.append("name", "Cross Batch Venue");
     form.append("postcode", "CB1 1BC");
     form.append("latitude", "51.5");
@@ -164,17 +157,12 @@ describe("repairs route - create_venue_and_assign cross-batch protection", () =>
     form.append("coordinate_precision", "ground_approximate");
     form.append("effective_from", "2026-07-01");
 
-    const { POST } = await import("@/app/api/admin/imports/[id]/repairs/route");
-    const response = await POST(
-      new Request(`http://localhost/admin/imports/${batchA.id}`, { method: "POST", body: form }),
-      { params: Promise.resolve({ id: String(batchA.id) }) },
-    );
+    const { createVenueAndAssign } = await import("@/app/admin/imports/[id]/actions");
+    const result = await createVenueAndAssign(batchA.id, null, form);
 
-    // Should reject with error redirect
-    expect(response.status).toBe(303);
-    const location = response.headers.get("Location") || "";
-    expect(location).toContain("error=");
-    expect(location).toContain("different+batch");
+    // Should reject with error
+    expect(result.error).toBeTruthy();
+    expect(result.error?.toLowerCase()).toContain("different batch");
 
     // No venue should have been created
     const venues = await db.all("SELECT id, name FROM venues");
