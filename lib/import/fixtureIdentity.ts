@@ -89,6 +89,62 @@ export async function findImportFixtureMatch(
 }
 
 /**
+ * Relaxed duplicate matcher: finds an existing fixture with the same home
+ * participant, away participant, and fixture date, ignoring season_label,
+ * competition_code, and kickoff_time. This prevents duplicate imports when
+ * the season or competition differs between the batch and the existing fixture.
+ */
+export async function findExistingFixtureDuplicateByParticipantsAndDate(
+  db: AppDatabase,
+  row: ImportBatchRow,
+): Promise<FixtureMatchResult> {
+  if (!row.kickoffDate) return { kind: "none" };
+
+  let fixtures: Record<string, unknown>[] = [];
+
+  if (row.homeIsOneOff && row.awayIsOneOff) {
+    if (!row.homeParticipantRaw || !row.awayParticipantRaw) return { kind: "none" };
+    fixtures = await db.all<Record<string, unknown>>(
+      `SELECT f.* FROM fixtures f
+       WHERE f.home_one_off_name = ? AND f.away_one_off_name = ?
+       AND f.fixture_date = ?`,
+      [row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate]
+    );
+  } else if (row.homeIsOneOff && row.awayParticipantResolvedId) {
+    if (!row.homeParticipantRaw) return { kind: "none" };
+    fixtures = await db.all<Record<string, unknown>>(
+      `SELECT f.* FROM fixtures f
+       WHERE f.home_one_off_name = ? AND f.away_club_id = ?
+       AND f.fixture_date = ?`,
+      [row.homeParticipantRaw, row.awayParticipantResolvedId, row.kickoffDate]
+    );
+  } else if (row.awayIsOneOff && row.homeParticipantResolvedId) {
+    if (!row.awayParticipantRaw) return { kind: "none" };
+    fixtures = await db.all<Record<string, unknown>>(
+      `SELECT f.* FROM fixtures f
+       WHERE f.away_one_off_name = ? AND f.home_club_id = ?
+       AND f.fixture_date = ?`,
+      [row.awayParticipantRaw, row.homeParticipantResolvedId, row.kickoffDate]
+    );
+  } else if (row.homeParticipantResolvedId && row.awayParticipantResolvedId) {
+    fixtures = await db.all<Record<string, unknown>>(
+      `SELECT f.* FROM fixtures f
+       WHERE f.home_club_id = ? AND f.away_club_id = ?
+       AND f.fixture_date = ?`,
+      [row.homeParticipantResolvedId, row.awayParticipantResolvedId, row.kickoffDate]
+    );
+  } else {
+    return { kind: "none" };
+  }
+
+  if (fixtures.length === 0) return { kind: "none" };
+  if (fixtures.length > 1) return { kind: "ambiguous", count: fixtures.length };
+
+  const fixture = fixtures[0];
+  return { kind: "match", id: fixture.id as number, before: {} };
+}
+
+/**
  * Finds candidate fixtures for display in the import repair UI.
  *
  * Unlike findImportFixtureMatch (which requires both participants for strict

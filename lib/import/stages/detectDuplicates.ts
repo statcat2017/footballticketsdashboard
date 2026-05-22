@@ -4,6 +4,7 @@ import type { ValidationContext } from "../validationContext.ts";
 import type { ImportBatchRow } from "../types.ts";
 import { findDuplicateBatchRow, findDuplicateInSameBatch, hasMeaningfulChanges } from "../validation.ts";
 import { makeIssue } from "../validation.ts";
+import { findExistingFixtureDuplicateByParticipantsAndDate } from "../fixtureIdentity.ts";
 
 export async function detectDuplicates(
   db: AppDatabase,
@@ -59,6 +60,17 @@ export async function detectDuplicates(
       ctx.warnings.push(makeIssue("duplicate_pending_batch", `Already in batch #${otherBatchDup.batchId} (row ${otherBatchDup.rowId}).`, { severity: "warning" }));
       ctx.duplicateKind = "pending_batch";
       ctx.duplicateRef = otherBatchDup;
+      return;
+    }
+  }
+
+  // Relaxed duplicate check: same home, away, and date only (ignore season, competition, time)
+  if (ctx.fixtureMatchKind !== "match") {
+    const relaxedMatch = await findExistingFixtureDuplicateByParticipantsAndDate(db, resolvedRow);
+    if (relaxedMatch.kind === "match") {
+      ctx.warnings.push(makeIssue("duplicate_existing_fixture", `Already imported as fixture #${relaxedMatch.id} (matched by home, away, and date).`, { severity: "warning" }));
+      ctx.duplicateKind = "existing_fixture";
+      ctx.duplicateRef = relaxedMatch.id;
       return;
     }
   }

@@ -924,4 +924,31 @@ describe("duplicate detection during validation", () => {
     const rows = await getBatchRows(db, batchId);
     expect(rows[0].matchResult).toBe("update");
   });
+
+  it("marks duplicate via relaxed matcher when same home, away, date but different season", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+
+    // Add a fixture in a different season (2026-27) with same teams and date
+    db.exec(`
+      INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (2, '2026-27', '2026-08-01', '2027-07-31', 0);
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (110, 'test', 'relaxed-dup-1', 'ELC', 1, 2, 1, '2026-06-15', '19:45', 'confirmed', '2026-27', 'scheduled', 0, 0, 0, 0, 'imported');
+    `);
+
+    // Batch row uses PL competition (different from ELC) and no season override
+    // The strict matcher won't find it (different competiton_code, different season)
+    // The relaxed matcher should find it (same home=1, away=2, date=2026-06-15)
+    const batchId = await createTestBatch(db, sourceId, [
+      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-06-15", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].matchResult).toBe("duplicate_existing_fixture");
+    expect(rows[0].warningsJson).toContain("duplicate_existing_fixture");
+    expect(rows[0].warningsJson).toContain("fixture #110");
+  });
 });
