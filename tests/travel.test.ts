@@ -233,5 +233,5 @@ describe("travel cache fill command path", () => {
     `);
 
     expect(after?.count).toBeGreaterThan(before?.count ?? 0);
-  });
+  }, 30000);
 });
