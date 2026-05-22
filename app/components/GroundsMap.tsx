@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 // Fix default marker icon paths for webpack/Next.js bundling
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
