@@ -318,6 +318,16 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
     expect(result.errors[0]).toContain("500");
   });
 
+  it("returns descriptive error on 403", async () => {
+    const db = createAppDatabase();
+    const fetcher = mockFetchError(403, "Forbidden");
+    const result = await createImportBatchFromHtmlUrl(
+      db, "https://footballwebpages.co.uk/fixtures", "test-admin", { fetcher }
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("source site blocked");
+  });
+
   it("returns error for non-HTML content", async () => {
     const db = createAppDatabase();
     const fetcher = mockFetchHtml("{}", "application/json");
