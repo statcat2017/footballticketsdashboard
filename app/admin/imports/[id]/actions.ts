@@ -68,7 +68,7 @@ export async function editRow(
     if (!row) return { error: "Row not found or belongs to a different batch." };
 
     const edits: Record<string, string | null | undefined> = {};
-    for (const field of ["homeParticipantRaw", "awayParticipantRaw", "competitionRaw", "venueRaw", "kickoffDate", "kickoffTime", "status", "ticketUrl", "sourceUrl"]) {
+    for (const field of ["homeParticipantRaw", "awayParticipantRaw", "competitionRaw", "venueRaw", "kickoffDate", "kickoffTime", "status", "ticketUrl"]) {
       const val = form.get(field);
       if (val !== null) {
         edits[field] = typeof val === "string" && val.length > 0 ? val : null;
@@ -95,6 +95,8 @@ export async function editRow(
 export async function importRowAction(
   batchId: number,
   rowId: number,
+  _prev: ActionState | null,
+  _form: FormData,
 ): Promise<ActionState> {
   try {
     const actor = await requireActor();
@@ -149,6 +151,8 @@ export async function skipRowAction(
 
 export async function revalidateAll(
   batchId: number,
+  _prev: ActionState | null,
+  _form: FormData,
 ): Promise<ActionState> {
   try {
     await requireActor();
@@ -373,7 +377,11 @@ export async function matchExistingClub(
 
     if (redirectRowId) {
       const rowId = parseInt(redirectRowId, 10);
-      if (!isNaN(rowId)) await validateRowById(db, rowId);
+      if (!isNaN(rowId)) {
+        const row = await getRowOrError(db, rowId, batchId);
+        if (!row) return { error: "Row not found or belongs to a different batch." };
+        await validateRowById(db, rowId);
+      }
     }
 
     await revalidatePage(batchId);
@@ -410,7 +418,11 @@ export async function assignExistingVenue(
 
     if (redirectRowId) {
       const rowId = parseInt(redirectRowId, 10);
-      if (!isNaN(rowId)) await validateRowById(db, rowId);
+      if (!isNaN(rowId)) {
+        const row = await getRowOrError(db, rowId, batchId);
+        if (!row) return { error: "Row not found or belongs to a different batch." };
+        await validateRowById(db, rowId);
+      }
     }
 
     await revalidatePage(batchId);
@@ -635,15 +647,13 @@ export async function deleteBatchAction(
   _prev: ActionState | null,
   form: FormData,
 ): Promise<ActionState> {
-  let db: AppDatabase | undefined;
   try {
-    const session = await getAdminSessionFromCookies();
-    if (!session) return { error: "Unauthorized" };
+    const actor = await requireActor();
 
     const confirm = form.get("confirm");
     if (confirm !== "1") return { error: "Please confirm the delete action." };
 
-    db = await getDatabase();
+    const db = await getDatabase();
     const batch = await getBatch(db, batchId);
     const { deleteBatch: del } = await import("@/lib/import/importBatch");
     await del(db, batchId);
@@ -652,7 +662,7 @@ export async function deleteBatchAction(
         action: "delete",
         entityType: "import_batch",
         entityId: batchId,
-        actor: session.actor ?? "admin",
+        actor,
         before: batch
           ? { sourceId: batch.sourceId, rowCountTotal: batch.rowCountTotal, approvalStatus: batch.approvalStatus }
           : undefined,
