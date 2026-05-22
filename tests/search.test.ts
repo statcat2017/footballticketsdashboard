@@ -31,6 +31,14 @@ describe("fixture search", () => {
       resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
     };
 
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url.includes("api.tfl.gov.uk")) {
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
       dateFrom: "2026-05-01",
@@ -54,6 +62,14 @@ describe("fixture search", () => {
     const mockResolver: PostcodeResolver = {
       resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
     };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url.includes("api.tfl.gov.uk")) {
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
 
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
