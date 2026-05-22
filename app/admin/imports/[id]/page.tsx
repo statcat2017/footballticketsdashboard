@@ -78,6 +78,18 @@ export default async function AdminImportDetailPage({
         }}>{success}</div>
       )}
 
+      <div style={{ marginBottom: "1rem" }}>
+        <form method="post" action={`/api/admin/imports/${batchId}/repairs`} style={{ display: "inline-block" }}>
+          <input type="hidden" name="csrf" value={csrfToken} />
+          <input type="hidden" name="_action" value="revalidate_all" />
+          <button type="submit" style={{
+            border: "1px solid #dce3e2", borderRadius: "6px",
+            background: "#fff", color: "#17221f",
+            padding: "0.4rem 1rem", fontSize: "13px", fontWeight: 600, cursor: "pointer"
+          }}>Revalidate all</button>
+        </form>
+      </div>
+
       {/* Meta */}
       <section style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "0.5rem" }}>
