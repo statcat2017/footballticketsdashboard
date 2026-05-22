@@ -10,7 +10,7 @@ describe("admin redirect URL helper", () => {
   it("prefers APP_BASE_URL over the broken standalone request URL host", () => {
     vi.stubEnv("APP_BASE_URL", "https://fixtures.statcat.co.uk");
 
-    const request = new Request("https://0.0.0.0:3000/api/admin/imports/1/repairs", {
+    const request = new Request("https://0.0.0.0:3000/api/admin/imports/1", {
       headers: {
         host: "0.0.0.0:3000",
       },
@@ -22,7 +22,7 @@ describe("admin redirect URL helper", () => {
   });
 
   it("uses forwarded proxy headers when APP_BASE_URL is unset", () => {
-    const request = new Request("https://0.0.0.0:3000/api/admin/imports/1/repairs", {
+    const request = new Request("https://0.0.0.0:3000/api/admin/imports/1", {
       headers: {
         "x-forwarded-host": "fixtures.statcat.co.uk",
         "x-forwarded-proto": "https",
