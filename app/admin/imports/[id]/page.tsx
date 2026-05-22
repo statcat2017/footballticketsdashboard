@@ -7,7 +7,7 @@ import { getImportPreviewCounts, getImportUpdatePreviews, type ImportUpdatePrevi
 import type { ImportBatch, ImportBatchRow, WarningIssue } from "@/lib/import/types";
 import { getBatch, getBatchRows, listSources } from "@/lib/import/index";
 import { findImportFixtureCandidateMatchesForRows, type FixtureCandidateMatch } from "@/lib/import/fixtureIdentity";
-import { MapEditorWrapper } from "@/app/admin/venues/_components/MapEditorWrapper";
+import { LazyMapEditor } from "@/app/components/LazyMapEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -1050,7 +1050,7 @@ function CreateClubForm({ csrfToken, batchId, rowId, rawValue, venues }: {
               <input name={`${p}name`} style={inputStyle} />
             </label>
 
-            <MapEditorWrapper
+            <LazyMapEditor
               isApproximate={false}
               latInputId={latId}
               lngInputId={lngId}
@@ -1138,7 +1138,7 @@ function VenueRepairForm({ csrfToken, batchId, rowId, clubId, venues }: {
             <input name="postcode" required style={inputStyle} placeholder="e.g. SW1A 1AA" />
           </label>
 
-          <MapEditorWrapper
+          <LazyMapEditor
             isApproximate={false}
             latInputId={latId}
             lngInputId={lngId}
