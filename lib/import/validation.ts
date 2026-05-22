@@ -10,6 +10,7 @@ import { normalizeDateTime } from "./stages/normalizeDateTime.ts";
 import { validateMetadata } from "./stages/validateMetadata.ts";
 import { matchFixture } from "./stages/matchFixture.ts";
 import { detectDuplicates } from "./stages/detectDuplicates.ts";
+import { createValidationCache, type ValidationCache } from "./validationCache.ts";
 
 export interface ValidationWarning {
   field?: string;
@@ -94,6 +95,10 @@ export async function validateImportBatch(
 
   const seasonLabel = (batch.seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
 
+  // Pre-load all reference data once for the entire batch
+  const cache = await createValidationCache(db);
+  const seenBatchKeys = new Set<string>();
+
   let insertCount = 0;
   let updateCount = 0;
   let blockedCount = 0;
@@ -107,7 +112,7 @@ export async function validateImportBatch(
       continue;
     }
 
-    const validation = await validateRow(db, row, seasonLabel, {
+    const validation = await validateRow(db, cache, seenBatchKeys, row, seasonLabel, {
       kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
     });
 
@@ -190,27 +195,6 @@ export function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string,
   return false;
 }
 
-export async function findDuplicateInSameBatch(
-  db: AppDatabase,
-  row: ImportBatchRow,
-): Promise<number | null> {
-  if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
-  const result = await db.get<{ id: number }>(
-    `SELECT id FROM import_batch_rows
-     WHERE batch_id = ? AND id < ? AND final_action IS NULL
-     AND home_participant_raw = ? AND away_participant_raw = ?
-     AND kickoff_date = ?
-     AND (competition_raw = ? OR (competition_raw IS NULL AND ? IS NULL))
-     AND (kickoff_time = ? OR (kickoff_time IS NULL AND ? IS NULL))
-     AND (venue_raw = ? OR (venue_raw IS NULL AND ? IS NULL))`,
-    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate,
-     row.competitionRaw, row.competitionRaw,
-     row.kickoffTime, row.kickoffTime,
-     row.venueRaw, row.venueRaw]
-  );
-  return result?.id ?? null;
-}
-
 export async function findDuplicateBatchRow(
   db: AppDatabase,
   row: ImportBatchRow,
@@ -239,18 +223,20 @@ export async function findDuplicateBatchRow(
 
 export async function validateRow(
   db: AppDatabase,
+  cache: ValidationCache,
+  seenBatchKeys: Set<string>,
   row: ImportBatchRow,
   seasonLabel: string | null,
   options?: { kickoffAssumptionPolicy?: KickoffAssumptionPolicy }
 ): Promise<RowValidationResult> {
   const ctx = createContext(row, seasonLabel, options);
 
-  // Collect all pre-match issues in a single pass so the admin sees every
-  // actionable problem at once instead of whack-a-mole.
-  await resolveHomeParticipant(db, ctx);
-  await resolveCompetition(db, ctx);
-  await resolveAwayParticipant(db, ctx);
-  await resolveVenue(db, ctx);
+  // All reference data is already in memory via ValidationCache —
+  // these stages do zero DB queries.
+  await resolveHomeParticipant(cache, ctx);
+  await resolveCompetition(cache, ctx);
+  await resolveAwayParticipant(cache, ctx);
+  await resolveVenue(cache, ctx);
   normalizeDateTime(ctx);
   validateMetadata(ctx);
 
@@ -260,7 +246,7 @@ export async function validateRow(
   await matchFixture(db, ctx);
   if (ctx.hasBlocker) return toResult(ctx);
 
-  await detectDuplicates(db, ctx);
+  await detectDuplicates(db, cache, ctx, seenBatchKeys);
 
   return toResult(ctx);
 }

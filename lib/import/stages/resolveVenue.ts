@@ -1,55 +1,51 @@
-import type { AppDatabase } from "../../db/adapter.ts";
+import type { ValidationCache } from "../validationCache.ts";
 import type { ValidationContext } from "../validationContext.ts";
+import { resolveVenue as cachedResolveVenue } from "../validationCache.ts";
 import { makeIssue } from "../validation.ts";
 
-export async function resolveVenue(db: AppDatabase, ctx: ValidationContext): Promise<void> {
+export async function resolveVenue(cache: ValidationCache, ctx: ValidationContext): Promise<void> {
   const { row } = ctx;
 
-  if (row.venueRaw) {
-    const venue = await db.get<{ id: number; name: string; latitude: number; longitude: number }>(
-      `SELECT id, name, latitude, longitude FROM venues WHERE name = ?`,
-      [row.venueRaw]
-    );
-    if (venue) {
-      if (venue.latitude === 0 && venue.longitude === 0) {
+  if (row.homeIsOneOff && !row.venueRaw) {
+    ctx.warnings.push(makeIssue("one_off_needs_venue", "One-off home participant needs an explicit venue."));
+    ctx.hasBlocker = true;
+    return;
+  }
+
+  const result = cachedResolveVenue(cache, row.venueRaw ?? undefined, ctx.homeClubId ?? undefined);
+
+  if (result.venueId !== null) {
+    if (row.venueRaw) {
+      const venue = cache.venues.find((v) => v.id === result.venueId);
+      if (venue && venue.latitude === 0 && venue.longitude === 0) {
         ctx.warnings.push(makeIssue("venue_unusable_coords", `Venue "${venue.name}" has unusable coordinates. Fix venue coordinates.`, { rawValue: venue.name }));
       }
-      ctx.venueId = venue.id;
-      return;
     }
-    if (ctx.homeClubId) {
-      const cva = await db.get<{ venue_id: number }>(
-        `SELECT venue_id FROM club_venue_assignments WHERE club_id = ? AND is_primary = 1 AND effective_to IS NULL`,
-        [ctx.homeClubId]
-      );
-      if (cva?.venue_id) {
-        ctx.warnings.push(makeIssue("venue_not_found", `Venue "${row.venueRaw}" not found. Using home club's primary venue.`, { field: "venue", rawValue: row.venueRaw }));
-        ctx.venueId = cva.venue_id;
-        return;
-      }
+    ctx.venueId = result.venueId;
+    return;
+  }
+
+  if (row.venueRaw) {
+    if (ctx.homeClubId && cache.clubToPrimaryVenue.has(ctx.homeClubId)) {
+      const fallbackId = cache.clubToPrimaryVenue.get(ctx.homeClubId)!;
+      ctx.warnings.push(makeIssue("venue_not_found", `Venue "${row.venueRaw}" not found. Using home club's primary venue.`, { field: "venue", rawValue: row.venueRaw }));
+      ctx.venueId = fallbackId;
+      return;
     }
     ctx.warnings.push(makeIssue("venue_not_found", `Venue "${row.venueRaw}" not found and home club has no primary venue.`, { rawValue: row.venueRaw }));
     ctx.hasBlocker = true;
     return;
   }
 
-  if (row.homeIsOneOff) {
-    ctx.warnings.push(makeIssue("one_off_needs_venue", "One-off home participant needs an explicit venue."));
+  if (ctx.homeClubId && !cache.clubToPrimaryVenue.has(ctx.homeClubId)) {
+    ctx.warnings.push(makeIssue("missing_primary_venue", "Home club has no primary venue."));
     ctx.hasBlocker = true;
     return;
   }
 
-  if (ctx.homeClubId) {
-    const cva = await db.get<{ venue_id: number }>(
-      `SELECT venue_id FROM club_venue_assignments WHERE club_id = ? AND is_primary = 1 AND effective_to IS NULL`,
-      [ctx.homeClubId]
-    );
-    if (cva?.venue_id) {
-      ctx.venueId = cva.venue_id;
-      return;
-    }
+  // Shouldn't reach here given the checks above, but be safe
+  if (!ctx.venueId) {
+    ctx.warnings.push(makeIssue("missing_primary_venue", "Home club has no primary venue."));
+    ctx.hasBlocker = true;
   }
-
-  ctx.warnings.push(makeIssue("missing_primary_venue", "Home club has no primary venue."));
-  ctx.hasBlocker = true;
 }

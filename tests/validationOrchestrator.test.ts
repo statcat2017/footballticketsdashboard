@@ -6,6 +6,7 @@ import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
 import { validateRow } from "@/lib/import/validation";
 import type { ImportBatchRow } from "@/lib/import";
+import { createValidationCache, type ValidationCache } from "@/lib/import/validationCache";
 
 function setupTestDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -41,6 +42,12 @@ function setupTestDb(): AppDatabase {
   `);
 
   return db;
+}
+
+async function callValidateRow(db: AppDatabase, row: ImportBatchRow, seasonLabel: string | null) {
+  const cache = await createValidationCache(db);
+  const seenBatchKeys = new Set<string>();
+  return validateRow(db, cache, seenBatchKeys, row, seasonLabel);
 }
 
 function makeRow(overrides: Partial<ImportBatchRow> = {}): ImportBatchRow {
@@ -88,7 +95,7 @@ describe("validateRow orchestrator", () => {
         ticketUrl: null,
       });
 
-      const result = await validateRow(db, row, "2025-26");
+      const result = await callValidateRow(db, row, "2025-26");
 
       expect(result.matchResult).toBe("blocked");
       // Should report multiple independent issues, not just the first one
@@ -113,7 +120,7 @@ describe("validateRow orchestrator", () => {
         ticketUrl: "https://example.com/tickets",
       });
 
-      const result = await validateRow(db, row, "2025-26");
+      const result = await callValidateRow(db, row, "2025-26");
 
       expect(result.matchResult).toBe("blocked");
       // Should NOT produce match or duplicate results — the row is blocked
@@ -140,7 +147,7 @@ describe("validateRow orchestrator", () => {
         ticketUrl: "https://example.com/tickets",
       });
 
-      const result = await validateRow(db, row, "2025-26");
+      const result = await callValidateRow(db, row, "2025-26");
 
       // Friendly with unknown away should NOT be blocked — away becomes one-off
       expect(result.matchResult).toBe("insert");
@@ -164,7 +171,7 @@ describe("validateRow orchestrator", () => {
         ticketUrl: "https://example.com/tickets",
       });
 
-      const sameResult = await validateRow(db, sameRow, "2025-26");
+      const sameResult = await callValidateRow(db, sameRow, "2025-26");
       expect(sameResult.matchResult).toBe("duplicate_existing_fixture");
 
       // Same clubs but different date → update (no existing match for this date)
@@ -176,7 +183,7 @@ describe("validateRow orchestrator", () => {
         ticketUrl: "https://example.com/tickets",
       });
 
-      const changedResult = await validateRow(db, changedRow, "2025-26");
+      const changedResult = await callValidateRow(db, changedRow, "2025-26");
       expect(changedResult.matchResult).toBe("insert");
     } finally {
       db.exec("PRAGMA wal_checkpoint(TRUNCATE)");

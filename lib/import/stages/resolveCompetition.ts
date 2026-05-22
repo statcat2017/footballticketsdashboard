@@ -1,38 +1,17 @@
-import type { AppDatabase } from "../../db/adapter.ts";
+import type { ValidationCache } from "../validationCache.ts";
 import type { ValidationContext } from "../validationContext.ts";
-import { resolveCompetitionFromFixture } from "../../db/clubMapping.ts";
+import { resolveCompetition as cachedResolveCompetition } from "../validationCache.ts";
 import { makeIssue } from "../validation.ts";
 
-export async function resolveCompetition(db: AppDatabase, ctx: ValidationContext): Promise<void> {
+export async function resolveCompetition(cache: ValidationCache, ctx: ValidationContext): Promise<void> {
   const { row } = ctx;
 
-  if (row.competitionRaw) {
-    const comp = await db.get<{ code: string; name: string }>(
-      `SELECT code, name FROM competitions WHERE code = ? OR name = ?`,
-      [row.competitionRaw, row.competitionRaw]
-    );
-    if (comp) {
-      ctx.competitionCode = comp.code;
-      const compKind = await db.get<{ kind: string }>(
-        `SELECT kind FROM competitions WHERE code = ?`,
-        [comp.code]
-      );
-      ctx.competitionKind = compKind?.kind ?? null;
-      return;
-    }
-  }
+  const result = cachedResolveCompetition(cache, row.competitionRaw ?? undefined, ctx.homeClubId ?? undefined);
 
-  if (ctx.homeClubId) {
-    const inferred = await resolveCompetitionFromFixture(db, ctx.homeClubId, row.competitionRaw ?? "");
-    if (inferred) {
-      ctx.competitionCode = inferred;
-      const compKind = await db.get<{ kind: string }>(
-        `SELECT kind FROM competitions WHERE code = ?`,
-        [inferred]
-      );
-      ctx.competitionKind = compKind?.kind ?? null;
-      return;
-    }
+  if (result.code) {
+    ctx.competitionCode = result.code;
+    ctx.competitionKind = result.kind;
+    return;
   }
 
   if (row.competitionRaw) {

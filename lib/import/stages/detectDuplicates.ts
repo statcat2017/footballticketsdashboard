@@ -1,10 +1,16 @@
 import type { AppDatabase } from "../../db/adapter.ts";
+import type { ValidationCache } from "../validationCache.ts";
 import type { ValidationContext } from "../validationContext.ts";
 import type { ImportBatchRow } from "../types.ts";
-import { findDuplicateInSameBatch, findDuplicateBatchRow, hasMeaningfulChanges } from "../validation.ts";
+import { findDuplicateBatchRow, hasMeaningfulChanges } from "../validation.ts";
 import { makeIssue } from "../validation.ts";
 
-export async function detectDuplicates(db: AppDatabase, ctx: ValidationContext): Promise<void> {
+export async function detectDuplicates(
+  db: AppDatabase,
+  cache: ValidationCache,
+  ctx: ValidationContext,
+  seenBatchKeys: Set<string>
+): Promise<void> {
   const resolvedRow = {
     ...ctx.row,
     homeParticipantResolvedId: ctx.homeClubId,
@@ -16,12 +22,16 @@ export async function detectDuplicates(db: AppDatabase, ctx: ValidationContext):
     awayIsOneOff: ctx.resolvedAwayIsOneOff,
   } as ImportBatchRow;
 
-  const sameBatchDup = await findDuplicateInSameBatch(db, resolvedRow);
-  if (sameBatchDup) {
-    ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row — matches row #${sameBatchDup} in this batch.`, { severity: "warning" }));
+  // In-memory same-batch duplicate detection
+  const sameBatchKey = buildSameBatchKey(resolvedRow);
+  if (sameBatchKey && seenBatchKeys.has(sameBatchKey)) {
+    ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (matching home, away, date, time, venue, competition).`, { severity: "warning" }));
     ctx.duplicateKind = "same_batch";
-    ctx.duplicateRef = sameBatchDup;
+    ctx.duplicateRef = null;
     return;
+  }
+  if (sameBatchKey) {
+    seenBatchKeys.add(sameBatchKey);
   }
 
   if (ctx.fixtureMatchKind === "match" && ctx.fixtureMatchBefore && !hasMeaningfulChanges(resolvedRow, ctx.fixtureMatchBefore)) {
@@ -40,4 +50,9 @@ export async function detectDuplicates(db: AppDatabase, ctx: ValidationContext):
       return;
     }
   }
+}
+
+function buildSameBatchKey(row: ImportBatchRow): string | null {
+  if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
+  return `${row.homeParticipantRaw}|${row.awayParticipantRaw}|${row.kickoffDate}|${row.kickoffTime ?? ""}|${row.venueRaw ?? ""}|${row.competitionRaw ?? ""}`;
 }
