@@ -52,7 +52,7 @@ describe("UrlImportForm", () => {
     expect(screen.getByPlaceholderText("https://example.com/fixtures")).toBeInTheDocument();
     expect(screen.getByText("Detect tables →")).toBeInTheDocument();
     expect(screen.getByText("2025-26 (current)")).toBeInTheDocument();
-    expect(screen.getByText("UrlImportForm mounted")).toBeInTheDocument();
+    expect(screen.getByText("Activity log will appear here...")).toBeInTheDocument();
   });
 
   it("calls the preview URL endpoint on detect click and displays tables", async () => {
