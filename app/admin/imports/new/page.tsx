@@ -25,7 +25,6 @@ export default async function AdminNewImportPage({
 
   return (
     <main style={{ maxWidth: "48rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
-      <meta name="csrf-token" content={csrfToken} />
       <header style={{
         padding: "1.25rem 0",
         borderBottom: "1px solid #dce3e2",

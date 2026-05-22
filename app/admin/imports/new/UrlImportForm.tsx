@@ -12,7 +12,21 @@ interface DetectedTable {
   score: number;
 }
 
+function isDetectedTableArray(val: unknown): val is DetectedTable[] {
+  if (!Array.isArray(val)) return false;
+  return val.every(
+    (t) =>
+      typeof t === "object" &&
+      t !== null &&
+      typeof t.tableIndex === "number" &&
+      typeof t.rowCount === "number" &&
+      typeof t.score === "number" &&
+      Array.isArray(t.headers),
+  );
+}
+
 interface LogEntry {
+  id: number;
   text: string;
   type: "info" | "error" | "success";
 }
@@ -24,16 +38,19 @@ export default function UrlImportForm({
   csrfToken: string;
   seasons: SeasonOption[];
 }) {
+  const [urlInput, setUrlInput] = useState("");
+  const [detectedUrl, setDetectedUrl] = useState<string | null>(null);
+  const [seasonLabel, setSeasonLabel] = useState(seasons.find((s) => s.isCurrent)?.label ?? "");
   const [tables, setTables] = useState<DetectedTable[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [detecting, setDetecting] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
-  const urlRef = useRef<HTMLInputElement>(null);
-  const seasonRef = useRef<HTMLSelectElement>(null);
+  const nextLogId = useRef(0);
 
   const addLog = useCallback((text: string, type: "info" | "error" | "success" = "info") => {
-    setLog((prev) => [...prev, { text, type }]);
+    const id = nextLogId.current++;
+    setLog((prev) => [...prev, { id, text, type }]);
   }, []);
 
   useEffect(() => {
@@ -46,8 +63,18 @@ export default function UrlImportForm({
     }
   }, [log]);
 
+  const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newUrl = e.target.value;
+    setUrlInput(newUrl);
+    if (detectedUrl !== null && newUrl !== detectedUrl) {
+      setTables([]);
+      setSelectedIndices(new Set());
+      setDetectedUrl(null);
+    }
+  }, [detectedUrl]);
+
   const handleDetect = async () => {
-    const url = urlRef.current?.value.trim();
+    const url = urlInput.trim();
     if (!url) {
       addLog("Error: URL is empty", "error");
       return;
@@ -57,6 +84,7 @@ export default function UrlImportForm({
     setDetecting(true);
     setTables([]);
     setSelectedIndices(new Set());
+    setDetectedUrl(null);
 
     try {
       const formData = new URLSearchParams();
@@ -84,12 +112,13 @@ export default function UrlImportForm({
 
       const data = await res.json();
 
-      if (!data.tables || data.tables.length === 0) {
+      if (!data.tables || !isDetectedTableArray(data.tables) || data.tables.length === 0) {
         addLog("No fixture tables found in the page", "error");
         return;
       }
 
       addLog(`Found ${data.tables.length} table(s)`, "success");
+      setDetectedUrl(url);
       setTables(data.tables);
       setSelectedIndices(new Set(data.tables.map((t: DetectedTable) => t.tableIndex)));
     } catch (e) {
@@ -119,8 +148,6 @@ export default function UrlImportForm({
     setSelectedIndices(new Set());
   };
 
-  const currentSeason = seasons.find((s) => s.isCurrent)?.label ?? "";
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <div>
@@ -131,8 +158,9 @@ export default function UrlImportForm({
           Enter the URL of a page containing fixture tables in HTML format.
         </p>
         <input
-          ref={urlRef}
           type="url"
+          value={urlInput}
+          onChange={handleUrlChange}
           placeholder="https://example.com/fixtures"
           style={{ width: "100%", padding: "0.5rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}
         />
@@ -143,8 +171,8 @@ export default function UrlImportForm({
           Season
         </label>
         <select
-          ref={seasonRef}
-          defaultValue={currentSeason}
+          value={seasonLabel}
+          onChange={(e) => setSeasonLabel(e.target.value)}
           style={{ width: "100%", padding: "0.5rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}
         >
           <option value="">Auto-detect</option>
@@ -175,6 +203,12 @@ export default function UrlImportForm({
         {detecting ? "Detecting..." : "Detect tables →"}
       </button>
 
+      {detectedUrl && (
+        <div style={{ fontSize: "13px", color: "#6f7e7a" }}>
+          Detected from: {detectedUrl}
+        </div>
+      )}
+
       <div
         ref={logRef}
         style={{
@@ -192,8 +226,8 @@ export default function UrlImportForm({
         {log.length === 0 && (
           <span style={{ color: "#6f7e7a" }}>Activity log will appear here...</span>
         )}
-        {log.map((entry, i) => (
-          <div key={i} style={{ color: entry.type === "error" ? "#a53a2d" : entry.type === "success" ? "#147a4d" : "#17221f" }}>
+        {log.map((entry) => (
+          <div key={entry.id} style={{ color: entry.type === "error" ? "#a53a2d" : entry.type === "success" ? "#147a4d" : "#17221f" }}>
             {entry.text}
           </div>
         ))}
@@ -273,9 +307,9 @@ export default function UrlImportForm({
 
           <form method="post" action="/api/admin/imports/create-from-url" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <input type="hidden" name="csrf" value={csrfToken} />
-            <input type="hidden" name="url" value={urlRef.current?.value ?? ""} />
+            <input type="hidden" name="url" value={detectedUrl ?? ""} />
             <input type="hidden" name="selected_tables" value={Array.from(selectedIndices).join(",")} />
-            <input type="hidden" name="season_label" value={seasonRef.current?.value ?? ""} />
+            <input type="hidden" name="season_label" value={seasonLabel} />
 
             <button
               type="submit"
