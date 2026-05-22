@@ -53,7 +53,8 @@ describe("D1 initialization", () => {
     const totalPrepares = operations.filter((operation) => operation.startsWith("prepare:"));
     const batchPrepares = totalPrepares.filter((op) => (
       !op.includes("pragma_table_info") &&
-      !op.includes("SELECT COUNT(*) AS count FROM division_assignments")
+      !op.includes("SELECT COUNT(*) AS count FROM division_assignments") &&
+      !op.includes("SELECT id, name FROM clubs")
     ));
 
     expect(batchSizes).toEqual([batchPrepares.length]);

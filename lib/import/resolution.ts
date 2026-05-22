@@ -6,7 +6,7 @@ import { buildAdminAuditLogWrite } from "../admin/audit.ts";
 import { buildFixtureInsert, buildFixtureUpdate } from "./apply.ts";
 import { getCurrentSeasonLabel } from "./shared";
 import { findImportFixtureMatch } from "./fixtureIdentity";
-import { createValidationCache } from "./validationCache.ts";
+import { createValidationCache, type ValidationCache } from "./validationCache.ts";
 
 
 export interface ApplySingleResult {
@@ -26,6 +26,7 @@ export async function validateRowById(
   options?: {
     kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
     skipReturn?: boolean;
+    cache?: ValidationCache;
   }
 ): Promise<ImportBatchRow> {
   const row = await getBatchRow(db, rowId);
@@ -36,7 +37,7 @@ export async function validateRowById(
   if (!batch) throw new Error(`Import batch ${row.batchId} not found.`);
 
   const seasonLabel = (seasonLabelArg ?? batch.seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
-  const cache = await createValidationCache(db);
+  const cache = options?.cache ?? await createValidationCache(db);
   const seenBatchKeys = new Set<string>();
   const validation = await validateRow(db, cache, seenBatchKeys, row, seasonLabel, {
     kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
@@ -71,6 +72,7 @@ export async function editAndRevalidateRow(
   rowId: number,
   edits: RowEditFields,
   actor: string,
+  options?: { cache?: ValidationCache }
 ): Promise<ImportBatchRow> {
   const row = await getBatchRow(db, rowId);
   if (!row) throw new Error(`Import batch row ${rowId} not found.`);
@@ -102,7 +104,7 @@ export async function editAndRevalidateRow(
     }
   }
 
-  if (sqlFields.length === 0) return validateRowById(db, rowId);
+  if (sqlFields.length === 0) return validateRowById(db, rowId, undefined, { cache: options?.cache });
 
   sqlParams.push(rowId);
   await db.run(
@@ -126,7 +128,7 @@ export async function editAndRevalidateRow(
     }),
   ]);
 
-  return validateRowById(db, rowId);
+  return validateRowById(db, rowId, undefined, { cache: options?.cache });
 }
 
 function rawFieldToRecord(row: ImportBatchRow): Record<string, string | null> {
@@ -149,6 +151,7 @@ export async function importSingleRow(
   actor: string,
   options?: {
     kickoffAssumptionPolicy?: KickoffAssumptionPolicy;
+    cache?: ValidationCache;
   }
 ): Promise<ApplySingleResult> {
   const row = await getBatchRow(db, rowId);
@@ -157,6 +160,7 @@ export async function importSingleRow(
 
   const revalidated = await validateRowById(db, rowId, undefined, {
     kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
+    cache: options?.cache,
   });
   if (revalidated.matchResult === "blocked") {
     return { row: revalidated, fixtureId: null };
@@ -419,8 +423,9 @@ export async function revalidatePendingRowsForVenue(
   );
 
   let revalidatedCount = 0;
+  const cache = await createValidationCache(db);
   for (const row of rows) {
-    await validateRowById(db, row.id, undefined, { skipReturn: true });
+    await validateRowById(db, row.id, undefined, { skipReturn: true, cache });
     revalidatedCount++;
   }
 
