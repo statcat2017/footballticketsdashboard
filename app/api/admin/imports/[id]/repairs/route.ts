@@ -105,6 +105,7 @@ export async function POST(
       case "edit_row": return handleEditRow(request, db, batchId, form, actor, cache);
       case "import_row": return handleImportRow(request, db, batchId, form, actor, cache);
       case "skip_row": return handleSkipRow(request, db, batchId, form, actor);
+      case "revalidate_all": return handleRevalidateAll(request, db, batchId);
       default:
         return redirectTo(request, batchId, { error: `Unknown action: ${action}` });
     }
@@ -689,6 +690,18 @@ async function getRowOrError(
   if (!row) return null;
   if (row.batchId !== batchId) return null;
   return row;
+}
+
+async function handleRevalidateAll(
+  request: Request,
+  db: import("@/lib/db/adapter").AppDatabase,
+  batchId: number,
+) {
+  const { validateImportBatch } = await import("@/lib/import/validation");
+  const result = await validateImportBatch(db, batchId);
+  return redirectTo(request, batchId, {
+    success: `Revalidated all ${result.validatedCount} active rows (${result.insertCount} ready to insert, ${result.updateCount} ready to update, ${result.blockedCount} still blocked).`,
+  });
 }
 
 async function handleEditRow(
