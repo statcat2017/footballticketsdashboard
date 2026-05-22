@@ -47,7 +47,7 @@ jobs:
           SOURCE: "deploy/"
           TARGET: ${{ secrets.DEPLOY_PATH }}
           EXCLUDE: "data/*.sqlite, data/*.sqlite-shm, data/*.sqlite-wal"
-          ARGS: "-rlgoDzvc -i --delete"
+          ARGS: "-rlgoDzvc -i"
 
       - name: Restart app
         uses: appleboy/ssh-action@v1
