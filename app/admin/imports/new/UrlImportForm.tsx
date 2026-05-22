@@ -54,10 +54,6 @@ export default function UrlImportForm({
   }, []);
 
   useEffect(() => {
-    addLog("UrlImportForm mounted", "info");
-  }, [addLog]);
-
-  useEffect(() => {
     if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }

@@ -53,6 +53,14 @@ const PRIVATE_IPV6_RE = /^\[?(?:fe80|fc00|fd00|::1|f[cd])/i;
 
 const MAX_REDIRECTS = 5;
 
+const HTML_IMPORT_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  "Accept":
+    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-GB,en;q=0.9",
+};
+
 export function validateFixtureUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
@@ -119,6 +127,7 @@ export async function fetchPage(
         response = await doFetch(currentUrl, {
           signal: controller.signal,
           redirect: "manual",
+          headers: HTML_IMPORT_HEADERS,
         });
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
@@ -139,7 +148,10 @@ export async function fetchPage(
       }
 
       if (!response.ok) {
-        return { error: `HTTP ${response.status}: ${response.statusText}` };
+        const msg = response.status === 403
+          ? `HTTP 403: Forbidden — the source site blocked the server request. Try downloading and uploading the HTML or CSV manually.`
+          : `HTTP ${response.status}: ${response.statusText}`;
+        return { error: msg };
       }
 
       const contentType = response.headers.get("content-type") ?? "";
