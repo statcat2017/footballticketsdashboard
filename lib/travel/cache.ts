@@ -55,7 +55,7 @@ export async function listMissingTravelCacheVenues(
       v.longitude
     FROM fixtures f
     JOIN venues v ON v.id = f.venue_id
-    WHERE date(f.kickoff_at) BETWEEN date(?) AND date(?)
+    WHERE f.kickoff_at BETWEEN ? AND ?
       AND f.is_historical = 0
       AND f.status IN ('scheduled', 'finished')
       AND NOT EXISTS (
