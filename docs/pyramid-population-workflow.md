@@ -1,5 +1,11 @@
 # Pyramid Population Workflow
 
+> **DEPRECATED (2026-05-22):** This workflow describes direct modification of seed constants
+> in `lib/db/pyramid.ts` and `lib/db/seed-data.ts`. The project now uses a database-backed
+> pyramid model with `division_assignments` (migration 020) and admin CRUD interfaces.
+> For current club-to-division management, use the admin interface. This document is retained
+> for historical reference on the research process.
+
 A repeatable process for populating any division in the men's English pyramid.
 
 ## Input

@@ -1,6 +1,6 @@
 # TICKET-036: Fixture Source Registry And Import Batch Model
 
-Status: schema-complete
+Status: done
 Owner: Backend
 Priority: high
 Depends on: TICKET-027

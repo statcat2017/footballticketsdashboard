@@ -1,6 +1,6 @@
 # TICKET-028: Admin Login Rate Limiting
 
-Status: review
+Status: done
 Owner: Backend
 Priority: high
 Depends on: TICKET-024

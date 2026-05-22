@@ -1,6 +1,6 @@
 # TICKET-026: Database Write Batch Support
 
-Status: open
+Status: done
 Owner: Backend
 Priority: high
 Depends on:

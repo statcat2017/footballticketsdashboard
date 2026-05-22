@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { QueryParam } from "@/lib/db/adapter";
 import { createAppDatabase } from "@/lib/db/client";
+import type { PostcodeResolver } from "@/lib/postcode";
 import { searchFixtures } from "@/lib/search/service";
 
 afterEach(() => {
@@ -26,11 +27,23 @@ describe("fixture search", () => {
   it("falls back to unconstrained historical fixtures when date range has no live or historical matches", async () => {
     const db = createAppDatabase();
 
+    const mockResolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
+    };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url.includes("api.tfl.gov.uk")) {
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
       dateFrom: "2026-05-01",
       dateTo: "2026-05-05"
-    });
+    }, { postcodeResolver: mockResolver });
 
     expect(results.length).toBeGreaterThan(0);
     for (const result of results) {
@@ -46,11 +59,23 @@ describe("fixture search", () => {
   it("falls back to historical fixtures when no live fixtures match and historical seed data exists", async () => {
     const db = createAppDatabase();
 
+    const mockResolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
+    };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url.includes("api.tfl.gov.uk")) {
+        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
       dateFrom: "2025-05-01",
       dateTo: "2025-05-31"
-    });
+    }, { postcodeResolver: mockResolver });
 
     expect(results.length).toBeGreaterThan(0);
     for (const result of results) {

@@ -1,8 +1,12 @@
 # CI/CD Setup Plan
 
+> **DEPRECATED (2026-05-22):** This document described a VPS-based deployment with systemd/rsync.
+> The project is deployed on Cloudflare Workers with D1. See `docs/cloudflare-deployment.md` for
+> the current deployment strategy. This plan is retained for historical reference only.
+
 **Date:** 2026-05-21
-**Status:** Proposed
-**Scope:** PR checks workflow + health endpoint + deploy hardening
+**Status:** Superseded by Cloudflare Workers deployment
+**Scope:** ~~PR checks workflow + health endpoint + deploy hardening~~
 
 ## Problem
 

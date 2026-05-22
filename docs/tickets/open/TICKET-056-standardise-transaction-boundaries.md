@@ -1,6 +1,6 @@
 # TICKET-056: Standardise transaction boundaries for service writes
 
-Status: open
+Status: partially-done — `transaction()` abstraction exists and used in `updateAdminVenue`; not yet applied to club updates, aliases, publish, or import finalisation (most use `writeBatch()` instead)
 Owner: Backend
 Priority: high
 Depends on: none
