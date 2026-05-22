@@ -18,6 +18,7 @@ import {
   skipRow,
   validateRowById,
 } from "@/lib/import/resolution";
+import { createValidationCache, type ValidationCache } from "@/lib/import/validationCache";
 
 function redirectTo(
   request: Request,
@@ -85,6 +86,11 @@ export async function POST(
 
   const db = await getDatabase();
 
+  // Build reference data cache once for all row operations in this request
+  const cache = action === "edit_row" || action === "import_row"
+    ? await createValidationCache(db).catch(() => undefined)
+    : undefined;
+
   try {
     switch (action) {
       case "mark_friendly": return handleMarkFriendly(request, db, batchId, form, actor);
@@ -96,8 +102,8 @@ export async function POST(
       case "create_venue_and_assign": return handleCreateVenueAndAssign(request, db, batchId, form);
       case "add_club_ticket_info": return handleAddClubTicketInfo(request, db, batchId, form, actor);
       case "acknowledge_missing_ticket_info": return handleAcknowledgeMissingTicketInfo(request, db, batchId, form, actor);
-      case "edit_row": return handleEditRow(request, db, batchId, form, actor);
-      case "import_row": return handleImportRow(request, db, batchId, form, actor);
+      case "edit_row": return handleEditRow(request, db, batchId, form, actor, cache);
+      case "import_row": return handleImportRow(request, db, batchId, form, actor, cache);
       case "skip_row": return handleSkipRow(request, db, batchId, form, actor);
       default:
         return redirectTo(request, batchId, { error: `Unknown action: ${action}` });
@@ -691,6 +697,7 @@ async function handleEditRow(
   batchId: number,
   form: FormData,
   actor: string,
+  cache?: ValidationCache,
 ) {
   const rowIdStr = readString(form.get("row_id"));
   if (!rowIdStr) {
@@ -720,7 +727,7 @@ async function handleEditRow(
     edits.competitionRaw = "Non-League Friendlies";
   }
 
-  const updated = await editAndRevalidateRow(db, rowId, edits as Parameters<typeof editAndRevalidateRow>[2], actor);
+  const updated = await editAndRevalidateRow(db, rowId, edits as Parameters<typeof editAndRevalidateRow>[2], actor, { cache });
   const isBlocked = updated.matchResult === "blocked";
   const result = isBlocked ? "still blocked" : "ready";
 
@@ -736,6 +743,7 @@ async function handleImportRow(
   batchId: number,
   form: FormData,
   actor: string,
+  cache?: ValidationCache,
 ) {
   const rowIdStr = readString(form.get("row_id"));
   if (!rowIdStr) {
@@ -752,7 +760,7 @@ async function handleImportRow(
     return redirectTo(request, batchId, { error: "Row not found or belongs to a different batch." });
   }
 
-  const result = await importSingleRow(db, rowId, actor);
+  const result = await importSingleRow(db, rowId, actor, { cache });
 
   if (!result.fixtureId) {
     return redirectTo(request, batchId, {

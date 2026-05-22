@@ -325,6 +325,8 @@ CREATE INDEX IF NOT EXISTS idx_import_batches_created ON import_batches(created_
 CREATE INDEX IF NOT EXISTS idx_import_batch_rows_batch ON import_batch_rows(batch_id);
 CREATE INDEX IF NOT EXISTS idx_import_batch_rows_match ON import_batch_rows(match_result);
 CREATE INDEX IF NOT EXISTS idx_import_batch_rows_fixture ON import_batch_rows(final_fixture_id);
+CREATE INDEX IF NOT EXISTS idx_ibr_batch_order ON import_batch_rows(batch_id, row_index);
+CREATE INDEX IF NOT EXISTS idx_ibr_batch_status ON import_batch_rows(batch_id, final_action, match_result);
 
 CREATE TABLE IF NOT EXISTS import_batch_issue_resolutions (
   id INTEGER PRIMARY KEY,

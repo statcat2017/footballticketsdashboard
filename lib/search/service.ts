@@ -188,11 +188,16 @@ function queryFixtures(
     LEFT JOIN club_ticket_prices ctp ON ctp.club_id = home.id
     LEFT JOIN fixture_ticket_price_overrides fpo ON fpo.fixture_id = f.id
     LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
-    WHERE date(COALESCE(f.kickoff_at, f.fixture_date)) BETWEEN date(?) AND date(?)
+    WHERE (
+      (f.kickoff_at >= ? AND f.kickoff_at < date(?, '+1 day'))
+      OR (f.kickoff_at IS NULL AND f.fixture_date BETWEEN ? AND ?)
+    )
       ${includeHistorical ? "AND f.is_historical = 1" : "AND f.is_historical = 0 AND f.status = 'scheduled'"}
     ORDER BY COALESCE(f.kickoff_at, f.fixture_date) ASC
   `, [
     postcodeDistrictValue,
+    request.dateFrom,
+    request.dateTo,
     request.dateFrom,
     request.dateTo
   ]);

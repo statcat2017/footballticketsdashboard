@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { requireAdminPageSession } from "@/lib/admin/auth";
 import { createAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
-import { getBatchDetail, getImportPreviewCounts, getImportUpdatePreviews } from "@/lib/admin/imports";
-import type { ImportUpdatePreview } from "@/lib/admin/imports";
-import type { ImportBatchRow, WarningIssue } from "@/lib/import/types";
+import { getImportPreviewCounts, getImportUpdatePreviews, type ImportUpdatePreview } from "@/lib/admin/imports";
+import type { ImportBatch, ImportBatchRow, WarningIssue } from "@/lib/import/types";
+import { getBatch, getBatchRows, listSources } from "@/lib/import/index";
 import { findImportFixtureCandidateMatchesForRows, type FixtureCandidateMatch } from "@/lib/import/fixtureIdentity";
 import { MapEditorWrapper } from "@/app/admin/venues/_components/MapEditorWrapper";
 
@@ -32,10 +33,10 @@ export default async function AdminImportDetailPage({
   if (isNaN(batchId)) return <div>Invalid batch ID.</div>;
 
   const db = await getDatabase();
-  let detail;
-  try {
-    detail = await getBatchDetail(db, batchId);
-  } catch {
+
+  // Lightweight: fetch batch metadata only
+  const batch = await getBatch(db, batchId);
+  if (!batch) {
     return (
       <main style={{ maxWidth: "48rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
         <p>Batch not found.</p>
@@ -44,60 +45,11 @@ export default async function AdminImportDetailPage({
     );
   }
 
-  const { batch, source, activeGrouped, finalizedRows } = detail;
-  const counts = getImportPreviewCounts(activeGrouped);
-  const finalizedInsert = finalizedRows.filter((r) => r.finalAction === "insert" || r.finalAction === "update");
-  const finalizedSkip = finalizedRows.filter((r) => r.finalAction === "skip");
-  const hasBeenApplied = batch.approvalStatus === "approved" || batch.approvalStatus === "partially_approved";
+  const allSources = await listSources(db);
+  const source = allSources.find((s) => s.id === batch.sourceId);
 
   const error = sp.error;
   const success = sp.success;
-
-  const insertRows = detail.grouped.insert ?? [];
-  const updateRows = detail.grouped.update ?? [];
-  const blockedRows = detail.grouped.blocked ?? [];
-  const pendingRows = detail.grouped.pending ?? [];
-  const duplicateFixtureRows = detail.grouped.duplicate_existing_fixture ?? [];
-  const duplicatePendingRows = detail.grouped.duplicate_pending_batch ?? [];
-  const duplicateSameBatchRows = detail.grouped.duplicate_same_batch ?? [];
-  const applyableCount = insertRows.length + updateRows.length;
-  const updatePreviews = await getImportUpdatePreviews(db, updateRows, batch.seasonLabel);
-
-  // Fetch data needed for inline forms
-  const clubs = await db.all<{ id: number; name: string }>(`SELECT id, name FROM clubs ORDER BY name`);
-  const venues = await db.all<{ id: number; name: string; postcode: string }>(`SELECT id, name, postcode FROM venues ORDER BY name`);
-  const competitions = await db.all<{ code: string; name: string; kind: string }>(
-    `SELECT code, name, kind FROM competitions ORDER BY name`
-  );
-  const clubById = new Map(clubs.map(c => [c.id, c]));
-  const venueById = new Map(venues.map(v => [v.id, v]));
-  const venueByName = new Map(venues.map(v => [v.name.toLowerCase(), v]));
-  const compByCode = new Map(competitions.map(c => [c.code, c]));
-
-  const allActiveRows = [...blockedRows, ...insertRows, ...updateRows, ...pendingRows];
-  const warningsByRow = new Map<number, WarningIssue[]>();
-  for (const row of allActiveRows) {
-    warningsByRow.set(row.id, parseWarnings(row.warningsJson));
-  }
-
-  const possibleMatches = await findImportFixtureCandidateMatchesForRows(db, blockedRows, batch.seasonLabel, 5);
-
-  // Fetch acknowledged issue keys so ticket acknowledgement has visible effect
-  const resolutions = await db.all<{ issue_key: string; row_id: number | null }>(
-    `SELECT issue_key, row_id FROM import_batch_issue_resolutions WHERE batch_id = ?`,
-    [batchId]
-  );
-  const acknowledgedKeys = new Set<string>();
-  const acknowledgedRowKeys = new Map<number, Set<string>>();
-  for (const r of resolutions) {
-    if (r.row_id) {
-      const rowSet = acknowledgedRowKeys.get(r.row_id) ?? new Set();
-      rowSet.add(r.issue_key);
-      acknowledgedRowKeys.set(r.row_id, rowSet);
-    } else {
-      acknowledgedKeys.add(r.issue_key);
-    }
-  }
 
   return (
     <main style={{ maxWidth: "64rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
@@ -140,10 +92,99 @@ export default async function AdminImportDetailPage({
         </div>
       </section>
 
-      {/* Summary bar */}
+      <Suspense fallback={<CardSkeleton />}>
+        <FixtureCardSection db={db} batchId={batchId} batch={batch} csrfToken={csrfToken} />
+      </Suspense>
+    </main>
+  );
+}
+
+function CardSkeleton() {
+  return (
+    <>
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem" }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} style={{ height: "28px", width: "80px", background: "#e8eceb", borderRadius: "999px" }} />
+        ))}
+      </div>
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} style={{ height: "120px", background: "#f5f6f6", borderRadius: "8px", marginBottom: "0.75rem" }} />
+      ))}
+    </>
+  );
+}
+
+async function FixtureCardSection({
+  db, batchId, batch, csrfToken
+}: {
+  db: import("@/lib/db/adapter").AppDatabase;
+  batchId: number;
+  batch: ImportBatch;
+  csrfToken: string;
+}) {
+  const allRows = await getBatchRows(db, batchId);
+  const activeRows = allRows.filter((r) => !r.finalAction);
+  const finalizedRows = allRows.filter((r) => r.finalAction);
+  const activeGrouped: Record<string, ImportBatchRow[]> = {};
+  for (const r of activeRows) {
+    const key = r.matchResult ?? "pending";
+    if (!activeGrouped[key]) activeGrouped[key] = [];
+    activeGrouped[key].push(r);
+  }
+
+  const counts = getImportPreviewCounts(activeGrouped);
+  const finalizedInsert = finalizedRows.filter((r) => r.finalAction === "insert" || r.finalAction === "update");
+  const finalizedSkip = finalizedRows.filter((r) => r.finalAction === "skip");
+  const hasBeenApplied = batch.approvalStatus === "approved" || batch.approvalStatus === "partially_approved";
+
+  const insertRows = activeGrouped.insert ?? [];
+  const updateRows = activeGrouped.update ?? [];
+  const blockedRows = activeGrouped.blocked ?? [];
+  const pendingRows = activeGrouped.pending ?? [];
+  const duplicateFixtureRows = activeGrouped.duplicate_existing_fixture ?? [];
+  const duplicatePendingRows = activeGrouped.duplicate_pending_batch ?? [];
+  const duplicateSameBatchRows = activeGrouped.duplicate_same_batch ?? [];
+  const applyableCount = insertRows.length + updateRows.length;
+  const updatePreviews = await getImportUpdatePreviews(db, updateRows, batch.seasonLabel);
+
+  const clubs = await db.all<{ id: number; name: string }>(`SELECT id, name FROM clubs ORDER BY name`);
+  const venues = await db.all<{ id: number; name: string; postcode: string }>(`SELECT id, name, postcode FROM venues ORDER BY name`);
+  const competitions = await db.all<{ code: string; name: string; kind: string }>(
+    `SELECT code, name, kind FROM competitions ORDER BY name`
+  );
+  const clubById = new Map(clubs.map(c => [c.id, c]));
+  const venueById = new Map(venues.map(v => [v.id, v]));
+  const venueByName = new Map(venues.map(v => [v.name.toLowerCase(), v]));
+  const compByCode = new Map(competitions.map(c => [c.code, c]));
+
+  const allActiveRows = [...blockedRows, ...insertRows, ...updateRows, ...pendingRows];
+  const warningsByRow = new Map<number, WarningIssue[]>();
+  for (const row of allActiveRows) {
+    warningsByRow.set(row.id, parseWarnings(row.warningsJson));
+  }
+
+  const possibleMatches = await findImportFixtureCandidateMatchesForRows(db, blockedRows, batch.seasonLabel, 5);
+
+  const resolutions = await db.all<{ issue_key: string; row_id: number | null }>(
+    `SELECT issue_key, row_id FROM import_batch_issue_resolutions WHERE batch_id = ?`,
+    [batchId]
+  );
+  const acknowledgedKeys = new Set<string>();
+  const acknowledgedRowKeys = new Map<number, Set<string>>();
+  for (const r of resolutions) {
+    if (r.row_id) {
+      const rowSet = acknowledgedRowKeys.get(r.row_id) ?? new Set();
+      rowSet.add(r.issue_key);
+      acknowledgedRowKeys.set(r.row_id, rowSet);
+    } else {
+      acknowledgedKeys.add(r.issue_key);
+    }
+  }
+
+  return (
+    <>
       <SummaryBar counts={counts} finalizedInsert={finalizedInsert.length} finalizedSkip={finalizedSkip.length} />
 
-      {/* Needs resolution */}
       {blockedRows.length > 0 && (
         <section style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.75rem", color: "#a53a2d" }}>
@@ -172,7 +213,6 @@ export default async function AdminImportDetailPage({
         </section>
       )}
 
-      {/* Ready to import */}
       {(insertRows.length > 0 || updateRows.length > 0) && (
         <section style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.75rem", color: "#0e5737" }}>
@@ -240,7 +280,6 @@ export default async function AdminImportDetailPage({
         </section>
       )}
 
-      {/* Pending */}
       {pendingRows.length > 0 && (
         <section style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.75rem", color: "#8a5a00" }}>
@@ -269,7 +308,6 @@ export default async function AdminImportDetailPage({
         </section>
       )}
 
-      {/* Duplicate — already imported */}
       {duplicateFixtureRows.length > 0 && (
         <details style={{ marginBottom: "0.75rem" }}>
           <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "14px", padding: "0.5rem 0", color: "#6f7e7a" }}>
@@ -283,7 +321,6 @@ export default async function AdminImportDetailPage({
         </details>
       )}
 
-      {/* Duplicate — already in another batch */}
       {duplicatePendingRows.length > 0 && (
         <details style={{ marginBottom: "0.75rem" }}>
           <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "14px", padding: "0.5rem 0", color: "#8a5a00" }}>
@@ -297,7 +334,6 @@ export default async function AdminImportDetailPage({
         </details>
       )}
 
-      {/* Duplicate — same batch */}
       {duplicateSameBatchRows.length > 0 && (
         <details style={{ marginBottom: "0.75rem" }}>
           <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "14px", padding: "0.5rem 0", color: "#6f7e7a" }}>
@@ -311,7 +347,6 @@ export default async function AdminImportDetailPage({
         </details>
       )}
 
-      {/* Imported history */}
       {finalizedInsert.length > 0 && (
         <details style={{ marginBottom: "0.5rem" }}>
           <summary style={{
@@ -326,7 +361,6 @@ export default async function AdminImportDetailPage({
         </details>
       )}
 
-      {/* Skipped history */}
       {finalizedSkip.length > 0 && (
         <details style={{ marginBottom: "0.5rem" }}>
           <summary style={{
@@ -341,11 +375,10 @@ export default async function AdminImportDetailPage({
         </details>
       )}
 
-      {/* Danger zone delete */}
       {!hasBeenApplied && (
         <DangerZone batchId={batchId} csrfToken={csrfToken} />
       )}
-    </main>
+    </>
   );
 }
 

@@ -293,15 +293,19 @@ export async function applyBatchRows(
        AND source_id LIKE ?`,
     [`${batchId}-%`]
   );
+  const reconcileStatements: SqlWrite[] = [];
   for (const fx of reconciledFixtures) {
     const rowIdStr = fx.source_id.slice(String(batchId).length + 1);
     const rowId = parseInt(rowIdStr, 10);
     if (!isNaN(rowId)) {
-      await db.run(
-        `UPDATE import_batch_rows SET final_fixture_id = ? WHERE id = ? AND final_fixture_id IS NULL`,
-        [fx.id, rowId]
-      );
+      reconcileStatements.push({
+        sql: `UPDATE import_batch_rows SET final_fixture_id = ? WHERE id = ? AND final_fixture_id IS NULL`,
+        params: [fx.id, rowId],
+      });
     }
+  }
+  if (reconcileStatements.length > 0) {
+    await db.writeBatch(reconcileStatements);
   }
 
   return {
