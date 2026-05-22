@@ -1,11 +1,5 @@
 import type { AppDatabase } from "./adapter.ts";
 
-export interface ClubMappingResult {
-  publicClubId: number | null;
-  mappingType: "direct" | "alias" | "ambiguous" | "unknown";
-  displayName: string;
-}
-
 export interface ClubAlias {
   id: number;
   clubId: number;
@@ -28,74 +22,6 @@ export interface CompetitionMappingResult {
   divisionId: number | null;
 }
 
-export async function resolveFixtureParticipant(
-  db: AppDatabase,
-  teamName: string,
-  options?: {
-    sourceId?: string;
-    competitionCode?: string;
-    seasonLabel?: string;
-  }
-): Promise<ClubMappingResult> {
-  const trimmed = teamName.trim();
-  if (!trimmed) {
-    return { publicClubId: null, mappingType: "unknown", displayName: teamName };
-  }
-
-  // 1. Try direct match on clubs
-  const directClub = await db.get<{ id: number }>(
-    `SELECT id FROM clubs WHERE name = ?`,
-    [trimmed]
-  );
-  if (directClub) {
-    return {
-      publicClubId: directClub.id,
-      mappingType: "direct",
-      displayName: trimmed,
-    };
-  }
-
-  // 2. Try scoped alias if competition is known (scoped wins over global)
-  if (options?.competitionCode) {
-    const aliasMatch = await db.get<{ club_id: number; name: string }>(
-      `SELECT c.id AS club_id, c.name
-       FROM clubs c
-       JOIN club_aliases ca ON ca.club_id = c.id
-       WHERE ca.normalized_alias = ?
-         AND (ca.competition_code = ? OR ca.competition_code IS NULL)
-         AND ca.retired_at IS NULL
-       ORDER BY CASE WHEN ca.competition_code = ? THEN 0 ELSE 1 END
-       LIMIT 1`,
-      [normalizeName(trimmed), options.competitionCode, options.competitionCode]
-    );
-    if (aliasMatch) {
-      return {
-        publicClubId: aliasMatch.club_id,
-        mappingType: "alias",
-        displayName: aliasMatch.name,
-      };
-    }
-  }
-
-  // 3. Try unscoped aliases
-  const aliasMatch = await db.get<{ club_id: number; name: string }>(
-    `SELECT c.id AS club_id, c.name
-     FROM clubs c
-     JOIN club_aliases ca ON ca.club_id = c.id
-     WHERE ca.normalized_alias = ? AND ca.competition_code IS NULL AND ca.retired_at IS NULL`,
-    [normalizeName(trimmed)]
-  );
-  if (aliasMatch) {
-    return {
-      publicClubId: aliasMatch.club_id,
-      mappingType: "alias",
-      displayName: aliasMatch.name,
-    };
-  }
-
-  return { publicClubId: null, mappingType: "unknown", displayName: trimmed };
-}
-
 export async function resolveCompetitionFromDivision(
   db: AppDatabase,
   divisionId: number
@@ -105,33 +31,6 @@ export async function resolveCompetitionFromDivision(
     [divisionId]
   );
   return row ? { competitionCode: row.competition_code, divisionId: row.division_id } : null;
-}
-
-export async function resolveCompetitionFromFixture(
-  db: AppDatabase,
-  homeClubId: number | null,
-  competitionText: string
-): Promise<string | null> {
-  // First try exact match on competitions table
-  const comp = await db.get<{ code: string }>(
-    `SELECT code FROM competitions WHERE code = ? OR name = ?`,
-    [competitionText, competitionText]
-  );
-  if (comp) return comp.code;
-
-  // If home club is known, look up their competition via division assignment
-  if (homeClubId) {
-    const mapping = await db.get<{ competition_code: string }>(
-      `SELECT dcm.competition_code
-       FROM division_assignments da
-       JOIN division_competition_mappings dcm ON dcm.division_id = da.division_id
-       WHERE da.club_id = ?`,
-      [homeClubId]
-    );
-    if (mapping) return mapping.competition_code;
-  }
-
-  return null;
 }
 
 export function normalizeName(value: string): string {

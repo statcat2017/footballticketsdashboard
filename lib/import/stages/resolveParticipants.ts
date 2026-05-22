@@ -1,9 +1,9 @@
-import type { AppDatabase } from "../../db/adapter.ts";
+import type { ValidationCache } from "../validationCache.ts";
 import type { ValidationContext } from "../validationContext.ts";
-import { resolveFixtureParticipant, normalizeName } from "../../db/clubMapping.ts";
+import { resolveClubParticipant, findAmbiguousClubsForAlias } from "../validationCache.ts";
 import { makeIssue } from "../validation.ts";
 
-export async function resolveHomeParticipant(db: AppDatabase, ctx: ValidationContext): Promise<void> {
+export async function resolveHomeParticipant(cache: ValidationCache, ctx: ValidationContext): Promise<void> {
   const { row } = ctx;
 
   if (!row.homeParticipantRaw) {
@@ -18,40 +18,26 @@ export async function resolveHomeParticipant(db: AppDatabase, ctx: ValidationCon
     return;
   }
 
-  const normalized = normalizeName(row.homeParticipantRaw);
+  const resolved = resolveClubParticipant(cache, row.homeParticipantRaw, ctx.competitionCode);
 
-  const unscopedMatches = await db.all<{ club_id: number }>(
-    `SELECT ca.club_id FROM club_aliases ca
-     WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-       AND ca.competition_code IS NULL`,
-    [normalized]
-  );
-  if (unscopedMatches.length > 1) {
-    const clubs = await db.all<{ name: string }>(
-      `SELECT c.name FROM clubs c
-       JOIN club_aliases ca ON ca.club_id = c.id
-       WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-         AND ca.competition_code IS NULL`,
-      [normalized]
-    );
+  if (resolved.mappingType === "ambiguous") {
+    const clubs = findAmbiguousClubsForAlias(cache, row.homeParticipantRaw, ctx.competitionCode);
     const names = clubs.map((c) => c.name).join(", ");
     ctx.warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field: "home", rawValue: row.homeParticipantRaw }));
     ctx.hasBlocker = true;
     return;
   }
 
-  const resolved = await resolveFixtureParticipant(db, row.homeParticipantRaw);
-
-  if (resolved.mappingType === "unknown" || resolved.mappingType === "ambiguous") {
+  if (resolved.mappingType === "unknown") {
     ctx.warnings.push(makeIssue("unknown_club", `Unknown club: ${row.homeParticipantRaw}. Verify the club name or add an alias.`, { field: "home", rawValue: row.homeParticipantRaw }));
     ctx.hasBlocker = true;
     return;
   }
 
-  ctx.homeClubId = resolved.publicClubId;
+  ctx.homeClubId = resolved.clubId;
 }
 
-export async function resolveAwayParticipant(db: AppDatabase, ctx: ValidationContext): Promise<void> {
+export async function resolveAwayParticipant(cache: ValidationCache, ctx: ValidationContext): Promise<void> {
   const { row } = ctx;
 
   if (!row.awayParticipantRaw) {
@@ -66,55 +52,17 @@ export async function resolveAwayParticipant(db: AppDatabase, ctx: ValidationCon
     return;
   }
 
-  const normalized = normalizeName(row.awayParticipantRaw);
+  const resolved = resolveClubParticipant(cache, row.awayParticipantRaw, ctx.competitionCode);
 
-  if (ctx.competitionCode) {
-    const scopedMatches = await db.all<{ club_id: number }>(
-      `SELECT ca.club_id FROM club_aliases ca
-       WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-         AND ca.competition_code = ?`,
-      [normalized, ctx.competitionCode]
-    );
-    if (scopedMatches.length > 1) {
-      const clubs = await db.all<{ name: string }>(
-        `SELECT c.name FROM clubs c
-         JOIN club_aliases ca ON ca.club_id = c.id
-         WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-           AND ca.competition_code = ?`,
-        [normalized, ctx.competitionCode]
-      );
-      const names = clubs.map((c) => c.name).join(", ");
-      ctx.warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field: "away", rawValue: row.awayParticipantRaw }));
-      ctx.hasBlocker = true;
-      return;
-    }
-  } else {
-    const unscopedMatches = await db.all<{ club_id: number }>(
-      `SELECT ca.club_id FROM club_aliases ca
-       WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-         AND ca.competition_code IS NULL`,
-      [normalized]
-    );
-    if (unscopedMatches.length > 1) {
-      const clubs = await db.all<{ name: string }>(
-        `SELECT c.name FROM clubs c
-         JOIN club_aliases ca ON ca.club_id = c.id
-         WHERE ca.normalized_alias = ? AND ca.retired_at IS NULL
-           AND ca.competition_code IS NULL`,
-        [normalized]
-      );
-      const names = clubs.map((c) => c.name).join(", ");
-      ctx.warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field: "away", rawValue: row.awayParticipantRaw }));
-      ctx.hasBlocker = true;
-      return;
-    }
+  if (resolved.mappingType === "ambiguous") {
+    const clubs = findAmbiguousClubsForAlias(cache, row.awayParticipantRaw, ctx.competitionCode);
+    const names = clubs.map((c) => c.name).join(", ");
+    ctx.warnings.push(makeIssue("ambiguous_club", `Ambiguous alias matches ${clubs.length} clubs: ${names}`, { field: "away", rawValue: row.awayParticipantRaw }));
+    ctx.hasBlocker = true;
+    return;
   }
 
-  const resolved = await resolveFixtureParticipant(db, row.awayParticipantRaw, {
-    competitionCode: ctx.competitionCode ?? undefined,
-  });
-
-  if (resolved.mappingType === "unknown" || resolved.mappingType === "ambiguous") {
+  if (resolved.mappingType === "unknown") {
     const friendlyOverride = ctx.competitionKind === "friendly" && row.awayParticipantRaw;
     if (friendlyOverride) {
       ctx.resolvedAwayIsOneOff = true;
@@ -125,5 +73,5 @@ export async function resolveAwayParticipant(db: AppDatabase, ctx: ValidationCon
     return;
   }
 
-  ctx.awayClubId = resolved.publicClubId;
+  ctx.awayClubId = resolved.clubId;
 }

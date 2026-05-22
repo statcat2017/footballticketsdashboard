@@ -10,6 +10,7 @@ import { normalizeDateTime } from "./stages/normalizeDateTime.ts";
 import { validateMetadata } from "./stages/validateMetadata.ts";
 import { matchFixture } from "./stages/matchFixture.ts";
 import { detectDuplicates } from "./stages/detectDuplicates.ts";
+import { createValidationCache, type ValidationCache } from "./validationCache.ts";
 
 export interface ValidationWarning {
   field?: string;
@@ -94,6 +95,10 @@ export async function validateImportBatch(
 
   const seasonLabel = (batch.seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
 
+  // Pre-load all reference data once for the entire batch
+  const cache = await createValidationCache(db);
+  const seenBatchKeys = new Set<string>();
+
   let insertCount = 0;
   let updateCount = 0;
   let blockedCount = 0;
@@ -107,7 +112,7 @@ export async function validateImportBatch(
       continue;
     }
 
-    const validation = await validateRow(db, row, seasonLabel, {
+    const validation = await validateRow(db, cache, seenBatchKeys, row, seasonLabel, {
       kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
     });
 
@@ -181,15 +186,6 @@ export function isValidDateString(value: string): boolean {
 
 /* ── Duplicate detection helpers ── */
 
-export function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string, unknown>): boolean {
-  if (row.kickoffDate && before.fixture_date && row.kickoffDate !== before.fixture_date) return true;
-  if (row.competitionResolvedCode && before.competition_code && row.competitionResolvedCode !== before.competition_code) return true;
-  if (row.venueResolvedId && row.venueRaw && before.venue_id !== null && row.venueResolvedId !== before.venue_id) return true;
-  if (row.status && before.status && row.status !== before.status) return true;
-  if (row.kickoffTime && before.kickoff_time && row.kickoffTime !== before.kickoff_time) return true;
-  return false;
-}
-
 export async function findDuplicateInSameBatch(
   db: AppDatabase,
   row: ImportBatchRow,
@@ -209,6 +205,15 @@ export async function findDuplicateInSameBatch(
      row.venueRaw, row.venueRaw]
   );
   return result?.id ?? null;
+}
+
+export function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string, unknown>): boolean {
+  if (row.kickoffDate && before.fixture_date && row.kickoffDate !== before.fixture_date) return true;
+  if (row.competitionResolvedCode && before.competition_code && row.competitionResolvedCode !== before.competition_code) return true;
+  if (row.venueResolvedId && row.venueRaw && before.venue_id !== null && row.venueResolvedId !== before.venue_id) return true;
+  if (row.status && before.status && row.status !== before.status) return true;
+  if (row.kickoffTime && before.kickoff_time && row.kickoffTime !== before.kickoff_time) return true;
+  return false;
 }
 
 export async function findDuplicateBatchRow(
@@ -239,18 +244,20 @@ export async function findDuplicateBatchRow(
 
 export async function validateRow(
   db: AppDatabase,
+  cache: ValidationCache,
+  seenBatchKeys: Set<string>,
   row: ImportBatchRow,
   seasonLabel: string | null,
   options?: { kickoffAssumptionPolicy?: KickoffAssumptionPolicy }
 ): Promise<RowValidationResult> {
   const ctx = createContext(row, seasonLabel, options);
 
-  // Collect all pre-match issues in a single pass so the admin sees every
-  // actionable problem at once instead of whack-a-mole.
-  await resolveHomeParticipant(db, ctx);
-  await resolveCompetition(db, ctx);
-  await resolveAwayParticipant(db, ctx);
-  await resolveVenue(db, ctx);
+  // All reference data is already in memory via ValidationCache —
+  // these stages do zero DB queries.
+  await resolveHomeParticipant(cache, ctx);
+  await resolveCompetition(cache, ctx);
+  await resolveAwayParticipant(cache, ctx);
+  await resolveVenue(cache, ctx);
   normalizeDateTime(ctx);
   validateMetadata(ctx);
 
@@ -260,7 +267,7 @@ export async function validateRow(
   await matchFixture(db, ctx);
   if (ctx.hasBlocker) return toResult(ctx);
 
-  await detectDuplicates(db, ctx);
+  await detectDuplicates(db, cache, ctx, seenBatchKeys);
 
   return toResult(ctx);
 }

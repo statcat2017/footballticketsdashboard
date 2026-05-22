@@ -6,6 +6,7 @@ import { buildAdminAuditLogWrite } from "../admin/audit.ts";
 import { buildFixtureInsert, buildFixtureUpdate } from "./apply.ts";
 import { getCurrentSeasonLabel } from "./shared";
 import { findImportFixtureMatch } from "./fixtureIdentity";
+import { createValidationCache } from "./validationCache.ts";
 
 
 export interface ApplySingleResult {
@@ -35,7 +36,9 @@ export async function validateRowById(
   if (!batch) throw new Error(`Import batch ${row.batchId} not found.`);
 
   const seasonLabel = (seasonLabelArg ?? batch.seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
-  const validation = await validateRow(db, row, seasonLabel, {
+  const cache = await createValidationCache(db);
+  const seenBatchKeys = new Set<string>();
+  const validation = await validateRow(db, cache, seenBatchKeys, row, seasonLabel, {
     kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
   });
 
