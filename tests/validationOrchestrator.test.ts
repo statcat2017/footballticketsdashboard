@@ -6,7 +6,7 @@ import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
 import { validateRow } from "@/lib/import/validation";
 import type { ImportBatchRow } from "@/lib/import";
-import { createValidationCache, type ValidationCache } from "@/lib/import/validationCache";
+import { createValidationCache } from "@/lib/import/validationCache";
 
 function setupTestDb(): AppDatabase {
   const sqlite = new Database(":memory:");

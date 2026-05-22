@@ -28,8 +28,8 @@ export interface ValidationCache {
   }>;
   // Maps normalized_alias -> list of club IDs (unscoped, for ambiguity detection)
   aliasToClubsUnscoped: Map<string, Array<{ clubId: number; clubName: string }>>;
-  // Maps normalized_alias|competition_code -> club ID (scoped)
-  aliasToClubScoped: Map<string, number>;
+  // Maps normalized_alias|competition_code -> list of club IDs (scoped, for ambiguity detection)
+  aliasToClubScoped: Map<string, Array<{ clubId: number; clubName: string }>>;
   venues: Array<{ id: number; name: string; latitude: number; longitude: number; is_approximate: number }>;
   venueByName: Map<string, number>;
   clubToPrimaryVenue: Map<number, number>;
@@ -93,20 +93,24 @@ export async function createValidationCache(db: AppDatabase): Promise<Validation
   }
 
   const aliasToClubsUnscoped = new Map<string, Array<{ clubId: number; clubName: string }>>();
-  const aliasToClubScoped = new Map<string, number>();
+  const aliasToClubScoped = new Map<string, Array<{ clubId: number; clubName: string }>>();
   for (const alias of clubAliases) {
+    const clubName = clubById.get(alias.club_id) ?? `Club #${alias.club_id}`;
     if (alias.competition_code === null) {
-      // Unscoped - track all matches for ambiguity detection
       let entries = aliasToClubsUnscoped.get(alias.normalized_alias);
       if (!entries) {
         entries = [];
         aliasToClubsUnscoped.set(alias.normalized_alias, entries);
       }
-      entries.push({ clubId: alias.club_id, clubName: clubById.get(alias.club_id) ?? `Club #${alias.club_id}` });
+      entries.push({ clubId: alias.club_id, clubName });
     } else {
-      // Scoped - competition-specific, map directly
       const key = `${alias.normalized_alias}|${alias.competition_code}`;
-      aliasToClubScoped.set(key, alias.club_id);
+      let entries = aliasToClubScoped.get(key);
+      if (!entries) {
+        entries = [];
+        aliasToClubScoped.set(key, entries);
+      }
+      entries.push({ clubId: alias.club_id, clubName });
     }
   }
 
@@ -147,7 +151,7 @@ export function resolveCompetition(
   homeClubId: number | null | undefined
 ): { code: string | null; kind: string | null } {
   if (!competitionRaw) {
-    if (homeClubId !== null && cache.divisionCompetitionMap.has(homeClubId)) {
+    if (homeClubId != null && cache.divisionCompetitionMap.has(homeClubId)) {
       const code = cache.divisionCompetitionMap.get(homeClubId)!;
       const comp = cache.competitionByCode.get(code);
       return { code, kind: comp?.kind ?? null };
@@ -157,15 +161,15 @@ export function resolveCompetition(
 
   const byCode = cache.competitionByCode.get(competitionRaw);
   if (byCode) {
-    return { code: byCode.code, kind: byCode.kind };
+    return { code: byCode.code, kind: byCode.kind ?? null };
   }
 
   const byName = cache.competitionByName.get(competitionRaw.toLowerCase());
   if (byName) {
-    return { code: byName.code, kind: byName.kind };
+    return { code: byName.code, kind: byName.kind ?? null };
   }
 
-  if (homeClubId !== null && cache.divisionCompetitionMap.has(homeClubId)) {
+  if (homeClubId != null && cache.divisionCompetitionMap.has(homeClubId)) {
     const code = cache.divisionCompetitionMap.get(homeClubId)!;
     const comp = cache.competitionByCode.get(code);
     return { code, kind: comp?.kind ?? null };
@@ -195,9 +199,14 @@ export function resolveClubParticipant(
   // 2. Try scoped alias if competition is known
   if (competitionCode) {
     const scopedKey = `${normalized}|${competitionCode}`;
-    const scopedId = cache.aliasToClubScoped.get(scopedKey);
-    if (scopedId !== undefined) {
-      return { clubId: scopedId, mappingType: "alias", displayName: trimmed };
+    const scopedEntries = cache.aliasToClubScoped.get(scopedKey);
+    if (scopedEntries) {
+      if (scopedEntries.length === 1) {
+        return { clubId: scopedEntries[0].clubId, mappingType: "alias", displayName: scopedEntries[0].clubName };
+      }
+      // Multiple scoped aliases for same alias+competition = ambiguous
+      const names = scopedEntries.map((e) => e.clubName).join(", ");
+      return { clubId: null, mappingType: "ambiguous", displayName: names };
     }
   }
 
@@ -219,62 +228,57 @@ export function findAmbiguousClubsForAlias(
   competitionCode?: string | null
 ): AmbiguousClubInfo[] {
   const normalized = normalizeNameForCache(participantRaw);
+  const seen = new Map<number, string>();
 
   if (competitionCode) {
-    // Check scoped aliases for ambiguity under this competition
     const scopedKey = `${normalized}|${competitionCode}`;
-    const scopedId = cache.aliasToClubScoped.get(scopedKey);
-    if (scopedId !== undefined) {
-      // Scoped aliases are unique per competition, check if unscoped also exists
-      const unscopedEntries = cache.aliasToClubsUnscoped.get(normalized);
-      if (unscopedEntries && unscopedEntries.length > 0) {
-        const allUnique = new Set([scopedId, ...unscopedEntries.map(e => e.clubId)]);
-        if (allUnique.size > 1) {
-          // There's ambiguity between scoped and unscoped
-          const results: AmbiguousClubInfo[] = [];
-          for (const id of allUnique) {
-            const club = cache.clubs.find(c => c.id === id);
-            if (club) results.push({ name: club.name, clubId: club.id });
-          }
-          return results;
-        }
+    const scopedEntries = cache.aliasToClubScoped.get(scopedKey);
+    if (scopedEntries) {
+      for (const entry of scopedEntries) {
+        seen.set(entry.clubId, entry.clubName);
       }
-      return [];
     }
   }
 
-  // Check unscoped aliases
   const unscopedEntries = cache.aliasToClubsUnscoped.get(normalized);
-  if (unscopedEntries && unscopedEntries.length > 1) {
-    return unscopedEntries.map(e => ({ name: e.clubName, clubId: e.clubId }));
+  if (unscopedEntries) {
+    for (const entry of unscopedEntries) {
+      seen.set(entry.clubId, entry.clubName);
+    }
+  }
+
+  if (seen.size > 1) {
+    return Array.from(seen.entries()).map(([clubId, name]) => ({ name, clubId }));
   }
 
   return [];
 }
 
+export type VenueResolutionSource = "exact" | "home_primary" | "none";
+
 export function resolveVenue(
   cache: ValidationCache,
   venueRaw: string | null | undefined,
   homeClubId: number | null | undefined
-): { venueId: number | null } {
+): { venueId: number | null; source: VenueResolutionSource } {
   if (!venueRaw) {
-    if (homeClubId !== null && cache.clubToPrimaryVenue.has(homeClubId)) {
-      return { venueId: cache.clubToPrimaryVenue.get(homeClubId)! };
+    if (homeClubId != null && cache.clubToPrimaryVenue.has(homeClubId)) {
+      return { venueId: cache.clubToPrimaryVenue.get(homeClubId)!, source: "home_primary" };
     }
-    return { venueId: null };
+    return { venueId: null, source: "none" };
   }
 
   const normalized = venueRaw.toLowerCase();
   const venueId = cache.venueByName.get(normalized);
   if (venueId !== undefined) {
-    return { venueId };
+    return { venueId, source: "exact" };
   }
 
-  if (homeClubId !== null && cache.clubToPrimaryVenue.has(homeClubId)) {
-    return { venueId: cache.clubToPrimaryVenue.get(homeClubId)! };
+  if (homeClubId != null && cache.clubToPrimaryVenue.has(homeClubId)) {
+    return { venueId: cache.clubToPrimaryVenue.get(homeClubId)!, source: "home_primary" };
   }
 
-  return { venueId: null };
+  return { venueId: null, source: "none" };
 }
 
 function normalizeNameForCache(name: string): string {

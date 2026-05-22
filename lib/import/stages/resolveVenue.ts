@@ -14,8 +14,12 @@ export async function resolveVenue(cache: ValidationCache, ctx: ValidationContex
 
   const result = cachedResolveVenue(cache, row.venueRaw ?? undefined, ctx.homeClubId ?? undefined);
 
+  if (result.source === "home_primary" && row.venueRaw) {
+    ctx.warnings.push(makeIssue("venue_not_found", `Venue "${row.venueRaw}" not found. Using home club's primary venue.`, { field: "venue", rawValue: row.venueRaw }));
+  }
+
   if (result.venueId !== null) {
-    if (row.venueRaw) {
+    if (result.source === "exact" && row.venueRaw) {
       const venue = cache.venues.find((v) => v.id === result.venueId);
       if (venue && venue.latitude === 0 && venue.longitude === 0) {
         ctx.warnings.push(makeIssue("venue_unusable_coords", `Venue "${venue.name}" has unusable coordinates. Fix venue coordinates.`, { rawValue: venue.name }));
@@ -26,12 +30,6 @@ export async function resolveVenue(cache: ValidationCache, ctx: ValidationContex
   }
 
   if (row.venueRaw) {
-    if (ctx.homeClubId && cache.clubToPrimaryVenue.has(ctx.homeClubId)) {
-      const fallbackId = cache.clubToPrimaryVenue.get(ctx.homeClubId)!;
-      ctx.warnings.push(makeIssue("venue_not_found", `Venue "${row.venueRaw}" not found. Using home club's primary venue.`, { field: "venue", rawValue: row.venueRaw }));
-      ctx.venueId = fallbackId;
-      return;
-    }
     ctx.warnings.push(makeIssue("venue_not_found", `Venue "${row.venueRaw}" not found and home club has no primary venue.`, { rawValue: row.venueRaw }));
     ctx.hasBlocker = true;
     return;
@@ -43,7 +41,6 @@ export async function resolveVenue(cache: ValidationCache, ctx: ValidationContex
     return;
   }
 
-  // Shouldn't reach here given the checks above, but be safe
   if (!ctx.venueId) {
     ctx.warnings.push(makeIssue("missing_primary_venue", "Home club has no primary venue."));
     ctx.hasBlocker = true;

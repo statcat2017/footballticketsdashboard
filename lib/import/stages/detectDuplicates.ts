@@ -2,7 +2,7 @@ import type { AppDatabase } from "../../db/adapter.ts";
 import type { ValidationCache } from "../validationCache.ts";
 import type { ValidationContext } from "../validationContext.ts";
 import type { ImportBatchRow } from "../types.ts";
-import { findDuplicateBatchRow, hasMeaningfulChanges } from "../validation.ts";
+import { findDuplicateBatchRow, findDuplicateInSameBatch, hasMeaningfulChanges } from "../validation.ts";
 import { makeIssue } from "../validation.ts";
 
 export async function detectDuplicates(
@@ -22,16 +22,28 @@ export async function detectDuplicates(
     awayIsOneOff: ctx.resolvedAwayIsOneOff,
   } as ImportBatchRow;
 
-  // In-memory same-batch duplicate detection
-  const sameBatchKey = buildSameBatchKey(resolvedRow);
-  if (sameBatchKey && seenBatchKeys.has(sameBatchKey)) {
-    ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (matching home, away, date, time, venue, competition).`, { severity: "warning" }));
-    ctx.duplicateKind = "same_batch";
-    ctx.duplicateRef = null;
-    return;
-  }
-  if (sameBatchKey) {
-    seenBatchKeys.add(sameBatchKey);
+  // Same-batch duplicate detection
+  if (seenBatchKeys.size > 0) {
+    // Batch mode: use in-memory set
+    const sameBatchKey = buildSameBatchKey(resolvedRow);
+    if (sameBatchKey && seenBatchKeys.has(sameBatchKey)) {
+      ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (matching home, away, date, time, venue, competition).`, { severity: "warning" }));
+      ctx.duplicateKind = "same_batch";
+      ctx.duplicateRef = null;
+      return;
+    }
+    if (sameBatchKey) {
+      seenBatchKeys.add(sameBatchKey);
+    }
+  } else {
+    // Single-row mode: query DB for earlier unresolved rows in the same batch
+    const dupRowId = await findDuplicateInSameBatch(db, ctx.row);
+    if (dupRowId) {
+      ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (row #${dupRowId}).`, { severity: "warning" }));
+      ctx.duplicateKind = "same_batch";
+      ctx.duplicateRef = dupRowId;
+      return;
+    }
   }
 
   if (ctx.fixtureMatchKind === "match" && ctx.fixtureMatchBefore && !hasMeaningfulChanges(resolvedRow, ctx.fixtureMatchBefore)) {

@@ -186,6 +186,27 @@ export function isValidDateString(value: string): boolean {
 
 /* ── Duplicate detection helpers ── */
 
+export async function findDuplicateInSameBatch(
+  db: AppDatabase,
+  row: ImportBatchRow,
+): Promise<number | null> {
+  if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
+  const result = await db.get<{ id: number }>(
+    `SELECT id FROM import_batch_rows
+     WHERE batch_id = ? AND id < ? AND final_action IS NULL
+     AND home_participant_raw = ? AND away_participant_raw = ?
+     AND kickoff_date = ?
+     AND (competition_raw = ? OR (competition_raw IS NULL AND ? IS NULL))
+     AND (kickoff_time = ? OR (kickoff_time IS NULL AND ? IS NULL))
+     AND (venue_raw = ? OR (venue_raw IS NULL AND ? IS NULL))`,
+    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate,
+     row.competitionRaw, row.competitionRaw,
+     row.kickoffTime, row.kickoffTime,
+     row.venueRaw, row.venueRaw]
+  );
+  return result?.id ?? null;
+}
+
 export function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string, unknown>): boolean {
   if (row.kickoffDate && before.fixture_date && row.kickoffDate !== before.fixture_date) return true;
   if (row.competitionResolvedCode && before.competition_code && row.competitionResolvedCode !== before.competition_code) return true;
