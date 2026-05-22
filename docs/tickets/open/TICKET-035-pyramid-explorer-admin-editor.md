@@ -1,6 +1,6 @@
 # TICKET-035: Pyramid Explorer And Admin Edge Editor
 
-Status: open - Phases 1-2 complete, Phase 3 next
+Status: partially-done — Phases 1-2 complete (schema backfill, data service, public `/pyramid` page); Phases 3-5 remain (graph component, admin editor, validation)
 Owner: Frontend / Data
 Priority: high
 Depends on: TICKET-034
@@ -18,7 +18,7 @@ Sprint handoff: 2026-05-16.
 - Phase 1 merged in PR #79.
 - Phase 2 merged in PR #81.
 - Current `main` includes `lib/db/pyramid-explorer.ts` and `tests/pyramid-explorer.test.ts`.
-- The Phase 2 review fix is included: nested clubs are keyed by `division_id`, and divisions are scoped through `pyramid_season_divisions` for the latest season.
+- The Phase 2 review fix is included: nested clubs are keyed by `division_id`. The service now reads from `division_assignments` (migration 020 replaced `pyramid_season_divisions`).
 - Next boot-up should begin Phase 3 on a new branch from `main`.
 
 ## Next Steps
@@ -58,7 +58,7 @@ Sprint handoff: 2026-05-16.
 - Return divisions, edges, latest-season memberships, club search records, and derived visual connections.
 - Keep TypeScript constants as seed data only.
 - Merged in PR #81.
-- The service reads latest-season divisions through `pyramid_season_divisions` and keys nested clubs by `division_id`.
+- The service reads latest-season divisions through `division_assignments` and keys nested clubs by `division_id`.
 
 ### Phase 3: Shared Graph Component (Next)
 

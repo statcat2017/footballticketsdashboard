@@ -1,6 +1,6 @@
 # TICKET-027: Admin Foundation Schema
 
-Status: open
+Status: done
 Owner: Backend
 Priority: high
 Depends on: TICKET-025, TICKET-026

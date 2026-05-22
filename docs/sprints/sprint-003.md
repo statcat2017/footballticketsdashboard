@@ -1,6 +1,6 @@
 # Sprint 3: Import Batch Resolution — Fixture-by-Fixture Repair & Apply
 
-**Status:** Active
+**Status:** Not Started — depends on Sprint 2 completion; all 3 tickets (TICKET-064 through TICKET-066) remain in the open backlog
 
 ## Goal
 

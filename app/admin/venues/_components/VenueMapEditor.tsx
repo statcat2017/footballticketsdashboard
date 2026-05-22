@@ -291,7 +291,7 @@ export function VenueMapEditor({
           {mode === "edit" && !isApproximate && (
             <>
               {" "}
-              Moving the pin will mark this venue&apos;s coordinates as approximate.
+              Moving the pin will set the coordinate precision to &quot;ground located&quot;.
             </>
           )}
         </p>

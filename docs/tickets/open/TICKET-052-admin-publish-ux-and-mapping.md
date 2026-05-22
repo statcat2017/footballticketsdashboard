@@ -1,6 +1,6 @@
 # TICKET-052: Admin Publish UX — success/error banners, existing-club mapping, button gating
 
-Status: open
+Status: partially-done — sub-task 1 (success/error banners) implemented; sub-tasks 2-3 superseded by division-assignment system (migrations 020-022)
 Owner: Admin / Backend
 Priority: high
 Depends on: none

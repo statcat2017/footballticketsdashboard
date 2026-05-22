@@ -1,6 +1,6 @@
 # Sprint 2: Fixture Import Pipeline — Preview & Manual Apply
 
-**Status:** Active
+**Status:** Not Started — all 5 tickets (TICKET-059 through TICKET-063) remain in the open backlog
 
 ## Goal
 

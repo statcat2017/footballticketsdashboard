@@ -1,6 +1,6 @@
 # TICKET-042: Source-Agnostic Fixture Ingestion Adapters
 
-Status: open
+Status: partially-done — adapter framework, CSV adapter (478 lines), and HTML table adapter (676 lines) implemented; API feed and agentic scrape adapters remain
 Owner: Backend
 Priority: high
 Depends on: TICKET-036, TICKET-038, TICKET-039

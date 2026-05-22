@@ -1,5 +1,11 @@
 # Pyramid Population Guide
 
+> **DEPRECATED (2026-05-22):** This guide describes the original seed-constants workflow
+> (modifying `lib/db/pyramid.ts` and `lib/db/seed-data.ts` directly). The project has moved to a
+> database-backed pyramid model with admin CRUD via `division_assignments` (migration 020).
+> Use the admin interface at `/admin/publish` and `/admin/divisions` for current club management.
+> This guide is retained for historical reference on data sources and research methods.
+
 ## What Worked
 
 ### Data Sources

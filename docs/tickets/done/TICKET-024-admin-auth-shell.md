@@ -1,6 +1,6 @@
 # TICKET-024: Admin Auth Shell
 
-Status: open
+Status: done
 Owner: Backend
 Priority: high
 Depends on:

@@ -1,6 +1,6 @@
 # TICKET-030: Admin Audit Hardening
 
-Status: review
+Status: partially-done — actor handling consistent, no secrets stored; fail-closed behavior needs documentation/tests
 Owner: Backend
 Priority: medium
 Depends on: TICKET-025

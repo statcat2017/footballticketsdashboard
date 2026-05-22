@@ -1,6 +1,6 @@
 # TICKET-025: Admin Audit Log
 
-Status: open
+Status: done
 Owner: Backend
 Priority: high
 Depends on: TICKET-024

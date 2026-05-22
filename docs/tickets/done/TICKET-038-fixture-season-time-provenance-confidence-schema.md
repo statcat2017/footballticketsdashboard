@@ -1,6 +1,6 @@
 # TICKET-038: Fixture Season, Time, Provenance, And Confidence Schema
 
-Status: schema-complete
+Status: done
 Owner: Backend
 Priority: high
 Depends on: TICKET-036, TICKET-037
