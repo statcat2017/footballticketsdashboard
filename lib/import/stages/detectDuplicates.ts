@@ -73,6 +73,14 @@ export async function detectDuplicates(
       ctx.duplicateRef = relaxedMatch.id;
       return;
     }
+    if (relaxedMatch.kind === "ambiguous") {
+      ctx.warnings.push(makeIssue("ambiguous_fixture_match",
+        `Found ${relaxedMatch.count} existing fixtures with the same home, away, and date. Cannot determine which this row duplicates.`,
+        { severity: "blocker" }
+      ));
+      ctx.hasBlocker = true;
+      return;
+    }
   }
 }
 

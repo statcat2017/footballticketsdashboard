@@ -951,4 +951,30 @@ describe("duplicate detection during validation", () => {
     expect(rows[0].warningsJson).toContain("duplicate_existing_fixture");
     expect(rows[0].warningsJson).toContain("fixture #110");
   });
+
+  it("blocks row when multiple existing fixtures match via relaxed matcher", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+
+    // Add a second fixture with same home/away/date but different season/competition
+    db.exec(`
+      INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (2, '2026-27', '2026-08-01', '2027-07-31', 0);
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (111, 'test', 'relaxed-dup-2', 'ELC', 3, 4, 1, '2026-06-20', '19:45', 'confirmed', '2026-27', 'scheduled', 0, 0, 0, 0, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (112, 'test', 'relaxed-dup-3', 'ELC', 3, 4, 1, '2026-06-20', '19:45', 'confirmed', '2026-27', 'scheduled', 0, 0, 0, 0, 'imported');
+    `);
+
+    const batchId = await createTestBatch(db, sourceId, [
+      { homeParticipantRaw: "Manchester United", awayParticipantRaw: "Queens Park Rangers", competitionRaw: "PL", kickoffDate: "2026-06-20", kickoffTime: "15:00", venueRaw: "Old Trafford" },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].matchResult).toBe("blocked");
+    expect(rows[0].warningsJson).toContain("ambiguous_fixture_match");
+    expect(rows[0].warningsJson).toContain("2 existing fixtures");
+  });
 });
