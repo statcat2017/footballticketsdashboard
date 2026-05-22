@@ -548,4 +548,45 @@ describe("FWP-style table parsing", () => {
     expect(rows[1].competitionRaw).toBe("Non-League Friendlies");
     expect(rows[1].awayIsOneOff).toBe(true);
   });
+
+  it("extracts tables from actual footballwebpages.co.uk HTML structure", () => {
+    const html = `<html><body>
+<h2>Non-League Friendlies</h2>
+<div id="fixtures-results-refreshable">
+<table class="table exportable table-hover fixtures-results fixtures-results-competition">
+<thead>
+<tr class="d-none export-only"><th>Date</th><th>Status</th><th>Home</th><th></th><th>Away</th></tr>
+</thead>
+<tbody>
+<tr class="no-export no-hover title" title="Saturday 27th June 2026"><th colspan="5">Saturday 27th June 2026</th></tr>
+<tr class="first" title="SC Thamesmead v Sutton Athletic"><td class="d-none export-only">27/6/2026</td><td class="status">3.30pm</td><td class="team home-team"><a href="match/2026-2027/friendly/sc-thamesmead/sutton-athletic/565380">SC Thamesmead</a></td><td class="versus">v</td><td class="team away-team"><a href="match/2026-2027/friendly/sc-thamesmead/sutton-athletic/565380">Sutton Athletic</a></td></tr>
+<tr class="no-export no-hover spacer"><td colspan="5">&nbsp;</td></tr>
+<tr class="no-export no-hover title" title="Wednesday 1st July 2026"><th colspan="5">Wednesday 1st July 2026</th></tr>
+<tr class="first" title="Punjab United v Ebbsfleet United"><td class="d-none export-only">1/7/2026</td><td class="status">7.45pm</td><td class="team home-team"><a href="match/2026-2027/friendly/punjab-united/ebbsfleet-united/565355">Punjab United</a></td><td class="versus">v</td><td class="team away-team"><a href="match/2026-2027/friendly/punjab-united/ebbsfleet-united/565355">Ebbsfleet United</a></td></tr>
+<tr class="no-export no-hover spacer"><td colspan="5">&nbsp;</td></tr>
+<tr title="Harwich &amp; Parkeston v Coggeshall Town"><td class="d-none export-only">3/7/2026</td><td class="status">7.45pm</td><td class="team home-team"><a href="match/2026-2027/friendly/harwich-and-parkeston/coggeshall-town/565350">Harwich &amp; Parkeston</a></td><td class="versus">v</td><td class="team away-team"><a href="match/2026-2027/friendly/harwich-and-parkeston/coggeshall-town/565350">Coggeshall Town</a></td></tr>
+<tr title="Kidlington v Stourport Swifts"><td class="d-none export-only">3/7/2026</td><td class="status">7.45pm</td><td class="team home-team"><a href="match/2026-2027/friendly/kidlington/stourport-swifts/565135">Kidlington</a></td><td class="versus">v</td><td class="team away-team"><a href="match/2026-2027/friendly/kidlington/stourport-swifts/565135">Stourport Swifts</a></td></tr>
+</tbody>
+</table>
+</div>
+</body></html>`;
+
+    const tables = extractTables(html);
+    expect(tables).toHaveLength(1);
+    expect(tables[0].rowCount).toBe(4);
+
+    const { rows, errors } = parseHtmlTableRows(tables[0], "https://www.footballwebpages.co.uk/non-league-friendlies");
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(4);
+
+    expect(rows[0].homeParticipantRaw).toBe("SC Thamesmead");
+    expect(rows[0].awayParticipantRaw).toBe("Sutton Athletic");
+    expect(rows[0].kickoffDate).toBe("2026-06-27");
+    expect(rows[0].kickoffTime).toBe("15:30");
+
+    expect(rows[2].homeParticipantRaw).toBe("Harwich & Parkeston");
+    expect(rows[2].awayParticipantRaw).toBe("Coggeshall Town");
+    expect(rows[2].kickoffDate).toBe("2026-07-03");
+    expect(rows[2].kickoffTime).toBe("19:45");
+  });
 });

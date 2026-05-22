@@ -24,6 +24,7 @@ export default async function AdminNewImportPage({
 
   return (
     <main style={{ maxWidth: "48rem", margin: "0 auto", padding: "0 1rem 3rem", fontFamily: "system-ui, sans-serif" }}>
+      <meta name="csrf-token" content={csrfToken} />
       <header style={{
         padding: "1.25rem 0",
         borderBottom: "1px solid #dce3e2",
@@ -83,10 +84,10 @@ export default async function AdminNewImportPage({
             <label style={{ display: "block", fontWeight: 600, fontSize: "14px", marginBottom: "0.25rem", color: "#17221f" }}>
               Season
             </label>
-            <select name="season_label" style={{ width: "100%", padding: "0.5rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}>
+            <select name="season_label" defaultValue={seasons.find((s) => s.isCurrent)?.label ?? ""} style={{ width: "100%", padding: "0.5rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}>
               <option value="">Auto-detect</option>
               {seasons.map((s) => (
-                <option key={s.label} value={s.label} selected={s.isCurrent}>
+                <option key={s.label} value={s.label}>
                   {s.label} {s.isCurrent ? "(current)" : ""}
                 </option>
               ))}
@@ -128,10 +129,10 @@ export default async function AdminNewImportPage({
             <label style={{ display: "block", fontWeight: 600, fontSize: "14px", marginBottom: "0.25rem", color: "#17221f" }}>
               Season
             </label>
-            <select name="season_label" id="url-season" style={{ width: "100%", padding: "0.5rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}>
+            <select name="season_label" id="url-season" defaultValue={seasons.find((s) => s.isCurrent)?.label ?? ""} style={{ width: "100%", padding: "0.5rem", border: "1px solid #dce3e2", borderRadius: "6px", fontSize: "14px" }}>
               <option value="">Auto-detect</option>
               {seasons.map((s) => (
-                <option key={s.label} value={s.label} selected={s.isCurrent}>
+                <option key={s.label} value={s.label}>
                   {s.label} {s.isCurrent ? "(current)" : ""}
                 </option>
               ))}
@@ -173,123 +174,140 @@ export default async function AdminNewImportPage({
       )}
 
       <script dangerouslySetInnerHTML={{ __html: `
-        document.addEventListener("DOMContentLoaded", function() {
-          var detectBtn = document.getElementById("detect-btn");
-          if (!detectBtn) return;
-          var urlInput = document.getElementById("url-input");
-          var tableResults = document.getElementById("table-results");
-          var tableList = document.getElementById("table-list");
-          var detectError = document.getElementById("detect-error");
-          var urlHidden = document.getElementById("url-hidden");
-          var selectedTables = document.getElementById("selected-tables");
-          var seasonHidden = document.getElementById("season-hidden");
-          var urlSeason = document.getElementById("url-season");
+        (function() {
+          function initUrlImport() {
+            var detectBtn = document.getElementById("detect-btn");
+            var urlInput = document.getElementById("url-input");
+            var tableResults = document.getElementById("table-results");
+            var tableList = document.getElementById("table-list");
+            var detectError = document.getElementById("detect-error");
+            var urlHidden = document.getElementById("url-hidden");
+            var selectedTables = document.getElementById("selected-tables");
+            var seasonHidden = document.getElementById("season-hidden");
+            var urlSeason = document.getElementById("url-season");
 
-          detectBtn.addEventListener("click", async function() {
-            var url = urlInput.value.trim();
-            if (!url) { alert("Please enter a URL"); return; }
+            if (!detectBtn || !urlInput || !tableResults || !tableList || !detectError || !urlHidden || !selectedTables || !seasonHidden || !urlSeason) {
+              return;
+            }
 
-            detectBtn.disabled = true;
-            detectBtn.textContent = "Detecting...";
-            tableResults.style.display = "none";
-            detectError.style.display = "none";
+            if (detectBtn.dataset.urlImportBound === "1") return;
+            detectBtn.dataset.urlImportBound = "1";
 
-            try {
-              var formData = new URLSearchParams();
-              formData.set("url", url);
-              formData.set("csrf", ${JSON.stringify(csrfToken)});
+            var originalText = detectBtn.textContent;
+            var csrf = document.querySelector("meta[name=csrf-token]").content;
 
-              var res = await fetch("/api/admin/imports/preview-url", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: formData.toString()
-              });
+            detectBtn.addEventListener("click", async function() {
+              var url = urlInput.value.trim();
+              if (!url) { alert("Please enter a URL"); return; }
 
-              if (!res.ok) {
-                var errData = await res.json();
-                showError(errData.error || "Detection failed");
-                return;
-              }
-
-              var data = await res.json();
-
-              if (!data.tables || data.tables.length === 0) {
-                showError("No fixture tables found in the page");
-                return;
-              }
-
+              detectBtn.disabled = true;
+              detectBtn.textContent = "Detecting...";
+              tableResults.style.display = "none";
               tableList.innerHTML = "";
-              data.tables.forEach(function(table, idx) {
-                var card = document.createElement("div");
-                card.style.cssText = "border:1px solid #dce3e2;border-radius:8px;padding:0.75rem 1rem";
+              detectError.style.display = "none";
 
-                var checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.checked = true;
-                checkbox.value = String(table.tableIndex);
-                checkbox.style.marginRight = "0.5rem";
+              try {
+                var formData = new URLSearchParams();
+                formData.set("url", url);
+                formData.set("csrf", csrf);
 
-                var label = document.createElement("label");
-                label.style.cssText = "font-weight:600;font-size:14px;cursor:pointer";
-                label.textContent = "Table " + (idx + 1) + (table.caption ? ": " + table.caption : "");
+                var res = await fetch("/api/admin/imports/preview-url", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                  body: formData.toString()
+                });
 
-                var meta = document.createElement("div");
-                meta.style.cssText = "font-size:13px;color:#6f7e7a;margin-top:0.25rem";
-                meta.textContent = table.rowCount + " rows · " + (table.headers.length > 0 ? table.headers.join(", ") : "no headers") + " · score: " + table.score;
-
-                var samples = document.createElement("div");
-                samples.style.cssText = "font-size:12px;color:#6f7e7a;margin-top:0.25rem;font-family:monospace";
-                if (table.sampleCells && table.sampleCells.length > 0) {
-                  samples.textContent = "Samples: " + table.sampleCells.map(function(row) {
-                    return row.slice(0, 3).join(" | ");
-                  }).join("  //  ");
+                if (!res.ok) {
+                  var errData = await res.json().catch(function() { return {}; });
+                  showError(errData.error || "Detection failed (HTTP " + res.status + ")");
+                  return;
                 }
 
-                var header = document.createElement("div");
-                header.style.cssText = "display:flex;align-items:center";
-                header.appendChild(checkbox);
-                header.appendChild(label);
-                card.appendChild(header);
-                card.appendChild(meta);
-                card.appendChild(samples);
+                var data = await res.json();
 
-                tableList.appendChild(card);
+                if (!data.tables || data.tables.length === 0) {
+                  showError("No fixture tables found in the page");
+                  return;
+                }
 
-                checkbox.addEventListener("change", updateSelection);
+                data.tables.forEach(function(table, idx) {
+                  var card = document.createElement("div");
+                  card.style.cssText = "border:1px solid #dce3e2;border-radius:8px;padding:0.75rem 1rem";
+
+                  var checkbox = document.createElement("input");
+                  checkbox.type = "checkbox";
+                  checkbox.checked = true;
+                  checkbox.value = String(table.tableIndex);
+                  checkbox.style.marginRight = "0.5rem";
+
+                  var label = document.createElement("label");
+                  label.style.cssText = "font-weight:600;font-size:14px;cursor:pointer";
+                  label.textContent = "Table " + (idx + 1) + (table.caption ? ": " + table.caption : "");
+
+                  var meta = document.createElement("div");
+                  meta.style.cssText = "font-size:13px;color:#6f7e7a;margin-top:0.25rem";
+                  meta.textContent = table.rowCount + " rows · " + (table.headers.length > 0 ? table.headers.join(", ") : "no headers") + " · score: " + table.score;
+
+                  var samples = document.createElement("div");
+                  samples.style.cssText = "font-size:12px;color:#6f7e7a;margin-top:0.25rem;font-family:monospace";
+                  if (table.sampleCells && table.sampleCells.length > 0) {
+                    samples.textContent = "Samples: " + table.sampleCells.map(function(row) {
+                      return row.slice(0, 3).join(" | ");
+                    }).join("  //  ");
+                  }
+
+                  var header = document.createElement("div");
+                  header.style.cssText = "display:flex;align-items:center";
+                  header.appendChild(checkbox);
+                  header.appendChild(label);
+                  card.appendChild(header);
+                  card.appendChild(meta);
+                  card.appendChild(samples);
+
+                  tableList.appendChild(card);
+
+                  checkbox.addEventListener("change", updateSelection);
+                });
+
+                urlHidden.value = url;
+                updateSelection();
+                tableResults.style.display = "flex";
+
+              } catch (e) {
+                showError("Failed to detect tables: " + e.message);
+              } finally {
+                detectBtn.disabled = false;
+                detectBtn.textContent = originalText;
+              }
+            });
+
+            function updateSelection() {
+              var checked = [];
+              document.querySelectorAll("#table-list input[type=checkbox]:checked").forEach(function(cb) {
+                checked.push(cb.value);
               });
-
-              urlHidden.value = url;
-              updateSelection();
-              tableResults.style.display = "flex";
-
-            } catch (e) {
-              showError("Failed to detect tables: " + e.message);
-            } finally {
-              detectBtn.disabled = false;
-              detectBtn.textContent = "Detect tables →";
+              selectedTables.value = checked.join(",");
             }
-          });
 
-          function updateSelection() {
-            var checked = [];
-            document.querySelectorAll("#table-list input[type=checkbox]:checked").forEach(function(cb) {
-              checked.push(cb.value);
-            });
-            selectedTables.value = checked.join(",");
+            var form = document.getElementById("import-url-form");
+            if (form) {
+              form.addEventListener("submit", function() {
+                seasonHidden.value = urlSeason.value;
+              });
+            }
+
+            function showError(msg) {
+              detectError.textContent = msg;
+              detectError.style.display = "block";
+            }
           }
 
-          var form = document.getElementById("import-url-form");
-          if (form) {
-            form.addEventListener("submit", function() {
-              seasonHidden.value = urlSeason.value;
-            });
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", initUrlImport);
+          } else {
+            initUrlImport();
           }
-
-          function showError(msg) {
-            detectError.textContent = msg;
-            detectError.style.display = "block";
-          }
-        });
+        })();
       ` }} />
     </main>
   );
