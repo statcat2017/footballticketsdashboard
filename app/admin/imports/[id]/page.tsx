@@ -12,6 +12,7 @@ import { DeleteBatchForm } from "./_components/DeleteBatchForm";
 import { ImportButton } from "./_components/ImportButton";
 import { SkipForm } from "./_components/SkipForm";
 import { RowEditForm } from "./_components/RowEditForm";
+import { CompetitionRepairForm } from "./_components/CompetitionRepairForm";
 import { CreateCompetitionForm } from "./_components/CreateCompetitionForm";
 import { MatchClubForm } from "./_components/MatchClubForm";
 import { CreateClubForm } from "./_components/CreateClubForm";
@@ -837,7 +838,7 @@ function IssueRepair({ issue, rowId, batchId, homeResolvedId, competitionResolve
     case "unknown_competition":
       return (
         <div style={{ marginTop: "0.25rem" }}>
-          <RowEditForm batchId={batchId} rowId={rowId} row={{ competitionRaw: issue.rawValue ?? "" } as ImportBatchRow} competitions={competitions ?? []} />
+          <CompetitionRepairForm batchId={batchId} rowId={rowId} rawValue={issue.rawValue ?? ""} competitions={competitions ?? []} />
           <CreateCompetitionForm batchId={batchId} rawValue={issue.rawValue ?? ""} code={issue.rawValue?.replace(/[^a-z0-9]/gi, "_").toUpperCase() ?? ""} />
         </div>
       );
