@@ -184,7 +184,7 @@ describe("search API route", () => {
           distanceMiles: 0.4,
           drivingMinutes: 6,
           publicTransportMinutes: 8,
-          publicTransportUrl: null,
+          publicTransportUrl: "https://www.google.com/maps/dir/?api=1&origin=51.4817%2C-0.191&destination=51.4817%2C-0.191&travelmode=transit&dir_action=navigate",
           source: "cache"
         },
         isDemoData: false,

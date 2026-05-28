@@ -77,7 +77,7 @@ export function normalizePostcode(postcode: string): string {
   const compact = postcode.replace(/\s+/g, "").toUpperCase();
 
   if (compact.length < 5 || compact.length > 7) {
-    throw new Error("Enter a valid UK postcode.");
+    return compact;
   }
 
   return `${compact.slice(0, -3)} ${compact.slice(-3)}`;

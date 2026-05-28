@@ -310,12 +310,10 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
       distanceMiles: Math.round(distance * 10) / 10,
       drivingMinutes: row.driving_minutes,
       publicTransportMinutes: row.public_transport_minutes,
-      publicTransportUrl: row.public_transport_minutes === null
-        ? buildGoogleMapsTransitDirectionsUrl(userLocation, {
-            latitude: row.latitude,
-            longitude: row.longitude
-          })
-        : null,
+      publicTransportUrl: buildGoogleMapsTransitDirectionsUrl(userLocation, {
+        latitude: row.latitude,
+        longitude: row.longitude
+      }),
       source: row.travel_source ?? (row.cached_distance_miles === null ? "distance_only" : "cache")
     },
     isDemoData: row.is_demo_data === 1,

@@ -27,7 +27,11 @@ export function buildFixtureInsert(
   const kickoffAt = dateValue && time ? `${dateValue}T${time}:00.000Z` : null;
   const statusValue = row.status ?? "scheduled";
   const competitionCode = row.competitionResolvedCode
-    || (row.awayIsOneOff ? "FRIENDLY" : "");
+    || (row.awayIsOneOff ? "FRIENDLY" : null);
+
+  if (!competitionCode) {
+    throw new Error(`Cannot insert fixture for row ${row.id}: no competition resolved.`);
+  }
 
   return {
     sql: `INSERT INTO fixtures (

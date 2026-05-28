@@ -108,9 +108,13 @@ export async function upsertTravelCacheRow(
   distanceMilesValue: number,
   drivingMinutes: number | null,
   publicTransportMinutes: number | null,
-  provider: string,
+  provider: string | null,
   calculatedAt: string
 ): Promise<void> {
+  if (!provider) {
+    return;
+  }
+
   await db.run(`
     INSERT INTO travel_cache (
       postcode_district, venue_id, distance_miles, driving_minutes,

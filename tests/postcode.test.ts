@@ -7,6 +7,24 @@ describe("postcode helpers", () => {
     expect(normalizePostcode("sw61hs")).toBe("SW6 1HS");
   });
 
+  it("does not throw for empty input", () => {
+    expect(() => normalizePostcode("")).not.toThrow();
+  });
+
+  it("does not throw for very short input", () => {
+    expect(() => normalizePostcode("A1")).not.toThrow();
+  });
+
+  it("does not throw for very long input", () => {
+    expect(() => normalizePostcode("ABCDEFGHIJKLMNOP")).not.toThrow();
+  });
+
+  it("returns best-effort normalization for invalid input instead of throwing", () => {
+    const result = normalizePostcode("abc");
+    expect(typeof result).toBe("string");
+    expect(result.length).toBeGreaterThan(0);
+  });
+
   it("extracts postcode districts", () => {
     expect(postcodeDistrict("SW6 1HS")).toBe("SW6");
   });
