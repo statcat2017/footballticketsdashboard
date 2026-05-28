@@ -123,7 +123,11 @@ export async function createAdminVenue(db: AppDatabase, input: AdminVenueCreateI
     ]
   );
 
-  const venueId = result.lastInsertRowid!;
+  if (result.lastInsertRowid == null) {
+    throw new Error("Failed to create venue: no row ID returned.");
+  }
+
+  const venueId = result.lastInsertRowid;
 
   await writeAdminAuditLog(db, {
     action: "create",

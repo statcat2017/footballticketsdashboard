@@ -112,6 +112,62 @@ describe("parseKickoffFromDateTime", () => {
   });
 });
 
+import type { Coordinate } from "@/lib/postcode";
+import { distanceMiles } from "@/lib/distance";
+
+describe("distanceMiles", () => {
+  it("returns correct distance between two known points", () => {
+    const london: Coordinate = { latitude: 51.5074, longitude: -0.1278 };
+    const manchester: Coordinate = { latitude: 53.4808, longitude: -2.2426 };
+    const dist = distanceMiles(london, manchester);
+    expect(dist).toBeGreaterThan(150);
+    expect(dist).toBeLessThan(170);
+  });
+
+  it("returns zero for same point", () => {
+    const pt = { latitude: 51.5, longitude: -0.1 };
+    expect(distanceMiles(pt, pt)).toBe(0);
+  });
+
+  it("returns Infinity when from latitude is NaN", () => {
+    const from = { latitude: NaN, longitude: -0.1 };
+    const to = { latitude: 51.5, longitude: -0.1 };
+    expect(distanceMiles(from, to)).toBe(Infinity);
+  });
+
+  it("returns Infinity when from longitude is NaN", () => {
+    const from = { latitude: 51.5, longitude: NaN };
+    const to = { latitude: 51.5, longitude: -0.1 };
+    expect(distanceMiles(from, to)).toBe(Infinity);
+  });
+
+  it("returns Infinity when to latitude is NaN", () => {
+    const from = { latitude: 51.5, longitude: -0.1 };
+    const to = { latitude: NaN, longitude: -0.1 };
+    expect(distanceMiles(from, to)).toBe(Infinity);
+  });
+
+  it("returns Infinity when to longitude is NaN", () => {
+    const from = { latitude: 51.5, longitude: -0.1 };
+    const to = { latitude: 51.5, longitude: NaN };
+    expect(distanceMiles(from, to)).toBe(Infinity);
+  });
+
+  it("returns Infinity when from latitude is Infinity", () => {
+    const from = { latitude: Infinity, longitude: -0.1 };
+    const to = { latitude: 51.5, longitude: -0.1 };
+    expect(distanceMiles(from, to)).toBe(Infinity);
+  });
+
+  it("returns Infinity when coordinates are null-like (0/0 but valid)", () => {
+    const from = { latitude: 51.5, longitude: -0.1 };
+    const to = { latitude: 0, longitude: 0 };
+    const dist = distanceMiles(from, to);
+    expect(dist).toBeGreaterThan(0);
+    expect(Number.isFinite(dist)).toBe(true);
+  });
+});
+
 import { buildClubLookup, findClub, normalizeClubName } from "@/lib/db/clubLookup";
 import type { ClubRow, FootballDataTeam } from "@/lib/db/clubLookup";
 

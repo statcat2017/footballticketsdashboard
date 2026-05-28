@@ -430,7 +430,7 @@ describe("travel enrichment resilience", () => {
 
     expect(results[0]?.travel.drivingMinutes).toBe(15);
     expect(results[0]?.travel.publicTransportMinutes).toBe(45);
-    expect(results[0]?.travel.publicTransportUrl).toBeNull();
+    expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
 
     const cached = await db.get<{
       provider: string;

@@ -46,9 +46,13 @@ export function encodeJsonPayload(payload: unknown): string {
 }
 
 export function decodeJsonPayload<T>(value: string): T {
-  const bytes = base64UrlDecode(value);
-  const json = new TextDecoder().decode(bytes);
-  return JSON.parse(json) as T;
+  try {
+    const bytes = base64UrlDecode(value);
+    const json = new TextDecoder().decode(bytes);
+    return JSON.parse(json) as T;
+  } catch {
+    throw new Error("Invalid token payload.");
+  }
 }
 
 export async function signValue(value: string, secret: string): Promise<string> {
@@ -59,9 +63,13 @@ export async function signValue(value: string, secret: string): Promise<string> 
 }
 
 export async function verifySignature(value: string, signature: string, secret: string): Promise<boolean> {
-  const key = await importKey(secret);
-  const valueBytes = encoder.encode(value);
-  return crypto.subtle.verify("HMAC", key, toArrayBuffer(base64UrlDecode(signature)), toArrayBuffer(valueBytes));
+  try {
+    const key = await importKey(secret);
+    const valueBytes = encoder.encode(value);
+    return crypto.subtle.verify("HMAC", key, toArrayBuffer(base64UrlDecode(signature)), toArrayBuffer(valueBytes));
+  } catch {
+    return false;
+  }
 }
 
 export async function createSignedToken(payload: unknown, secret: string): Promise<string> {

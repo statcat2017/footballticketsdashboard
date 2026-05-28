@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { applySchema } from "@/lib/db/setup";
-import { findImportFixtureCandidateMatches, findImportFixtureMatch } from "@/lib/import/fixtureIdentity";
+import { findImportFixtureCandidateMatches, findImportFixtureMatch, findExistingFixtureDuplicateByParticipantsAndDate } from "@/lib/import/fixtureIdentity";
 import type { ImportBatchRow } from "@/lib/import/types";
 
 function setupTestDb(): AppDatabase {
@@ -207,6 +207,112 @@ describe("findImportFixtureMatch", () => {
       competitionResolvedCode: "PL",
     }), "2025-26");
 
+    expect(match.kind).toBe("ambiguous");
+    if (match.kind !== "ambiguous") return;
+    expect(match.count).toBe(2);
+  });
+});
+
+describe("findExistingFixtureDuplicateByParticipantsAndDate", () => {
+  it("finds duplicate by home, away, and date ignoring season", async () => {
+    const db = setupTestDb();
+    // Fixture 100 is Chelsea vs Arsenal, PL, 2025-26, 2026-05-20
+    const match = await findExistingFixtureDuplicateByParticipantsAndDate(db, row({
+      homeParticipantResolvedId: 1,
+      awayParticipantResolvedId: 2,
+      kickoffDate: "2026-05-20",
+    }));
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.id).toBe(100);
+  });
+
+  it("matches across different seasons", async () => {
+    const db = setupTestDb();
+    // Same teams/date but different season_label (2026-27)
+    db.exec(`
+      INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (2, '2026-27', '2026-08-01', '2027-07-31', 0);
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (108, 'test', 'f9', 'PL', 1, 2, 1, '2026-07-15', '19:45', 'confirmed', '2026-27', 'scheduled', 0, 0, 0, 0, 'imported');
+    `);
+    const match = await findExistingFixtureDuplicateByParticipantsAndDate(db, row({
+      homeParticipantResolvedId: 1,
+      awayParticipantResolvedId: 2,
+      kickoffDate: "2026-07-15",
+    }));
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.id).toBe(108);
+  });
+
+  it("returns none when no fixture exists for that date", async () => {
+    const db = setupTestDb();
+    const match = await findExistingFixtureDuplicateByParticipantsAndDate(db, row({
+      homeParticipantResolvedId: 1,
+      awayParticipantResolvedId: 2,
+      kickoffDate: "2028-01-01",
+    }));
+    expect(match.kind).toBe("none");
+  });
+
+  it("matches one-off home against resolved away", async () => {
+    const db = setupTestDb();
+    // Fixture 101: Barcelona XI (home_one_off) vs Chelsea (away_club_id=1), 2026-06-01
+    const match = await findExistingFixtureDuplicateByParticipantsAndDate(db, row({
+      homeIsOneOff: true,
+      homeParticipantRaw: "Barcelona XI",
+      awayParticipantResolvedId: 1,
+      kickoffDate: "2026-06-01",
+    }));
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.id).toBe(101);
+  });
+
+  it("matches both one-off participants by raw names and date", async () => {
+    const db = setupTestDb();
+    // Fixture 102: Select XI vs World XI (both one-off), 2026-07-01
+    const match = await findExistingFixtureDuplicateByParticipantsAndDate(db, row({
+      homeIsOneOff: true,
+      awayIsOneOff: true,
+      homeParticipantRaw: "Select XI",
+      awayParticipantRaw: "World XI",
+      kickoffDate: "2026-07-01",
+    }));
+    expect(match.kind).toBe("match");
+    if (match.kind !== "match") return;
+    expect(match.id).toBe(102);
+  });
+
+  it("returns ambiguous when multiple fixtures match same home, away, and date", async () => {
+    const db = setupTestDb();
+    // Fixture 103/104 are duplicates: Arsenal vs Chelsea (2 vs 1), PL, 2026-08-01
+    const match = await findExistingFixtureDuplicateByParticipantsAndDate(db, row({
+      homeParticipantResolvedId: 2,
+      awayParticipantResolvedId: 1,
+      kickoffDate: "2026-08-01",
+    }));
+    expect(match.kind).toBe("ambiguous");
+    if (match.kind !== "ambiguous") return;
+    expect(match.count).toBe(2);
+  });
+
+  it("returns ambiguous for duplicate both one-off fixtures", async () => {
+    const db = setupTestDb();
+    await db.exec(`
+      INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (2, '2026-27', '2026-08-01', '2027-07-31', 0);
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_one_off_name, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (108, 'test', 'f10', 'PL', 'Tourists FC', 'Rovers FC', 1, '2026-09-01', '15:00', 'confirmed', '2026-27', 'scheduled', 0, 0, 1, 1, 'imported');
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_one_off_name, away_one_off_name, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (109, 'test', 'f11', 'PL', 'Tourists FC', 'Rovers FC', 1, '2026-09-01', '15:00', 'confirmed', '2026-27', 'scheduled', 0, 0, 1, 1, 'imported');
+    `);
+    const match = await findExistingFixtureDuplicateByParticipantsAndDate(db, row({
+      homeIsOneOff: true,
+      awayIsOneOff: true,
+      homeParticipantRaw: "Tourists FC",
+      awayParticipantRaw: "Rovers FC",
+      kickoffDate: "2026-09-01",
+    }));
     expect(match.kind).toBe("ambiguous");
     if (match.kind !== "ambiguous") return;
     expect(match.count).toBe(2);

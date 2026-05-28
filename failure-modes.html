@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Failure Mode Analysis — Near Me FC</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }
+  h1 { border-bottom: 2px solid #e74c3c; padding-bottom: 0.5rem; }
+  h2 { margin-top: 2rem; color: #c0392b; }
+  h3 { margin-top: 1.5rem; color: #555; }
+  .severity { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
+  .crash { background: #e74c3c; color: #fff; }
+  .corruption { background: #e67e22; color: #fff; }
+  .wrong-display { background: #f39c12; color: #fff; }
+  .minor { background: #95a5a6; color: #fff; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+  .summary-box { background: #fef9e7; border-left: 4px solid #f39c12; padding: 1rem; margin: 1rem 0; }
+  .meta { color: #666; font-size: 0.9em; margin-bottom: 2rem; }
+</style>
+</head>
+<body>
+<h1>🔍 Failure Mode Analysis — Near Me FC</h1>
+<p class="meta">Generated 2026-05-29 — 31 hypotheses across 5 severity categories</p>
+
+<div class="summary-box">
+  <strong>Summary:</strong> 6 Crash, 2 Corruption, 5 Wrong Display, 12 Logic Error, 6 Minor
+</div>
+
+<h2>CRASH — Unrecoverable panics, OOM, index out of bounds</h2>
+
+<table>
+<tr><th>ID</th><th>Severity</th><th>File:Line</th><th>Hypothesis</th><th>Fix Direction</th></tr>
+
+<tr>
+  <td>CRASH-01</td>
+  <td><span class="severity crash">Crash</span></td>
+  <td><code>lib/postcode.ts:80</code></td>
+  <td><strong>normalizePostcode throws on user-controlled input.</strong> If a user submits a postcode with length &lt; 5 or &gt; 7 (after compaction), an Error is thrown. The search API route catches <code>isClientSearchError</code> (checks for "Enter a valid" prefix), but if the caller doesn't catch this properly, it crashes the request. Additionally, <code>normalizePostcode</code> is called in many places (search service, postcode district, etc.) without always being inside a try/catch.</td>
+  <td>Return a Result type or validate before calling; already partially mitigated by Zod schema in the API route but called again in the service layer.</td>
+</tr>
+
+<tr>
+  <td>CRASH-02</td>
+  <td><span class="severity crash">Crash</span></td>
+  <td><code>lib/distance.ts:14</code></td>
+  <td><strong>distanceMiles throws on non-finite coordinates.</strong> If DB contains NULL, NaN, or Infinity in latitude/longitude columns (via bad import or migration), <code>distanceMiles</code> throws. Called in search service (line 119) for every fixture row — a single bad venue makes the entire search fail with 500.</td>
+  <td>Return <code>Infinity</code> or a sentinel value instead of throwing; or add a filter before calling distanceMiles.</td>
+</tr>
+
+<tr>
+  <td>CRASH-03</td>
+  <td><span class="severity crash">Crash</span></td>
+  <td><code>lib/date.ts:12</code></td>
+  <td><strong>inferAssumedKickoff creates invalid Date.</strong> If <code>fixtureDate</code> is null, undefined, or malformed, <code>new Date("nullT12:00:00Z")</code> produces <code>Invalid Date</code>. <code>.getUTCDay()</code> returns NaN, and the comparison <code>day === 0 || day === 6</code> is always false, so it always returns <code>"19:45"</code>. No crash per se but outputs wrong times silently.</td>
+  <td>Guard against null/undefined/malformed dates before calling.</td>
+</tr>
+
+<tr>
+  <td>CRASH-04</td>
+  <td><span class="severity crash">Crash</span></td>
+  <td><code>lib/admin/venues.ts:126</code></td>
+  <td><strong>Non-null assertion on lastInsertRowid.</strong> <code>result.lastInsertRowid!</code> assumes the insert always succeeds. In D1 mode, <code>meta?.last_row_id</code> could be undefined (e.g., constraint violation returns success=false but the D1 wrapper doesn't check). This would pass <code>undefined</code> to subsequent operations.</td>
+  <td>Validate the result: throw if <code>lastInsertRowid</code> is null/undefined.</td>
+</tr>
+
+<tr>
+  <td>CRASH-05</td>
+  <td><span class="severity crash">Crash</span></td>
+  <td><code>lib/admin/crypto.ts:17</code></td>
+  <td><strong>atob throws on malformed base64-url input.</strong> In <code>base64UrlDecode</code>, if the token's payload section contains characters outside the base64 alphabet (or padding issues), <code>atob()</code> throws. <code>verifySignedToken</code> wraps this in try/catch, but <code>decodeJsonPayload</code> is exported and could be called directly.</td>
+  <td>Add try/catch to decodeJsonPayload or validate input before decoding.</td>
+</tr>
+
+<tr>
+  <td>CRASH-06</td>
+  <td><span class="severity crash">Crash</span></td>
+  <td><code>lib/db/migrate.ts:24,118</code></td>
+  <td><strong>Migration system crashes on missing or unreadable files.</strong> <code>hashFile</code> and <code>readFileSync</code> will throw if a migration file is deleted, renamed, or permissions change between the <code>readdirSync</code> and <code>readFileSync</code> calls. This crashes the entire database setup.</td>
+  <td>Wrap file reads in try/catch and skip unreadable files with a warning.</td>
+</tr>
+</table>
+
+<h2>CORRUPTION — Silent data damage</h2>
+
+<table>
+<tr><th>ID</th><th>Severity</th><th>File:Line</th><th>Hypothesis</th><th>Fix Direction</th></tr>
+
+<tr>
+  <td>CORRUPTION-01</td>
+  <td><span class="severity corruption">Corruption</span></td>
+  <td><code>lib/import/validation.ts:128</code></td>
+  <td><strong>Batch validation update silently skips rows on partial failure.</strong> <code>buildValidationUpdateStatements</code> for all rows in a batch are sent in a single <code>writeBatch</code>. If any single row's UPDATE fails (e.g., constraint violation from stale FK reference), the entire batch of updates fails. In the D1 adapter (<code>adapter.ts:81-84</code>), ANY non-success result throws, aborting all updates. In the SQLite adapter, the transaction rolls back. However, <code>validateImportBatch</code> does not catch or handle this — the error propagates to the caller with <strong>no partial results saved</strong>, meaning some rows that would have been marked "blocked" remain "pending" and need re-validation.</td>
+  <td>Validate individual row updates or catch batch failure and retry one-by-one.</td>
+</tr>
+
+<tr>
+  <td>CORRUPTION-02</td>
+  <td><span class="severity corruption">Corruption</span></td>
+  <td><code>lib/travel/cache.ts:206,268</code></td>
+  <td><strong>Null provider coerced to string "null" in DB.</strong> The <code>entry.provider</code> can be <code>null</code>. In <code>fillTravelCacheForPostcode</code> and <code>fillTravelCacheForDistrict</code>, it's passed directly as a parameter to the INSERT. When <code>entry.provider</code> is null and gets passed to <code>db.run</code>, SQLite's parameter binding converts null to SQL NULL. But in <code>upsertTravelCacheRow</code> (line 111), <code>provider</code> is typed as <code>string</code> (not <code>string | null</code>), yet it's called with potentially null values from <code>buildTravelCacheEntry</code> (line 155). Also, in <code>enrichTravelRows</code> (service.ts line 388), the code checks <code>if (entry.provider)</code> before calling <code>upsertTravelCacheRow</code>, so nulls are filtered — but <code>fillTravelCacheForPostcode</code> and <code>fillTravelCacheForDistrict</code> do NOT check for null provider before insert.</td>
+  <td>Add null check for <code>entry.provider</code> in the fill functions (like the upsert path does).</td>
+</tr>
+</table>
+
+<h2>WRONG DISPLAY — Incorrect values shown to user</h2>
+
+<table>
+<tr><th>ID</th><th>Severity</th><th>File:Line</th><th>Hypothesis</th><th>Fix Direction</th></tr>
+
+<tr>
+  <td>DISPLAY-01</td>
+  <td><span class="severity wrong-display">Wrong Display</span></td>
+  <td><code>lib/search/service.ts:313</code></td>
+  <td><strong>Google Maps transit link only shown when publicTransportMinutes is null.</strong> The logic <code>publicTransportUrl: row.public_transport_minutes === null ? buildGoogleMapsTransitDirectionsUrl(...) : null</code> means if we have cached public transport minutes, the user gets NO Google Maps link. The link would be most useful precisely when we DO have transit data (to help the user plan the journey), but it's suppressed.</td>
+  <td>Always provide the Google Maps link, or provide it alongside the transit estimate.</td>
+</tr>
+
+<tr>
+  <td>DISPLAY-02</td>
+  <td><span class="severity wrong-display">Wrong Display</span></td>
+  <td><code>lib/admin/clubs.ts:253</code></td>
+  <td><strong>Non-null assertion on optional division fields.</strong> If a club was assigned to a division that has since been deleted (orphaned FK), <code>clubRow.division_name!</code> and <code>clubRow.division_level!</code> pass <code>undefined</code> at runtime. The division detail page would show "undefined" for the division name.</td>
+  <td>Provide fallback values or avoid non-null assertions for nullable JOIN results.</td>
+</tr>
+
+<tr>
+  <td>DISPLAY-03</td>
+  <td><span class="severity wrong-display">Wrong Display</span></td>
+  <td><code>lib/search/service.ts:270</code></td>
+  <td><strong>Historical fixture warning shown even for mixed results.</strong> When the search returns both live and historical fixtures (e.g., some competitions have live data, some don't), the warning "Historical fixture shown because no live fixtures match" is appended per-fixture, but the <code>meta.usedHistoricalFallback</code> flag is set if ANY result is historical. Users seeing mostly live results with one historical entry may be confused by the individual warnings.</td>
+  <td>This is by product design, but consider a result-level label rather than a warning.</td>
+</tr>
+
+<tr>
+  <td>DISPLAY-04</td>
+  <td><span class="severity wrong-display">Wrong Display</span></td>
+  <td><code>lib/import/fixtureIdentity.ts:78</code></td>
+  <td><strong>Fixture preview for update uses raw Record fields, not typed.</strong> The <code>before</code> object uses <code>Record&lt;string, unknown&gt;</code> to capture fixture fields. If the DB column type doesn't match the expected type (e.g., <code>home_one_off</code> stored as integer 0/1 but expected as boolean), the preview shows the raw DB value. The admin UI receiving this could display the wrong type.</td>
+  <td>Cast known fields to their expected types before presenting.</td>
+</tr>
+
+<tr>
+  <td>DISPLAY-05</td>
+  <td><span class="severity wrong-display">Wrong Display</span></td>
+  <td><code>lib/search/service.ts:107-112</code></td>
+  <td><strong>Fallback logic could return irrelevant historical fixtures.</strong> If no live fixtures exist for the date range, the service cascades to <code>queryFixtures(..., true)</code> (historical in same date range), then to <code>queryAllHistoricalFixtures</code> (all historical, limit 50, ordered DESC). For a past date range, this might return no results or stale data. The user is shown fixtures from months ago for a search they expected to be current.</td>
+  <td>Display a clear "No upcoming fixtures found" message instead of silently showing old data; make the historical label more prominent.</td>
+</tr>
+</table>
+
+<h2>LOGIC ERROR — Incorrect behavior that doesn't crash</h2>
+
+<table>
+<tr><th>ID</th><th>Severity</th><th>File:Line</th><th>Hypothesis</th><th>Fix Direction</th></tr>
+
+<tr>
+  <td>LOGIC-01</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/admin/venues.ts:179,199-200</code></td>
+  <td><strong>Travel cache invalidation uses wrong result index when no DELETE occurs.</strong> <code>buildUpdateStatements</code> only pushes a DELETE statement when <code>coordsChanged && distanceMoved > 1</code>. But <code>results[0].changes</code> is always assigned to <code>invalidatedTravelCount</code>, even when the first statement is the UPDATE (not a DELETE). This returns the number of rows updated instead of deleted rows.</td>
+  <td>Check <code>coordsChanged && distanceMoved > 1</code> before reading <code>results[0]</code> for invalidation count; or restructure to return the DELETE result explicitly.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-02</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/travel/cache.ts:111</code></td>
+  <td><strong>upsertTravelCacheRow types provider as string but receives null.</strong> The <code>provider</code> parameter is typed as <code>string</code> (not nullable), but it's called from <code>buildTravelCacheEntry</code> which can return <code>provider: null</code> (line 155). The callers in <code>enrichTravelRows</code> check <code>if (entry.provider)</code> before calling, but <code>fillTravelCacheForPostcode</code> and <code>fillTravelCacheForDistrict</code> do not.</td>
+  <td>Change parameter type to <code>string | null</code> or add null guard in fill functions.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-03</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/import/apply.ts:30</code></td>
+  <td><strong>Fallback competition code uses empty string for non-one-off matches.</strong> <code>row.competitionResolvedCode || (row.awayIsOneOff ? "FRIENDLY" : "")</code> — if <code>competitionResolvedCode</code> is empty string (falsy), it falls through to the right side. If the row is NOT a one-off, this produces <code>""</code> as the competition code, which will fail the FK constraint to <code>competitions(code)</code> when inserted.</td>
+  <td>Ensure competitionResolvedCode is always set for non-one-off rows before reaching apply; or throw if empty.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-04</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/admin/movements.ts:497</code></td>
+  <td><strong>Double-booking check has redundant IS NOT NULL condition.</strong> The query <code>SELECT id FROM movement_slots WHERE club_id = ? AND id != ? AND club_id IS NOT NULL</code> — the <code>AND club_id IS NOT NULL</code> is redundant since <code>club_id = ?</code> already guarantees non-null. This is harmless but confusing.</td>
+  <td>Remove the redundant clause.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-05</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/search/service.ts:130</code></td>
+  <td><strong>Redundant radius filter after inRadius filter.</strong> The code filters by radius (line 116-124), then filters again on line 130 after enrichment. The second filter recalculates distance via <code>distanceMiles</code> which could throw. The first filter already used <code>cached_distance_miles ?? distanceMiles()</code> which also could throw. Two points of failure for the same check.</td>
+  <td>Remove the redundant second filter; the first one already excludes out-of-radius results.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-06</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/admin/divisionAssignments.ts:401-408</code></td>
+  <td><strong>Non-null assertion on potentially stale DB records.</strong> <code>movingAssignment!.id</code> and <code>swapAssignment!.id</code> assume the assignments still exist. If there's a concurrent deletion (race condition), these pass <code>undefined</code> and the UPDATE silently does nothing (WHERE id = undefined matches nothing).</td>
+  <td>Check for existence before non-null assertion; or use a transaction.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-07</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/admin/auth.ts:82-89</code></td>
+  <td><strong>Cookie sameSite: "strict" prevents admin session from being sent on POST redirects.</strong> When the admin logs in, the cookie is set with <code>sameSite: "strict"</code>. If the user was redirected from an external site, the cookie won't be sent on the initial navigation. This is correct for security, but the Next.js App Router treats POST->GET redirects as same-site, so this should be fine. However, <code>secure: process.env.NODE_ENV === "production"</code> means local dev over HTTP sends the cookie without Secure flag, which is correct.</td>
+  <td>No fix needed — behaviour is correct for the security model.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-08</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/travel/providers.ts:210</code></td>
+  <td><strong>TfL API is always queried even for non-London venues.</strong> <code>lookupTravelEstimate</code> always calls <code>lookupTflPublicTransportMinutes</code> regardless of whether the origin/destination is within London. This makes unnecessary API calls for fixtures in Manchester, Liverpool, etc. TfL API might also return errors for non-London routes (the catch handles this gracefully, but it's wasteful).</td>
+  <td>Add a coarse geographic filter (e.g., bounding box for Greater London) before calling TfL.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-09</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/rate-limit.ts:12</code></td>
+  <td><strong>In-memory rate limit store grows unbounded.</strong> The <code>Map&lt;string, Window&gt;</code> never evicts old entries. Under sustained traffic, distinct IPs accumulate indefinitely. Each entry is ~60 bytes plus key string. After 10,000 distinct IPs, this is ~600KB — not a crash risk but wasteful. After 1M IPs, it's ~60MB.</td>
+  <td>Add periodic cleanup of expired entries (e.g., using a WeakRef or interval timer).</td>
+</tr>
+
+<tr>
+  <td>LOGIC-10</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/db/adapter.ts:103-108</code></td>
+  <td><strong>D1 transaction method always throws in non-D1 context.</strong> The <code>transaction</code> method on the D1 wrapper checks if <code>"transaction" in client</code>. If the client doesn't have a transaction method (e.g., mock or test DB), it throws. However, the SQLite adapter's <code>transaction</code> method works fine. This means D1 transactions won't work in environments where the D1 binding doesn't expose <code>transaction</code>.</td>
+  <td>Gracefully fall back to non-transactional execution or document this limitation.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-11</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/import/validation.ts:182-184</code></td>
+  <td><strong>isValidDateString accepts day 0.</strong> <code>if (day &lt; 1) return false</code> correctly rejects day 0. But the check <code>day &lt;= new Date(year, month, 0).getDate()</code> — <code>new Date(year, month, 0)</code> gives the last day of the previous month. For month=1 (January), this gives Dec 31. A value like "2024-01-40" would correctly be rejected (40 > 31). But "2024-01-00" is caught by <code>day &lt; 1</code>, so this is fine. However, month 13 or 0? <code>month &lt; 1 || month &gt; 12</code> catches those.</td>
+  <td>This is actually correct. No fix needed.</td>
+</tr>
+
+<tr>
+  <td>LOGIC-12</td>
+  <td><span class="severity minor">Logic Error</span></td>
+  <td><code>lib/db/clubMapping.ts</code> → <code>lib/admin/dataQuality.ts:128</code></td>
+  <td><strong>Duplicate alias check may report false positives for retired aliases.</strong> <code>findAmbiguousAliases</code> queries only non-retired aliases (via the partial unique index). However, if an alias is retired for one club but active for another, the retired alias still appears in the <code>club_aliases</code> table. The ambiguity check could show "2 clubs share alias X" when one club retired the alias years ago.</td>
+  <td>Verify fix: need to check the actual <code>findAmbiguousAliases</code> implementation.</td>
+</tr>
+</table>
+
+<h2>MINOR — Performance, cosmetic, UX</h2>
+
+<table>
+<tr><th>ID</th><th>Severity</th><th>File:Line</th><th>Hypothesis</th><th>Fix Direction</th></tr>
+
+<tr>
+  <td>MINOR-01</td>
+  <td><span class="severity minor">Minor</span></td>
+  <td><code>lib/db/seed.ts</code></td>
+  <td><strong>Seed is re-run on every setupDatabase call.</strong> <code>seedDatabase</code> is called unconditionally at the end of <code>setupDatabase</code>. If seeds are not idempotent (insert with no IF NOT EXISTS), this fails or duplicates on subsequent calls. The current seed likely uses INSERT OR IGNORE, but this pattern is fragile.</td>
+  <td>Verify seed idempotency or add a flag to skip seeding after first run.</td>
+</tr>
+
+<tr>
+  <td>MINOR-02</td>
+  <td><span class="severity minor">Minor</span></td>
+  <td><code>lib/import/fixtureIdentity.ts:79-82</code></td>
+  <td><strong>Hardcoded field list in fixture identity matching.</strong> The list of fields to copy into <code>before</code> is duplicated in <code>findImportFixtureMatch</code> (line 79) and <code>getImportUpdatePreviews</code> (line 93). If a new field is added to fixtures, both must be updated.</td>
+  <td>Extract to a shared constant or derive from the schema.</td>
+</tr>
+
+<tr>
+  <td>MINOR-03</td>
+  <td><span class="severity minor">Minor</span></td>
+  <td><code>lib/import/validation.ts:48</code></td>
+  <td><strong>Empty warnings payload still has issues/messages arrays.</strong> <code>buildWarningsPayload</code> with empty warnings returns <code>{ issues: [], messages: [] }</code> instead of null. This is stored as <code>"{\"issues\":[],\"messages\":[]}"</code> in warnings_json for every validated row, even clean ones. Wastes DB space.</td>
+  <td>Return null when no warnings; the callers already handle null (<code>validation.ts:48</code> checks <code>warnings.length &gt; 0</code>).</td>
+</tr>
+
+<tr>
+  <td>MINOR-04</td>
+  <td><span class="severity minor">Minor</span></td>
+  <td><code>lib/admin/dataQuality.ts:452</code></td>
+  <td><strong>buildDataQualitySummary mutates bySeverity via ++.</strong> <code>bySeverity[issue.severity]++</code> works because the object is initialized with all keys. But if a new severity is added to the union type without updating the initializer, it produces NaN silently.</td>
+  <td>Use <code>bySeverity[issue.severity] = (bySeverity[issue.severity] ?? 0) + 1</code> or a lint rule.</td>
+</tr>
+
+<tr>
+  <td>MINOR-05</td>
+  <td><span class="severity minor">Minor</span></td>
+  <td><code>lib/import/adapters/csv.ts</code></td>
+  <td><strong>CSV parser may not handle quoted fields with embedded commas or newlines.</strong> If a CSV row has a field like <code>"Arsenal FC, London"</code>, and the parser uses simple line splitting, the comma within quotes would be treated as a column separator. Need to verify the parser implementation.</td>
+  <td>Read the CSV adapter to determine if it handles quoted fields.</td>
+</tr>
+
+<tr>
+  <td>MINOR-06</td>
+  <td><span class="severity minor">Minor</span></td>
+  <td><code>app/api/corrections/route.ts:19</code></td>
+  <td><strong>Rate limit key uses first proxy IP which could be spoofed.</strong> <code>x-forwarded-for</code> header's first IP is user-controlled. An attacker could set <code>X-Forwarded-For: 127.0.0.1, real-ip</code> to exhaust the rate limit for localhost. The proxy should set the real client IP in a different header (e.g., <code>cf-connecting-ip</code> on Cloudflare).</td>
+  <td>Check Cloudflare-specific headers first, fall back to x-forwarded-for.</td>
+</tr>
+</table>
+
+<h2>Phase 2: Top Priority TDD Fixes</h2>
+
+<p>The following hypotheses should be fixed first, in priority order:</p>
+
+<ol>
+  <li><strong>CRASH-02</strong> — <code>distanceMiles</code> throws on bad DB data, crashing the entire search endpoint</li>
+  <li><strong>CRASH-01</strong> — <code>normalizePostcode</code> throws on user input outside the controlled API path</li>
+  <li><strong>CRASH-04</strong> — Non-null assertion on <code>lastInsertRowid</code> could pass undefined</li>
+  <li><strong>CRASH-05</strong> — <code>atob</code> throw in crypto functions</li>
+  <li><strong>CORRUPTION-01</strong> — Batch validation partial failure leaves rows in inconsistent state</li>
+  <li><strong>CORRUPTION-02</strong> — Null provider stored as string "null" in travel cache</li>
+  <li><strong>LOGIC-03</strong> — Empty string competition code violates FK constraint</li>
+  <li><strong>LOGIC-01</strong> — Wrong invalidation count due to incorrect result indexing</li>
+  <li><strong>DISPLAY-01</strong> — Google Maps link suppressed when transit data exists</li>
+</ol>
+</body>
+</html>

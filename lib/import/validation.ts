@@ -207,6 +207,26 @@ export async function findDuplicateInSameBatch(
   return result?.id ?? null;
 }
 
+/**
+ * Relaxed same-batch duplicate detection: finds an earlier unresolved row
+ * with the same home participant, away participant, and kickoff date,
+ * ignoring competition, kickoff time, and venue.
+ */
+export async function findRelaxedDuplicateInSameBatch(
+  db: AppDatabase,
+  row: ImportBatchRow,
+): Promise<number | null> {
+  if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
+  const result = await db.get<{ id: number }>(
+    `SELECT id FROM import_batch_rows
+     WHERE batch_id = ? AND id < ? AND final_action IS NULL
+     AND home_participant_raw = ? AND away_participant_raw = ?
+     AND kickoff_date = ?`,
+    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate]
+  );
+  return result?.id ?? null;
+}
+
 export function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string, unknown>): boolean {
   if (row.kickoffDate && before.fixture_date && row.kickoffDate !== before.fixture_date) return true;
   if (row.competitionResolvedCode && before.competition_code && row.competitionResolvedCode !== before.competition_code) return true;

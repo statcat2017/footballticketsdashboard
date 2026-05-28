@@ -112,6 +112,8 @@ export async function searchFixtures(
     rows = await queryAllHistoricalFixtures(db, origin.district);
   }
 
+  rows = rows.filter((row) => Number.isFinite(row.latitude) && Number.isFinite(row.longitude));
+
   const radiusFilter = request.radiusMiles;
   const inRadius = radiusFilter === undefined
     ? rows
@@ -310,12 +312,10 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
       distanceMiles: Math.round(distance * 10) / 10,
       drivingMinutes: row.driving_minutes,
       publicTransportMinutes: row.public_transport_minutes,
-      publicTransportUrl: row.public_transport_minutes === null
-        ? buildGoogleMapsTransitDirectionsUrl(userLocation, {
-            latitude: row.latitude,
-            longitude: row.longitude
-          })
-        : null,
+      publicTransportUrl: buildGoogleMapsTransitDirectionsUrl(userLocation, {
+        latitude: row.latitude,
+        longitude: row.longitude
+      }),
       source: row.travel_source ?? (row.cached_distance_miles === null ? "distance_only" : "cache")
     },
     isDemoData: row.is_demo_data === 1,

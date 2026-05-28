@@ -2,8 +2,9 @@ import type { AppDatabase } from "../../db/adapter.ts";
 import type { ValidationCache } from "../validationCache.ts";
 import type { ValidationContext } from "../validationContext.ts";
 import type { ImportBatchRow } from "../types.ts";
-import { findDuplicateBatchRow, findDuplicateInSameBatch, hasMeaningfulChanges } from "../validation.ts";
+import { findDuplicateBatchRow, findDuplicateInSameBatch, findRelaxedDuplicateInSameBatch, hasMeaningfulChanges } from "../validation.ts";
 import { makeIssue } from "../validation.ts";
+import { findExistingFixtureDuplicateByParticipantsAndDate } from "../fixtureIdentity.ts";
 
 export async function detectDuplicates(
   db: AppDatabase,
@@ -22,9 +23,8 @@ export async function detectDuplicates(
     awayIsOneOff: ctx.resolvedAwayIsOneOff,
   } as ImportBatchRow;
 
-  // Same-batch duplicate detection
+  // Same-batch duplicate detection (strict: home, away, date, time, venue, competition)
   if (seenBatchKeys.size > 0) {
-    // Batch mode: use in-memory set
     const sameBatchKey = buildSameBatchKey(resolvedRow);
     if (sameBatchKey && seenBatchKeys.has(sameBatchKey)) {
       ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (matching home, away, date, time, venue, competition).`, { severity: "warning" }));
@@ -35,13 +35,33 @@ export async function detectDuplicates(
     if (sameBatchKey) {
       seenBatchKeys.add(sameBatchKey);
     }
+
+    // Relaxed same-batch: home, away, and date only
+    const relaxedKey = buildRelaxedSameBatchKey(resolvedRow);
+    if (relaxedKey && seenBatchKeys.has(relaxedKey)) {
+      ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (matching home, away, and date).`, { severity: "warning" }));
+      ctx.duplicateKind = "same_batch";
+      ctx.duplicateRef = null;
+      return;
+    }
+    if (relaxedKey) {
+      seenBatchKeys.add(relaxedKey);
+    }
   } else {
-    // Single-row mode: query DB for earlier unresolved rows in the same batch
     const dupRowId = await findDuplicateInSameBatch(db, ctx.row);
     if (dupRowId) {
       ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (row #${dupRowId}).`, { severity: "warning" }));
       ctx.duplicateKind = "same_batch";
       ctx.duplicateRef = dupRowId;
+      return;
+    }
+
+    // Relaxed same-batch (single-row mode): query DB for earlier unresolved rows with same home, away, date
+    const relaxedDupRowId = await findRelaxedDuplicateInSameBatch(db, ctx.row);
+    if (relaxedDupRowId) {
+      ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (row #${relaxedDupRowId}).`, { severity: "warning" }));
+      ctx.duplicateKind = "same_batch";
+      ctx.duplicateRef = relaxedDupRowId;
       return;
     }
   }
@@ -62,9 +82,41 @@ export async function detectDuplicates(
       return;
     }
   }
+
+  // Relaxed existing-fixture duplicate check: same home, away, and date only
+  // (ignores season, competition, time, venue)
+  if (ctx.fixtureMatchKind !== "match") {
+    const relaxedMatch = await findExistingFixtureDuplicateByParticipantsAndDate(db, resolvedRow);
+    if (relaxedMatch.kind === "match") {
+      if (!hasMeaningfulChanges(resolvedRow, relaxedMatch.before)) {
+        ctx.warnings.push(makeIssue("duplicate_existing_fixture", `Already imported as fixture #${relaxedMatch.id} (matched by home, away, and date). No material changes detected.`, { severity: "warning" }));
+        ctx.duplicateKind = "existing_fixture";
+        ctx.duplicateRef = relaxedMatch.id;
+        return;
+      }
+      // Meaningful changes detected → treat as update
+      ctx.fixtureMatchKind = "match";
+      ctx.fixtureMatchId = relaxedMatch.id;
+      ctx.fixtureMatchBefore = relaxedMatch.before;
+      return;
+    }
+    if (relaxedMatch.kind === "ambiguous") {
+      ctx.warnings.push(makeIssue("ambiguous_fixture_match",
+        `Found ${relaxedMatch.count} existing fixtures with the same home, away, and date. Cannot determine which this row duplicates or updates.`,
+        { severity: "blocker" }
+      ));
+      ctx.hasBlocker = true;
+      return;
+    }
+  }
 }
 
 function buildSameBatchKey(row: ImportBatchRow): string | null {
   if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
   return `${row.homeParticipantRaw}|${row.awayParticipantRaw}|${row.kickoffDate}|${row.kickoffTime ?? ""}|${row.venueRaw ?? ""}|${row.competitionRaw ?? ""}`;
+}
+
+function buildRelaxedSameBatchKey(row: ImportBatchRow): string | null {
+  if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
+  return `relaxed|${row.homeParticipantRaw}|${row.awayParticipantRaw}|${row.kickoffDate}`;
 }

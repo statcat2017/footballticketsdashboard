@@ -1,10 +1,40 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { normalizePostcode, postcodeCoordinate, postcodeDistrict, resolvePostcodeOrigin } from "@/lib/postcode";
+import { normalizePostcode, tryNormalizePostcode, postcodeCoordinate, postcodeDistrict, resolvePostcodeOrigin } from "@/lib/postcode";
 
 describe("postcode helpers", () => {
   it("normalizes UK postcodes", () => {
     expect(normalizePostcode("sw61hs")).toBe("SW6 1HS");
+  });
+
+  it("throws for empty input", () => {
+    expect(() => normalizePostcode("")).toThrow("Enter a valid UK postcode.");
+  });
+
+  it("throws for very short input", () => {
+    expect(() => normalizePostcode("A1")).toThrow("Enter a valid UK postcode.");
+  });
+
+  it("throws for very long input", () => {
+    expect(() => normalizePostcode("ABCDEFGHIJKLMNOP")).toThrow("Enter a valid UK postcode.");
+  });
+
+  it("throws for invalid input", () => {
+    expect(() => normalizePostcode("abc")).toThrow("Enter a valid UK postcode.");
+  });
+
+  describe("tryNormalizePostcode", () => {
+    it("returns normalized postcode for valid input", () => {
+      expect(tryNormalizePostcode("sw61hs")).toBe("SW6 1HS");
+    });
+
+    it("returns null for empty input", () => {
+      expect(tryNormalizePostcode("")).toBeNull();
+    });
+
+    it("returns null for invalid input", () => {
+      expect(tryNormalizePostcode("abc")).toBeNull();
+    });
   });
 
   it("extracts postcode districts", () => {

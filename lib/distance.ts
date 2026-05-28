@@ -11,7 +11,7 @@ export function distanceMiles(from: Coordinate, to: Coordinate): number {
     !Number.isFinite(from.latitude) || !Number.isFinite(from.longitude) ||
     !Number.isFinite(to.latitude) || !Number.isFinite(to.longitude)
   ) {
-    throw new Error("Invalid coordinates passed to distanceMiles");
+    return Infinity;
   }
 
   const dLat = radians(to.latitude - from.latitude);
