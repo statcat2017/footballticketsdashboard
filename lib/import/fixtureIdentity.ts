@@ -141,7 +141,12 @@ export async function findExistingFixtureDuplicateByParticipantsAndDate(
   if (fixtures.length > 1) return { kind: "ambiguous", count: fixtures.length };
 
   const fixture = fixtures[0];
-  return { kind: "match", id: fixture.id as number, before: {} };
+  const before: Record<string, unknown> = {};
+  const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url"];
+  for (const f of fields) {
+    if (f in fixture) before[f] = fixture[f];
+  }
+  return { kind: "match", id: fixture.id as number, before };
 }
 
 /**

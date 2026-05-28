@@ -112,6 +112,8 @@ export async function searchFixtures(
     rows = await queryAllHistoricalFixtures(db, origin.district);
   }
 
+  rows = rows.filter((row) => Number.isFinite(row.latitude) && Number.isFinite(row.longitude));
+
   const radiusFilter = request.radiusMiles;
   const inRadius = radiusFilter === undefined
     ? rows

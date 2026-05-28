@@ -925,7 +925,7 @@ describe("duplicate detection during validation", () => {
     expect(rows[0].matchResult).toBe("update");
   });
 
-  it("marks duplicate via relaxed matcher when same home, away, date but different season", async () => {
+  it("marks as update via relaxed matcher when same home, away, date but different competition (meaningful change)", async () => {
     const db = setupTestDb();
     const sourceId = await createTestSource(db);
 
@@ -938,7 +938,7 @@ describe("duplicate detection during validation", () => {
 
     // Batch row uses PL competition (different from ELC) and no season override
     // The strict matcher won't find it (different competiton_code, different season)
-    // The relaxed matcher should find it (same home=1, away=2, date=2026-06-15)
+    // The relaxed matcher should find it and detect meaningful change (competition differs) → update
     const batchId = await createTestBatch(db, sourceId, [
       { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-06-15", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
     ]);
@@ -947,9 +947,35 @@ describe("duplicate detection during validation", () => {
 
     const rows = await getBatchRows(db, batchId);
     expect(rows).toHaveLength(1);
+    expect(rows[0].matchResult).toBe("update");
+  });
+
+  it("marks duplicate via relaxed matcher when same home, away, date and no meaningful changes", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+
+    // Create a fixture in a DIFFERENT season so strict matcher won't find it
+    // Same teams, competition, date, time, venue as the batch row
+    db.exec(`
+      INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (2, '2026-27', '2026-08-01', '2027-07-31', 0);
+      INSERT INTO fixtures (id, source, source_id, competition_code, home_club_id, away_club_id, venue_id, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence)
+      VALUES (113, 'test', 'relaxed-dup-4', 'PL', 1, 2, 1, '2026-07-01', '15:00', 'confirmed', '2026-27', 'scheduled', 0, 0, 0, 0, 'imported');
+    `);
+
+    // Batch row matches home, away, date, competition, venue, time
+    // The strict matcher won't find it (different season_label '2026-27' vs batch season '2025-26')
+    // The relaxed matcher finds it (same home, away, date) with no meaningful changes → duplicate
+    const batchId = await createTestBatch(db, sourceId, [
+      { homeParticipantRaw: "Chelsea", awayParticipantRaw: "Arsenal", competitionRaw: "PL", kickoffDate: "2026-07-01", kickoffTime: "15:00", venueRaw: "Stamford Bridge" },
+    ]);
+
+    await validateImportBatch(db, batchId);
+
+    const rows = await getBatchRows(db, batchId);
+    expect(rows).toHaveLength(1);
     expect(rows[0].matchResult).toBe("duplicate_existing_fixture");
     expect(rows[0].warningsJson).toContain("duplicate_existing_fixture");
-    expect(rows[0].warningsJson).toContain("fixture #110");
+    expect(rows[0].warningsJson).toContain("fixture #113");
   });
 
   it("blocks row when multiple existing fixtures match via relaxed matcher", async () => {

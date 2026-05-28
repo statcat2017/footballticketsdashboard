@@ -77,18 +77,31 @@ export function normalizePostcode(postcode: string): string {
   const compact = postcode.replace(/\s+/g, "").toUpperCase();
 
   if (compact.length < 5 || compact.length > 7) {
-    return compact;
+    throw new Error("Enter a valid UK postcode.");
   }
 
   return `${compact.slice(0, -3)} ${compact.slice(-3)}`;
 }
 
+export function tryNormalizePostcode(postcode: string): string | null {
+  try {
+    return normalizePostcode(postcode);
+  } catch {
+    return null;
+  }
+}
+
 export function postcodeDistrict(postcode: string): string {
-  return normalizePostcode(postcode).split(" ")[0];
+  return tryNormalizePostcode(postcode)?.split(" ")[0] ?? "";
 }
 
 export function postcodeCoordinate(postcode: string): Coordinate {
-  const normalized = normalizePostcode(postcode);
+  const normalized = tryNormalizePostcode(postcode);
+
+  if (!normalized) {
+    return districtFallbackCoordinate("");
+  }
+
   return POSTCODE_COORDINATES[normalized] ?? districtFallbackCoordinate(postcodeDistrict(normalized));
 }
 
@@ -96,7 +109,7 @@ export async function resolvePostcodeOrigin(
   postcode: string,
   fetchImpl: typeof fetch = fetch
 ): Promise<ResolvedPostcodeOrigin> {
-  const normalized = normalizePostcode(postcode);
+  const normalized = tryNormalizePostcode(postcode) ?? "";
   const district = postcodeDistrict(normalized);
   const known = POSTCODE_COORDINATES[normalized];
 
