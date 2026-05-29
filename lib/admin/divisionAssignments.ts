@@ -1,5 +1,18 @@
 import type { AppDatabase, SqlWrite } from "@/lib/db/adapter";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import {
+  getClubById,
+  getDivisionByIdWithMaxSize,
+  getDivisionAssignmentByClubId,
+  getCurrentDivisionOfClub,
+  getDivisionIdByClubId,
+  getClubWithDivisionAssignment,
+  getClubCountInDivision,
+  getCurrentSeasonLabel,
+  getMovementTargets,
+  getSameLevelDivisionsExcluding,
+  getClubsInDivision as getClubsInDivisionQuery,
+} from "@/lib/admin/queries";
 
 export interface DivisionAssignedClub {
   id: number;
@@ -140,27 +153,15 @@ export async function assignClubToDivision(
   divisionId: number,
   actor: string
 ): Promise<{ warning?: string }> {
-  const club = await db.get<{ id: number; name: string }>(
-    "SELECT id, name FROM clubs WHERE id = ?",
-    [clubId]
-  );
+  const club = await getClubById(db, clubId);
   if (!club) throw new Error(`Club ${clubId} not found.`);
 
-  const division = await db.get<{ id: number; name: string; max_size: number }>(
-    "SELECT id, name, max_size FROM pyramid_divisions WHERE id = ?",
-    [divisionId]
-  );
+  const division = await getDivisionByIdWithMaxSize(db, divisionId);
   if (!division) throw new Error(`Division ${divisionId} not found.`);
 
-  const existingAssignment = await db.get<{ id: number; division_id: number }>(
-    "SELECT id, division_id FROM division_assignments WHERE club_id = ?",
-    [clubId]
-  );
+  const existingAssignment = await getDivisionAssignmentByClubId(db, clubId);
 
-  const currentCount = await db.get<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM division_assignments WHERE division_id = ?",
-    [divisionId]
-  );
+  const currentCount = await getClubCountInDivision(db, divisionId);
 
   let warning: string | undefined;
   if (existingAssignment?.division_id !== divisionId && currentCount && currentCount.count >= division.max_size) {
@@ -212,16 +213,10 @@ export async function unassignClub(
   clubId: number,
   actor: string
 ): Promise<void> {
-  const club = await db.get<{ id: number; name: string }>(
-    "SELECT id, name FROM clubs WHERE id = ?",
-    [clubId]
-  );
+  const club = await getClubById(db, clubId);
   if (!club) throw new Error(`Club ${clubId} not found.`);
 
-  const existing = await db.get<{ division_id: number }>(
-    "SELECT division_id FROM division_assignments WHERE club_id = ?",
-    [clubId]
-  );
+  const existing = await getDivisionIdByClubId(db, clubId);
   if (!existing) throw new Error(`Club ${clubId} is not assigned to any division.`);
 
   const statements: SqlWrite[] = [{
@@ -266,51 +261,19 @@ export interface ClubOption {
 }
 
 export async function getPromoteTargets(db: AppDatabase, divisionId: number): Promise<DivisionOption[]> {
-  return db.all<DivisionOption>(
-    `SELECT pd.id, pd.name, pd.level
-     FROM pyramid_edges pe
-     JOIN pyramid_divisions pd ON pd.id = pe.to_division_id
-     WHERE pe.from_division_id = ? AND pe.movement_type = 'promotion'
-     ORDER BY pd.level, pd.name`,
-    [divisionId]
-  );
+  return getMovementTargets(db, divisionId, "promotion");
 }
 
 export async function getRelegateTargets(db: AppDatabase, divisionId: number): Promise<DivisionOption[]> {
-  return db.all<DivisionOption>(
-    `SELECT pd.id, pd.name, pd.level
-     FROM pyramid_edges pe
-     JOIN pyramid_divisions pd ON pd.id = pe.to_division_id
-     WHERE pe.from_division_id = ? AND pe.movement_type = 'relegation'
-     ORDER BY pd.level, pd.name`,
-    [divisionId]
-  );
+  return getMovementTargets(db, divisionId, "relegation");
 }
 
 export async function getMigrateTargets(db: AppDatabase, divisionId: number): Promise<DivisionOption[]> {
-  const current = await db.get<{ level: number }>(
-    "SELECT level FROM pyramid_divisions WHERE id = ?",
-    [divisionId]
-  );
-  if (!current) return [];
-
-  return db.all<DivisionOption>(
-    `SELECT id, name, level FROM pyramid_divisions
-     WHERE level = ? AND id != ?
-     ORDER BY name`,
-    [current.level, divisionId]
-  );
+  return getSameLevelDivisionsExcluding(db, divisionId);
 }
 
 export async function getClubsInDivision(db: AppDatabase, divisionId: number): Promise<ClubOption[]> {
-  return db.all<ClubOption>(
-    `SELECT c.id, c.name
-     FROM division_assignments da
-     JOIN clubs c ON c.id = da.club_id
-     WHERE da.division_id = ?
-     ORDER BY c.name`,
-    [divisionId]
-  );
+  return getClubsInDivisionQuery(db, divisionId);
 }
 
 export async function moveClubWithSwap(
@@ -321,25 +284,13 @@ export async function moveClubWithSwap(
   movementType: "promote" | "relegate" | "migrate",
   actor: string
 ): Promise<{ warning?: string }> {
-  const club = await db.get<{ id: number; name: string }>(
-    "SELECT id, name FROM clubs WHERE id = ?",
-    [clubId]
-  );
+  const club = await getClubById(db, clubId);
   if (!club) throw new Error(`Club ${clubId} not found.`);
 
-  const currentDivision = await db.get<{ id: number; name: string; level: number }>(
-    `SELECT pd.id, pd.name, pd.level
-     FROM division_assignments da
-     JOIN pyramid_divisions pd ON pd.id = da.division_id
-     WHERE da.club_id = ?`,
-    [clubId]
-  );
+  const currentDivision = await getCurrentDivisionOfClub(db, clubId);
   if (!currentDivision) throw new Error(`Club ${clubId} is not assigned to any division.`);
 
-  const targetDivision = await db.get<{ id: number; name: string; level: number; max_size: number }>(
-    "SELECT id, name, level, max_size FROM pyramid_divisions WHERE id = ?",
-    [targetDivisionId]
-  );
+  const targetDivision = await getDivisionByIdWithMaxSize(db, targetDivisionId);
   if (!targetDivision) throw new Error(`Target division ${targetDivisionId} not found.`);
 
   if (currentDivision.id === targetDivisionId) {
@@ -358,13 +309,7 @@ export async function moveClubWithSwap(
 
   let swapClub: { id: number; name: string; division_id: number } | undefined;
   if (swapClubId !== null) {
-    swapClub = await db.get<{ id: number; name: string; division_id: number }>(
-      `SELECT c.id, c.name, da.division_id
-       FROM division_assignments da
-       JOIN clubs c ON c.id = da.club_id
-       WHERE da.club_id = ?`,
-      [swapClubId]
-    );
+    swapClub = await getClubWithDivisionAssignment(db, swapClubId);
     if (!swapClub) throw new Error(`Swap club ${swapClubId} not found.`);
     if (swapClub.division_id !== targetDivisionId) {
       throw new Error(`Swap club is not in the target division.`);
@@ -375,10 +320,7 @@ export async function moveClubWithSwap(
   }
 
   if (swapClubId === null) {
-    const targetCount = await db.get<{ count: number }>(
-      "SELECT COUNT(*) AS count FROM division_assignments WHERE division_id = ?",
-      [targetDivisionId]
-    );
+    const targetCount = await getClubCountInDivision(db, targetDivisionId);
     if (targetCount && targetCount.count >= targetDivision.max_size) {
       throw new Error(`Target division "${targetDivision.name}" is at capacity (${targetDivision.max_size} clubs).`);
     }
@@ -389,14 +331,8 @@ export async function moveClubWithSwap(
   const statements: SqlWrite[] = [];
 
   if (swapClub) {
-    const swapAssignment = await db.get<{ id: number }>(
-      "SELECT id FROM division_assignments WHERE club_id = ?",
-      [swapClub.id]
-    );
-    const movingAssignment = await db.get<{ id: number }>(
-      "SELECT id FROM division_assignments WHERE club_id = ?",
-      [clubId]
-    );
+    const swapAssignment = await getDivisionAssignmentByClubId(db, swapClub.id);
+    const movingAssignment = await getDivisionAssignmentByClubId(db, clubId);
 
     statements.push({
       sql: "UPDATE division_assignments SET division_id = ?, admin_updated_at = ? WHERE id = ?",
@@ -407,10 +343,7 @@ export async function moveClubWithSwap(
       params: [currentDivision.id, now, swapAssignment!.id]
     });
   } else {
-    const movingAssignment = await db.get<{ id: number }>(
-      "SELECT id FROM division_assignments WHERE club_id = ?",
-      [clubId]
-    );
+    const movingAssignment = await getDivisionAssignmentByClubId(db, clubId);
     statements.push({
       sql: "UPDATE division_assignments SET division_id = ?, admin_updated_at = ? WHERE id = ?",
       params: [targetDivisionId, now, movingAssignment!.id]
@@ -441,19 +374,10 @@ export async function unassignClubFromTier10(
   clubId: number,
   actor: string
 ): Promise<void> {
-  const club = await db.get<{ id: number; name: string }>(
-    "SELECT id, name FROM clubs WHERE id = ?",
-    [clubId]
-  );
+  const club = await getClubById(db, clubId);
   if (!club) throw new Error(`Club ${clubId} not found.`);
 
-  const currentDivision = await db.get<{ id: number; name: string; level: number }>(
-    `SELECT pd.id, pd.name, pd.level
-     FROM division_assignments da
-     JOIN pyramid_divisions pd ON pd.id = da.division_id
-     WHERE da.club_id = ?`,
-    [clubId]
-  );
+  const currentDivision = await getCurrentDivisionOfClub(db, clubId);
   if (!currentDivision) throw new Error(`Club ${clubId} is not assigned to any division.`);
 
   if (currentDivision.level !== 10) {
@@ -481,9 +405,7 @@ export async function getDivisionDetail(
   db: AppDatabase,
   divisionId: number
 ): Promise<DivisionDetail | null> {
-  const season = await db.get<{ season_label: string }>(
-    "SELECT season_label FROM pyramid_seasons ORDER BY id DESC LIMIT 1"
-  );
+  const season = await getCurrentSeasonLabel(db);
 
   const division = await db.get<{
     id: number;

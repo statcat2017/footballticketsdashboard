@@ -46,8 +46,9 @@ function setupTestDb(): AppDatabase {
 
 async function callValidateRow(db: AppDatabase, row: ImportBatchRow, seasonLabel: string | null) {
   const cache = await createValidationCache(db);
-  const seenBatchKeys = new Set<string>();
-  return validateRow(db, cache, seenBatchKeys, row, seasonLabel);
+  const seenBatchKeysStrict = new Set<string>();
+  const seenBatchKeysRelaxed = new Set<string>();
+  return validateRow(db, cache, seenBatchKeysStrict, seenBatchKeysRelaxed, row, seasonLabel);
 }
 
 function makeRow(overrides: Partial<ImportBatchRow> = {}): ImportBatchRow {

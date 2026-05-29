@@ -38,8 +38,9 @@ export async function validateRowById(
 
   const seasonLabel = (seasonLabelArg ?? batch.seasonLabel ?? await getCurrentSeasonLabel(db)) ?? null;
   const cache = options?.cache ?? await createValidationCache(db);
-  const seenBatchKeys = new Set<string>();
-  const validation = await validateRow(db, cache, seenBatchKeys, row, seasonLabel, {
+  const seenBatchKeysStrict = new Set<string>();
+  const seenBatchKeysRelaxed = new Set<string>();
+  const validation = await validateRow(db, cache, seenBatchKeysStrict, seenBatchKeysRelaxed, row, seasonLabel, {
     kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
   });
 
