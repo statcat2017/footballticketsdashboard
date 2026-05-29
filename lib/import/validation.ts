@@ -97,7 +97,8 @@ export async function validateImportBatch(
 
   // Pre-load all reference data once for the entire batch
   const cache = await createValidationCache(db);
-  const seenBatchKeys = new Set<string>();
+  const seenBatchKeysStrict = new Set<string>();
+  const seenBatchKeysRelaxed = new Set<string>();
 
   let insertCount = 0;
   let updateCount = 0;
@@ -112,7 +113,7 @@ export async function validateImportBatch(
       continue;
     }
 
-    const validation = await validateRow(db, cache, seenBatchKeys, row, seasonLabel, {
+    const validation = await validateRow(db, cache, seenBatchKeysStrict, seenBatchKeysRelaxed, row, seasonLabel, {
       kickoffAssumptionPolicy: options?.kickoffAssumptionPolicy,
     });
 
@@ -265,7 +266,8 @@ export async function findDuplicateBatchRow(
 export async function validateRow(
   db: AppDatabase,
   cache: ValidationCache,
-  seenBatchKeys: Set<string>,
+  seenBatchKeysStrict: Set<string>,
+  seenBatchKeysRelaxed: Set<string>,
   row: ImportBatchRow,
   seasonLabel: string | null,
   options?: { kickoffAssumptionPolicy?: KickoffAssumptionPolicy }
@@ -287,7 +289,7 @@ export async function validateRow(
   await matchFixture(db, ctx);
   if (ctx.hasBlocker) return toResult(ctx);
 
-  await detectDuplicates(db, cache, ctx, seenBatchKeys);
+  await detectDuplicates(db, cache, ctx, seenBatchKeysStrict, seenBatchKeysRelaxed);
 
   return toResult(ctx);
 }

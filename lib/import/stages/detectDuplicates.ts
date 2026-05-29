@@ -10,7 +10,8 @@ export async function detectDuplicates(
   db: AppDatabase,
   cache: ValidationCache,
   ctx: ValidationContext,
-  seenBatchKeys: Set<string>
+  seenBatchKeysStrict: Set<string>,
+  seenBatchKeysRelaxed: Set<string>
 ): Promise<void> {
   const resolvedRow = {
     ...ctx.row,
@@ -24,28 +25,28 @@ export async function detectDuplicates(
   } as ImportBatchRow;
 
   // Same-batch duplicate detection (strict: home, away, date, time, venue, competition)
-  if (seenBatchKeys.size > 0) {
+  if (seenBatchKeysStrict.size > 0) {
     const sameBatchKey = buildSameBatchKey(resolvedRow);
-    if (sameBatchKey && seenBatchKeys.has(sameBatchKey)) {
+    if (sameBatchKey && seenBatchKeysStrict.has(sameBatchKey)) {
       ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (matching home, away, date, time, venue, competition).`, { severity: "warning" }));
       ctx.duplicateKind = "same_batch";
       ctx.duplicateRef = null;
       return;
     }
     if (sameBatchKey) {
-      seenBatchKeys.add(sameBatchKey);
+      seenBatchKeysStrict.add(sameBatchKey);
     }
 
     // Relaxed same-batch: home, away, and date only
     const relaxedKey = buildRelaxedSameBatchKey(resolvedRow);
-    if (relaxedKey && seenBatchKeys.has(relaxedKey)) {
+    if (relaxedKey && seenBatchKeysRelaxed.has(relaxedKey)) {
       ctx.warnings.push(makeIssue("duplicate_same_batch", `Duplicate row in this batch (matching home, away, and date).`, { severity: "warning" }));
       ctx.duplicateKind = "same_batch";
       ctx.duplicateRef = null;
       return;
     }
     if (relaxedKey) {
-      seenBatchKeys.add(relaxedKey);
+      seenBatchKeysRelaxed.add(relaxedKey);
     }
   } else {
     const dupRowId = await findDuplicateInSameBatch(db, ctx.row);

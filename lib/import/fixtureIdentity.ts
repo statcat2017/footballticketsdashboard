@@ -16,6 +16,39 @@ export interface FixtureCandidateMatch {
   status: string | null;
 }
 
+function buildParticipantConditions(
+  row: ImportBatchRow
+): { conditions: string[]; params: Array<string | number | null> } | null {
+  if (row.homeIsOneOff && row.awayIsOneOff) {
+    if (!row.homeParticipantRaw || !row.awayParticipantRaw) return null;
+    return {
+      conditions: ["home_one_off_name = ?", "away_one_off_name = ?"],
+      params: [row.homeParticipantRaw, row.awayParticipantRaw],
+    };
+  }
+  if (row.homeIsOneOff && row.awayParticipantResolvedId) {
+    if (!row.homeParticipantRaw) return null;
+    return {
+      conditions: ["home_one_off_name = ?", "away_club_id = ?"],
+      params: [row.homeParticipantRaw, row.awayParticipantResolvedId],
+    };
+  }
+  if (row.awayIsOneOff && row.homeParticipantResolvedId) {
+    if (!row.awayParticipantRaw) return null;
+    return {
+      conditions: ["away_one_off_name = ?", "home_club_id = ?"],
+      params: [row.awayParticipantRaw, row.homeParticipantResolvedId],
+    };
+  }
+  if (row.homeParticipantResolvedId && row.awayParticipantResolvedId) {
+    return {
+      conditions: ["home_club_id = ?", "away_club_id = ?"],
+      params: [row.homeParticipantResolvedId, row.awayParticipantResolvedId],
+    };
+  }
+  return null;
+}
+
 export async function findImportFixtureMatch(
   db: AppDatabase,
   row: ImportBatchRow,
@@ -23,52 +56,21 @@ export async function findImportFixtureMatch(
 ): Promise<FixtureMatchResult> {
   if (!row.competitionResolvedCode) return { kind: "none" };
 
-  let fixtures: Record<string, unknown>[] = [];
+  const pc = buildParticipantConditions(row);
+  if (!pc) return { kind: "none" };
 
-  if (row.homeIsOneOff && row.awayIsOneOff) {
-    fixtures = await db.all<Record<string, unknown>>(
-      `SELECT fixtures.*, ftpo.source_url AS ticket_url, ftpo.adult_price_pence, ftpo.concession_price_pence
-       FROM fixtures
-       LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
-       WHERE competition_code = ? AND season_label = ?
-       AND home_one_off_name = ? AND away_one_off_name = ?`,
-      [row.competitionResolvedCode, seasonLabel, row.homeParticipantRaw, row.awayParticipantRaw]
-    );
-  } else if (row.homeIsOneOff && row.awayParticipantResolvedId) {
-    fixtures = await db.all<Record<string, unknown>>(
-      `SELECT fixtures.*, ftpo.source_url AS ticket_url, ftpo.adult_price_pence, ftpo.concession_price_pence
-       FROM fixtures
-       LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
-       WHERE competition_code = ? AND season_label = ?
-       AND home_one_off_name = ? AND away_club_id = ?`,
-      [row.competitionResolvedCode, seasonLabel, row.homeParticipantRaw, row.awayParticipantResolvedId]
-    );
-  } else if (row.awayIsOneOff && row.homeParticipantResolvedId) {
-    fixtures = await db.all<Record<string, unknown>>(
-      `SELECT fixtures.*, ftpo.source_url AS ticket_url, ftpo.adult_price_pence, ftpo.concession_price_pence
-       FROM fixtures
-       LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
-       WHERE competition_code = ? AND season_label = ?
-       AND away_one_off_name = ? AND home_club_id = ?`,
-      [row.competitionResolvedCode, seasonLabel, row.awayParticipantRaw, row.homeParticipantResolvedId]
-    );
-  } else if (row.homeParticipantResolvedId && row.awayParticipantResolvedId) {
-    let sql = `SELECT fixtures.*, ftpo.source_url AS ticket_url, ftpo.adult_price_pence, ftpo.concession_price_pence
-      FROM fixtures
-      LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
-      WHERE home_club_id = ? AND away_club_id = ? AND competition_code = ? AND season_label = ?`;
-    const params: (string | number | null)[] = [
-      row.homeParticipantResolvedId,
-      row.awayParticipantResolvedId,
-      row.competitionResolvedCode,
-      seasonLabel,
-    ];
-    if (row.kickoffDate) {
-      sql += ` AND fixture_date = ?`;
-      params.push(row.kickoffDate);
-    }
-    fixtures = await db.all<Record<string, unknown>>(sql, params);
+  let sql = `SELECT fixtures.*, ftpo.source_url AS ticket_url, ftpo.adult_price_pence, ftpo.concession_price_pence
+    FROM fixtures
+    LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
+    WHERE ${pc.conditions.join(" AND ")} AND competition_code = ? AND season_label = ?`;
+  const params: (string | number | null)[] = [...pc.params, row.competitionResolvedCode, seasonLabel];
+
+  if (row.homeParticipantResolvedId && row.awayParticipantResolvedId && row.kickoffDate) {
+    sql += ` AND fixture_date = ?`;
+    params.push(row.kickoffDate);
   }
+
+  const fixtures = await db.all<Record<string, unknown>>(sql, params);
 
   if (fixtures.length === 0) return { kind: "none" };
   if (fixtures.length > 1) return { kind: "ambiguous", count: fixtures.length };
@@ -100,42 +102,14 @@ export async function findExistingFixtureDuplicateByParticipantsAndDate(
 ): Promise<FixtureMatchResult> {
   if (!row.kickoffDate) return { kind: "none" };
 
-  let fixtures: Record<string, unknown>[] = [];
+  const pc = buildParticipantConditions(row);
+  if (!pc) return { kind: "none" };
 
-  if (row.homeIsOneOff && row.awayIsOneOff) {
-    if (!row.homeParticipantRaw || !row.awayParticipantRaw) return { kind: "none" };
-    fixtures = await db.all<Record<string, unknown>>(
-      `SELECT f.* FROM fixtures f
-       WHERE f.home_one_off_name = ? AND f.away_one_off_name = ?
-       AND f.fixture_date = ?`,
-      [row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate]
-    );
-  } else if (row.homeIsOneOff && row.awayParticipantResolvedId) {
-    if (!row.homeParticipantRaw) return { kind: "none" };
-    fixtures = await db.all<Record<string, unknown>>(
-      `SELECT f.* FROM fixtures f
-       WHERE f.home_one_off_name = ? AND f.away_club_id = ?
-       AND f.fixture_date = ?`,
-      [row.homeParticipantRaw, row.awayParticipantResolvedId, row.kickoffDate]
-    );
-  } else if (row.awayIsOneOff && row.homeParticipantResolvedId) {
-    if (!row.awayParticipantRaw) return { kind: "none" };
-    fixtures = await db.all<Record<string, unknown>>(
-      `SELECT f.* FROM fixtures f
-       WHERE f.away_one_off_name = ? AND f.home_club_id = ?
-       AND f.fixture_date = ?`,
-      [row.awayParticipantRaw, row.homeParticipantResolvedId, row.kickoffDate]
-    );
-  } else if (row.homeParticipantResolvedId && row.awayParticipantResolvedId) {
-    fixtures = await db.all<Record<string, unknown>>(
-      `SELECT f.* FROM fixtures f
-       WHERE f.home_club_id = ? AND f.away_club_id = ?
-       AND f.fixture_date = ?`,
-      [row.homeParticipantResolvedId, row.awayParticipantResolvedId, row.kickoffDate]
-    );
-  } else {
-    return { kind: "none" };
-  }
+  const fixtures = await db.all<Record<string, unknown>>(
+    `SELECT f.* FROM fixtures f
+     WHERE ${pc.conditions.join(" AND ")} AND f.fixture_date = ?`,
+    [...pc.params, row.kickoffDate]
+  );
 
   if (fixtures.length === 0) return { kind: "none" };
   if (fixtures.length > 1) return { kind: "ambiguous", count: fixtures.length };
