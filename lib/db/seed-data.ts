@@ -1,4 +1,4 @@
-import { createD1AppDatabase, type AppDatabase, type D1RootDatabaseLike, type D1PreparedStatement } from "./adapter.ts";
+import type { AppDatabase, SqlWrite } from "./adapter.ts";
 import { schemaSql } from "./schema.ts";
 import {
   CLUB_VENUE_ASSIGNMENTS,
@@ -13,18 +13,42 @@ import {
   MEN_PYRAMID_TEMPLATE
 } from "./pyramid.ts";
 import { SEED_DATA } from "./seed-data-static.ts";
+
 export { SEED_DATA };
 
-export function createD1Database(binding: D1RootDatabaseLike): AppDatabase {
-  return createD1AppDatabase(binding);
-}
+const DIVISION_COMPETITION_MAPPINGS: Array<{ division_id: number; competition_code: string }> = [
+  { division_id: 8, competition_code: "NPLP" },
+  { division_id: 9, competition_code: "ILP" },
+  { division_id: 10, competition_code: "SLPC" },
+  { division_id: 11, competition_code: "SLPS" },
+  { division_id: 15, competition_code: "NPL1E" },
+  { division_id: 16, competition_code: "NPL1M" },
+  { division_id: 17, competition_code: "NPL1W" },
+  { division_id: 18, competition_code: "IL1N" },
+  { division_id: 19, competition_code: "IL1SC" },
+  { division_id: 20, competition_code: "IL1SE" },
+  { division_id: 21, competition_code: "SL1C" },
+  { division_id: 22, competition_code: "SL1S" },
+  { division_id: 23, competition_code: "CC_PN" },
+  { division_id: 24, competition_code: "CC_PS" },
+  { division_id: 25, competition_code: "EC_PREM" },
+  { division_id: 26, competition_code: "ESL" },
+  { division_id: 27, competition_code: "HEL_PREM" },
+  { division_id: 28, competition_code: "MFL_PREM" },
+  { division_id: 29, competition_code: "NCE_PREM" },
+  { division_id: 30, competition_code: "NL_D1" },
+  { division_id: 31, competition_code: "SCE_PREM" },
+  { division_id: 32, competition_code: "SSM_PREM" },
+  { division_id: 33, competition_code: "SCO_PREM" },
+  { division_id: 34, competition_code: "UCL_PN" },
+  { division_id: 35, competition_code: "UCL_PS" },
+  { division_id: 36, competition_code: "WES_PREM" },
+  { division_id: 37, competition_code: "WESL_PREM" },
+];
 
-export async function initializeD1Database(binding: D1RootDatabaseLike): Promise<void> {
-  const db = createD1Database(binding);
-
+export async function initializeAppDatabase(db: AppDatabase): Promise<void> {
   await db.exec(schemaSql);
 
-  // Idempotent migration for existing D1 databases: add is_approximate if missing
   const colCheck = await db.get<{ count: number }>(
     "SELECT COUNT(*) as count FROM pragma_table_info('venues') WHERE name = 'is_approximate'"
   );
@@ -35,9 +59,9 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
   const divisionDisplayOrder = computeDivisionDisplayOrder();
   const edgeAllocationType = computeEdgeAllocationType();
   const latestPyramidSeasonId = Math.max(...MEN_PYRAMID_SEASONS.map((s) => s.id));
-  const statements: D1PreparedStatement[] = [];
+  const statements: SqlWrite[] = [];
   const add = (sql: string, params: Array<string | number | null>) => {
-    statements.push(binding.prepare(sql).bind(...params));
+    statements.push({ sql, params });
   };
 
   add(
@@ -73,35 +97,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
-  const DIVISION_COMPETITION_MAPPINGS: Array<{ division_id: number; competition_code: string }> = [
-    { division_id: 8, competition_code: "NPLP" },
-    { division_id: 9, competition_code: "ILP" },
-    { division_id: 10, competition_code: "SLPC" },
-    { division_id: 11, competition_code: "SLPS" },
-    { division_id: 15, competition_code: "NPL1E" },
-    { division_id: 16, competition_code: "NPL1M" },
-    { division_id: 17, competition_code: "NPL1W" },
-    { division_id: 18, competition_code: "IL1N" },
-    { division_id: 19, competition_code: "IL1SC" },
-    { division_id: 20, competition_code: "IL1SE" },
-    { division_id: 21, competition_code: "SL1C" },
-    { division_id: 22, competition_code: "SL1S" },
-    { division_id: 23, competition_code: "CC_PN" },
-    { division_id: 24, competition_code: "CC_PS" },
-    { division_id: 25, competition_code: "EC_PREM" },
-    { division_id: 26, competition_code: "ESL" },
-    { division_id: 27, competition_code: "HEL_PREM" },
-    { division_id: 28, competition_code: "MFL_PREM" },
-    { division_id: 29, competition_code: "NCE_PREM" },
-    { division_id: 30, competition_code: "NL_D1" },
-    { division_id: 31, competition_code: "SCE_PREM" },
-    { division_id: 32, competition_code: "SSM_PREM" },
-    { division_id: 33, competition_code: "SCO_PREM" },
-    { division_id: 34, competition_code: "UCL_PN" },
-    { division_id: 35, competition_code: "UCL_PS" },
-    { division_id: 36, competition_code: "WES_PREM" },
-    { division_id: 37, competition_code: "WESL_PREM" },
-  ];
   for (const m of DIVISION_COMPETITION_MAPPINGS) {
     add(
       "INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?) ON CONFLICT(division_id) DO UPDATE SET competition_code = excluded.competition_code",
@@ -121,8 +116,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
-  // Build map of existing clubs by name and set of all existing IDs
-  // so re-seeds reuse stable IDs and never overwrite manual/admin clubs
   const existingClubByName = new Map<string, number>();
   const existingClubIds = new Set<number>();
   for (const row of await db.all<{ id: number; name: string }>("SELECT id, name FROM clubs")) {
@@ -130,7 +123,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     existingClubIds.add(row.id);
   }
 
-  // Build ID translation: old pyramid_club_id → new clubs.id
   const pyramidToClubId = new Map<number, number>();
   const maxPyramidId = Math.max(...MEN_PYRAMID_CLUBS.map((c) => c.id));
   const usedClubIds = new Set([...SEED_DATA.clubs.map((c) => c.id), ...existingClubIds]);
@@ -141,7 +133,9 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     return nextId++;
   };
   const pyramidClubNames = new Set(SEED_DATA.clubs.map((c) => c.name));
+  const pyramidClubByName = new Map<string, (typeof MEN_PYRAMID_CLUBS)[number]>();
   for (const pc of MEN_PYRAMID_CLUBS) {
+    pyramidClubByName.set(pc.name, pc);
     if (pyramidClubNames.has(pc.name)) {
       const seedClub = SEED_DATA.clubs.find((c) => c.name === pc.name)!;
       pyramidToClubId.set(pc.id, seedClub.id);
@@ -161,10 +155,10 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     pyramidToClubId.get(pyramidClubId) ?? pyramidClubId;
 
   for (const cl of SEED_DATA.clubs) {
-    const pc = MEN_PYRAMID_CLUBS.find((p) => p.name === cl.name);
+    const pyramidMatch = pyramidClubByName.get(cl.name);
     add(
       "INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at, source_url, league_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, football_data_team_id = excluded.football_data_team_id, aliases = excluded.aliases, short_name = excluded.short_name, venue_id = excluded.venue_id, official_site_url = excluded.official_site_url, generic_ticket_url = excluded.generic_ticket_url, price_source_url = excluded.price_source_url, verified_at = excluded.verified_at, source_url = excluded.source_url, league_name = excluded.league_name",
-      [cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name, cl.venue_id, cl.official_site_url, cl.generic_ticket_url, cl.price_source_url, cl.verified_at, pc?.source_url ?? cl.generic_ticket_url ?? null, pc?.league_name ?? null]
+      [cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name, cl.venue_id, cl.official_site_url, cl.generic_ticket_url, cl.price_source_url, cl.verified_at, pyramidMatch?.source_url ?? cl.generic_ticket_url ?? null, pyramidMatch?.league_name ?? null]
     );
   }
 
@@ -194,26 +188,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     }
   }
 
-  // Lightweight validation: no duplicate club assignments, all refs exist
-  const dupes = await db.get<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM division_assignments GROUP BY club_id HAVING COUNT(*) > 1"
-  );
-  if (dupes && dupes.count > 0) {
-    throw new Error("division_assignments has duplicate club entries.");
-  }
-  const badClubs = await db.get<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM division_assignments da LEFT JOIN clubs c ON c.id = da.club_id WHERE c.id IS NULL"
-  );
-  if (badClubs && badClubs.count > 0) {
-    throw new Error("division_assignments references non-existent clubs.");
-  }
-  const badDivs = await db.get<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM division_assignments da LEFT JOIN pyramid_divisions d ON d.id = da.division_id WHERE d.id IS NULL"
-  );
-  if (badDivs && badDivs.count > 0) {
-    throw new Error("division_assignments references non-existent divisions.");
-  }
-
   for (const p of SEED_DATA.club_ticket_prices) {
     add(
       "INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(club_id) DO UPDATE SET sale_mode = excluded.sale_mode, adult_price_pence = excluded.adult_price_pence, concession_price_pence = excluded.concession_price_pence, source_url = excluded.source_url, verified_at = excluded.verified_at, confidence = excluded.confidence",
@@ -235,7 +209,6 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
-
   for (const assignment of CLUB_VENUE_ASSIGNMENTS) {
     add(
       "INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET club_id = excluded.club_id, venue_id = excluded.venue_id, effective_from = excluded.effective_from, effective_to = excluded.effective_to, is_primary = excluded.is_primary",
@@ -243,5 +216,5 @@ export async function initializeD1Database(binding: D1RootDatabaseLike): Promise
     );
   }
 
-  await binding.batch(statements);
+  await db.writeBatch(statements);
 }

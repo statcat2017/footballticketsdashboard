@@ -265,7 +265,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   }
 
   it("blocks redirect to private IP", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockRedirect("http://127.0.0.1/latest");
     const result = await createImportBatchFromHtmlUrl(
       db, "https://evil.com/redirect", "test-admin", { fetcher }
@@ -275,7 +275,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   });
 
   it("blocks redirect to localhost", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockRedirect("http://localhost:3000/");
     const result = await createImportBatchFromHtmlUrl(
       db, "https://evil.com/redirect", "test-admin", { fetcher }
@@ -285,7 +285,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   });
 
   it("blocks redirect to metadata IP", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockRedirect("http://169.254.169.254/latest/meta-data/");
     const result = await createImportBatchFromHtmlUrl(
       db, "https://evil.com/redirect", "test-admin", { fetcher }
@@ -295,7 +295,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   });
 
   it("enforces redirect cap", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = vi.fn().mockImplementation(() => {
       return Promise.resolve(new Response(null, {
         status: 302,
@@ -309,7 +309,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   });
 
   it("returns error on fetch failure", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchError(500, "Internal Server Error");
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com/fixtures", "test-admin", { fetcher }
@@ -319,7 +319,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   });
 
   it("returns descriptive error on 403", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchError(403, "Forbidden");
     const result = await createImportBatchFromHtmlUrl(
       db, "https://footballwebpages.co.uk/fixtures", "test-admin", { fetcher }
@@ -329,7 +329,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   });
 
   it("returns error for non-HTML content", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml("{}", "application/json");
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com/data", "test-admin", { fetcher }
@@ -339,7 +339,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   });
 
   it("returns error for blocked URL", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const result = await createImportBatchFromHtmlUrl(
       db, "http://localhost:3000/fixtures", "test-admin"
     );
@@ -350,7 +350,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   it("blocks hostname that resolves to a private IP", async () => {
     (dnsPromises.resolve4 as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["10.0.0.1"]);
 
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml("<html></html>");
     const result = await createImportBatchFromHtmlUrl(
       db, "https://internal-resolver.example.com", "test-admin", { fetcher }
@@ -362,7 +362,7 @@ describe("createImportBatchFromHtmlUrl — fetch safety", () => {
   it("allows hostname that resolves to a public IP", async () => {
     (dnsPromises.resolve4 as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["93.184.216.34"]);
 
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml(simpleFixtureTable());
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com", "test-admin", { fetcher }
@@ -383,7 +383,7 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
   }
 
   it("creates a batch from a fetched HTML page", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml(simpleFixtureTable());
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com/fixtures", "test-admin", { fetcher }
@@ -406,7 +406,7 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
   });
 
   it("selects only specified table indices", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml(multiTableHtml());
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com/fixtures", "test-admin",
@@ -419,7 +419,7 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
   });
 
   it("creates and reuses a fixture source by origin", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml(simpleFixtureTable());
 
     await createImportBatchFromHtmlUrl(
@@ -437,7 +437,7 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
   });
 
   it("returns all detected tables in result", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml(multiTableHtml());
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com/fixtures", "test-admin", { fetcher }
@@ -447,7 +447,7 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
   });
 
   it("accepts optional season label", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = mockFetchHtml(simpleFixtureTable());
     const result = await createImportBatchFromHtmlUrl(
       db, "https://example.com/fixtures", "test-admin",
@@ -458,7 +458,7 @@ describe("createImportBatchFromHtmlUrl — batch creation", () => {
   });
 
   it("persists parse_errors_json for rows missing home/away", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const html = `<html><body>
 <table>
   <tr><th>Home</th><th>Away</th></tr>
@@ -536,7 +536,7 @@ describe("FWP-style table parsing", () => {
   });
 
   it("sets competition and awayIsOneOff for friendlies URL", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const fetcher = vi.fn().mockResolvedValue(
       new Response(fwpHtml(), {
         status: 200,

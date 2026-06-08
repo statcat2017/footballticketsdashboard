@@ -5,7 +5,7 @@ import { importFootballDataFixtures } from "@/lib/db/footballDataImporter";
 
 describe("football-data importer", () => {
   it("requires a token", async () => {
-    const db = createDatabase();
+    const db = await createDatabase();
     db.prepare("UPDATE clubs SET name = 'Arsenal Seed Name Does Not Matter' WHERE football_data_team_id = 57").run();
 
     await expect(importFootballDataFixtures({ db, token: "", fetchImpl: vi.fn() })).rejects.toThrow(
@@ -14,7 +14,7 @@ describe("football-data importer", () => {
   });
 
   it("fetches PL and ELC matches and upserts known clubs idempotently", async () => {
-    const db = createDatabase();
+    const db = await createDatabase();
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(responseWithMatches([

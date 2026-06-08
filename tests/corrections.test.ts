@@ -26,7 +26,7 @@ describe("corrections", () => {
   afterEach(() => { getDatabase.mockReset(); });
 
   it("stores correction submissions as pending", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     const correction = await createCorrection(db, {
       fixtureId: 1,
@@ -54,7 +54,7 @@ describe("corrections API route", () => {
   });
 
   it("accepts valid submission with all fields", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     await db.run(`INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, status, is_demo_data, is_historical)
       VALUES ('test', 'corr-test', 'PL', 1, 2, 1, '2026-06-01T15:00:00.000Z', 'scheduled', 0, 0)`);
     getDatabase.mockResolvedValue(db);
@@ -80,7 +80,7 @@ describe("corrections API route", () => {
   });
 
   it("accepts minimal submission with just priceText", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/corrections/route");
@@ -96,7 +96,7 @@ describe("corrections API route", () => {
   });
 
   it("rejects empty body with 400", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/corrections/route");
@@ -112,7 +112,7 @@ describe("corrections API route", () => {
   });
 
   it("rejects missing priceText with 400", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/corrections/route");
@@ -126,7 +126,7 @@ describe("corrections API route", () => {
   });
 
   it("rejects invalid email with 400", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/corrections/route");
@@ -140,7 +140,7 @@ describe("corrections API route", () => {
   });
 
   it("accepts empty string email as if omitted", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/corrections/route");
@@ -154,7 +154,7 @@ describe("corrections API route", () => {
   });
 
   it("rejects too-short priceText with 400", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/corrections/route");
@@ -171,7 +171,7 @@ describe("corrections API route", () => {
     const { checkRateLimit } = await import("@/lib/rate-limit");
     vi.mocked(checkRateLimit).mockReturnValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 3600_000 });
 
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     getDatabase.mockResolvedValue(db);
 
     const { POST } = await import("@/app/api/corrections/route");
@@ -186,7 +186,7 @@ describe("corrections API route", () => {
   });
 
   it("throws on database errors", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     vi.spyOn(db, "run").mockRejectedValue(new Error("DB gone"));
     getDatabase.mockResolvedValue(db);
 
@@ -199,7 +199,7 @@ describe("corrections API route", () => {
   });
 
   it("accepts fixtureId as string (coerced by zod)", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     await db.run(`INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, status, is_demo_data, is_historical)
       VALUES ('test', 'corr-coerce', 'PL', 1, 2, 1, '2026-06-01T15:00:00.000Z', 'scheduled', 0, 0)`);
     getDatabase.mockResolvedValue(db);
@@ -217,7 +217,7 @@ describe("corrections API route", () => {
   });
 
   it("preserves submitted data in the database", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const result = await db.run(`INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, status, is_demo_data, is_historical)
       VALUES ('test', 'corr-preserve', 'PL', 1, 2, 1, '2026-06-01T15:00:00.000Z', 'scheduled', 0, 0)`);
     const fixtureId = Number(result.lastInsertRowid);

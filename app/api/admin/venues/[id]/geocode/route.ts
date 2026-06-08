@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
-import { getCloudflareEnv } from "@/lib/runtime-env";
+import { getEnv } from "@/lib/runtime-env";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getAdminSessionFromRequest(request);
@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const postcode = body.postcode.replace(/\s+/g, "").toUpperCase();
-  const postcodesIoBaseUrl = await getCloudflareEnv("POSTCODES_IO_BASE_URL") ?? "https://api.postcodes.io";
+  const postcodesIoBaseUrl = getEnv("POSTCODES_IO_BASE_URL") ?? "https://api.postcodes.io";
 
   try {
     const response = await fetch(`${postcodesIoBaseUrl}/postcodes/${postcode}`);

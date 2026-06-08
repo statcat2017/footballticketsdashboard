@@ -11,7 +11,7 @@ afterEach(() => {
 
 describe("search service substitutable seams", () => {
   it("accepts a mock PostcodeResolver override", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await db.run(`
       INSERT INTO fixtures (
@@ -36,7 +36,7 @@ describe("search service substitutable seams", () => {
   });
 
   it("accepts a mock TravelProvider override", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await db.run(`
       INSERT INTO fixtures (
@@ -73,7 +73,7 @@ describe("search service substitutable seams", () => {
   });
 
   it("combines multiple mock TravelProviders", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await db.run(`
       INSERT INTO fixtures (
@@ -118,7 +118,7 @@ describe("search service substitutable seams", () => {
   });
 
   it("falls back to default PostcodeResolver when none provided", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await db.run(`
       INSERT INTO fixtures (
@@ -139,7 +139,7 @@ describe("search service substitutable seams", () => {
   });
 
   it("falls back gracefully when PostcodeResolver returns null", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await db.run(`
       INSERT INTO fixtures (
@@ -164,7 +164,7 @@ describe("search service substitutable seams", () => {
   });
 
   it("continues when TravelProvider estimate returns null", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await db.run(`
       INSERT INTO fixtures (
@@ -204,7 +204,7 @@ describe("search service substitutable seams", () => {
   });
 
   it("continues when TravelProvider estimate rejects", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await db.run(`
       INSERT INTO fixtures (

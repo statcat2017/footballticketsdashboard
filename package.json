@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:ci": "vitest run --exclude tests/d1.test.ts",
+    "test:ci": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

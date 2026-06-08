@@ -5,12 +5,12 @@ import { defaultDatabasePath, setupDatabase } from "./setup.ts";
 
 let database: AppDatabase | null = null;
 
-export function createDatabase(filename = ":memory:"): SqliteDatabase {
+export async function createDatabase(filename = ":memory:"): Promise<SqliteDatabase> {
   return setupDatabase(filename);
 }
 
-export function createAppDatabase(filename = ":memory:"): AppDatabase {
-  return createSqliteAppDatabase(createDatabase(filename));
+export async function createAppDatabase(filename = ":memory:"): Promise<AppDatabase> {
+  return createSqliteAppDatabase(await createDatabase(filename));
 }
 
 export async function getDatabase(): Promise<AppDatabase> {
@@ -18,7 +18,7 @@ export async function getDatabase(): Promise<AppDatabase> {
     try {
       const configuredPath = process.env.SQLITE_DB_PATH;
       const filename = configuredPath ?? defaultDatabasePath;
-      database = createAppDatabase(filename);
+      database = await createAppDatabase(filename);
     } catch (err) {
       console.error("Failed to create SQLite database:", err);
       throw err;

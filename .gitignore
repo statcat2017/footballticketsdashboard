@@ -5,8 +5,6 @@ dist
 coverage
 test-results
 playwright-report
-.open-next
-.wrangler
 .agents/
 .opencode/
 .dev.vars

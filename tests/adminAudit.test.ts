@@ -5,7 +5,7 @@ import { createAppDatabase } from "@/lib/db/client";
 
 describe("admin audit log", () => {
   it("writes structured audit rows", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     await writeAdminAuditLog(db, {
       action: "update",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getCloudflareEnv } from "@/lib/runtime-env";
+import { getEnv } from "@/lib/runtime-env";
 
 export interface Coordinate {
   latitude: number;
@@ -122,7 +122,7 @@ export async function resolvePostcodeOrigin(
     };
   }
 
-  const postcodesIoBaseUrl = await getCloudflareEnv("POSTCODES_IO_BASE_URL") ?? "https://api.postcodes.io";
+  const postcodesIoBaseUrl = getEnv("POSTCODES_IO_BASE_URL") ?? "https://api.postcodes.io";
   const apiCoordinate = await lookupPostcodeCoordinate(normalized, fetchImpl, postcodesIoBaseUrl);
 
   if (apiCoordinate) {
