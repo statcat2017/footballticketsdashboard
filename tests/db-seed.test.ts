@@ -1,10 +1,14 @@
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { createAppDatabase } from "@/lib/db/client";
+
+import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import { initializeAppDatabase } from "@/lib/db/seed-data";
 
 describe("database initialization", () => {
   it("initializes schema and seed data into sqlite", async () => {
-    const db = await createAppDatabase(":memory:");
+    const sqlite = new Database(":memory:");
+    sqlite.pragma("foreign_keys = ON");
+    const db = createSqliteAppDatabase(sqlite);
     await initializeAppDatabase(db);
 
     const clubs = await db.get<{ count: number }>("SELECT COUNT(*) AS count FROM clubs");

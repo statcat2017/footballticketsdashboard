@@ -48,7 +48,10 @@ const DIVISION_COMPETITION_MAPPINGS: Array<{ division_id: number; competition_co
 
 export async function initializeAppDatabase(db: AppDatabase): Promise<void> {
   await db.exec(schemaSql);
+  await seedAppDatabase(db);
+}
 
+export async function seedAppDatabase(db: AppDatabase): Promise<void> {
   const colCheck = await db.get<{ count: number }>(
     "SELECT COUNT(*) as count FROM pragma_table_info('venues') WHERE name = 'is_approximate'"
   );
