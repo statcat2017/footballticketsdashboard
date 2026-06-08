@@ -299,7 +299,7 @@ describe("parseCsv — evidence", () => {
 
 describe("createImportBatchFromCsv", () => {
   it("creates a batch with parsed rows", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const source = await createSource(db, {
       sourceType: "csv_paste",
       name: "Test CSV",
@@ -332,7 +332,7 @@ describe("createImportBatchFromCsv", () => {
   });
 
   it("sets rowCountTotal to total input rows (valid + errors)", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const source = await createSource(db, {
       sourceType: "csv_paste",
       name: "Count Test",
@@ -360,7 +360,7 @@ describe("createImportBatchFromCsv", () => {
   });
 
   it("handles empty CSV gracefully", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const source = await createSource(db, {
       sourceType: "csv_paste",
       name: "Empty CSV",
@@ -372,7 +372,7 @@ describe("createImportBatchFromCsv", () => {
   });
 
   it("preserves raw CSV in batch", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const source = await createSource(db, {
       sourceType: "csv_paste",
       name: "Raw CSV",
@@ -388,7 +388,7 @@ describe("createImportBatchFromCsv", () => {
   });
 
   it("accepts optional season label", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const source = await createSource(db, {
       sourceType: "csv_paste",
       name: "Season CSV",

@@ -13,8 +13,8 @@ import {
 } from "@/lib/import";
 import type { FixtureSourceInput, ImportBatch, NormalizedFixtureRow } from "@/lib/import";
 
-function setupTestDb(): AppDatabase {
-  return createAppDatabase();
+async function setupTestDb(): Promise<AppDatabase> {
+  return await createAppDatabase();
 }
 
 async function createTestSource(db: AppDatabase, overrides?: Partial<FixtureSourceInput>): Promise<{ id: number; name: string }> {
@@ -52,7 +52,7 @@ async function createTestRows(db: AppDatabase, batchId: number): Promise<void> {
 
 describe("getOrCreateSource", () => {
   it("creates a new source when none exists (by name)", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await getOrCreateSource(db, {
       sourceType: "csv_paste",
       name: "My CSV Source",
@@ -63,7 +63,7 @@ describe("getOrCreateSource", () => {
   });
 
   it("returns existing source when found by name", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const first = await getOrCreateSource(db, {
       sourceType: "csv_paste",
       name: "My CSV Source",
@@ -76,7 +76,7 @@ describe("getOrCreateSource", () => {
   });
 
   it("creates a new source when none exists (by base_url)", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await getOrCreateSource(db, {
       sourceType: "url_table_scrape",
       name: "https://example.com/fixtures",
@@ -87,7 +87,7 @@ describe("getOrCreateSource", () => {
   });
 
   it("returns existing source when found by base_url", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const first = await getOrCreateSource(db, {
       sourceType: "url_table_scrape",
       name: "https://example.com/fixtures",
@@ -102,7 +102,7 @@ describe("getOrCreateSource", () => {
   });
 
   it("does not create duplicate when called with same type+name", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const first = await getOrCreateSource(db, {
       sourceType: "url_table_scrape",
       name: "Fixture Site",
@@ -119,7 +119,7 @@ describe("getOrCreateSource", () => {
   });
 
   it("preserves default trust level and auto-approval when creating", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await getOrCreateSource(db, {
       sourceType: "csv_paste",
       name: "Defaults Source",
@@ -131,7 +131,7 @@ describe("getOrCreateSource", () => {
 
 describe("addBatchRows", () => {
   it("inserts multiple rows into a batch", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -143,7 +143,7 @@ describe("addBatchRows", () => {
   });
 
   it("preserves evidence as JSON", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
 
@@ -166,7 +166,7 @@ describe("addBatchRows", () => {
   });
 
   it("defaults status to null when not provided", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -177,7 +177,7 @@ describe("addBatchRows", () => {
   });
 
   it("enforces unique (batch_id, row_index)", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -193,7 +193,7 @@ describe("addBatchRows", () => {
   });
 
   it("inserts rows with explicit ticket_url and source_url fields", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
 
@@ -215,7 +215,7 @@ describe("addBatchRows", () => {
   });
 
   it("inserts rows with prices", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
 
@@ -239,7 +239,7 @@ describe("addBatchRows", () => {
 
 describe("getBatchRowsByMatchResult", () => {
   it("groups rows by match_result", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
 
@@ -273,7 +273,7 @@ describe("getBatchRowsByMatchResult", () => {
   });
 
   it("treats null match_result as pending", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -283,7 +283,7 @@ describe("getBatchRowsByMatchResult", () => {
   });
 
   it("returns all match_result keys even when empty", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -299,7 +299,7 @@ describe("getBatchRowsByMatchResult", () => {
 
 describe("updateBatchRowOutcome", () => {
   it("updates match_result and serializes warnings", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -315,7 +315,7 @@ describe("updateBatchRowOutcome", () => {
   });
 
   it("updates resolved IDs", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -336,7 +336,7 @@ describe("updateBatchRowOutcome", () => {
   });
 
   it("updates final action", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);
@@ -351,7 +351,7 @@ describe("updateBatchRowOutcome", () => {
   });
 
   it("is a no-op when no fields are supplied", async () => {
-    const db = setupTestDb();
+    const db = await setupTestDb();
     const source = await createTestSource(db);
     const batch = await createTestBatch(db, source.id);
     await createTestRows(db, batch.id);

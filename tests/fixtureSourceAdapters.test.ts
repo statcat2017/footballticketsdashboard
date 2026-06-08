@@ -31,7 +31,7 @@ function simpleFixtureTableHtml(): string {
 describe("FixtureSourceAdapter contract — createImportBatch", () => {
   describe("CSV adapter", () => {
     it("creates a batch through the adapter contract", async () => {
-      const db = createAppDatabase();
+      const db = await createAppDatabase();
       const source = await createSource(db, {
         sourceType: "csv_paste",
         name: "Contract Test CSV",
@@ -63,7 +63,7 @@ describe("FixtureSourceAdapter contract — createImportBatch", () => {
     });
 
     it("accepts optional season label through the adapter contract", async () => {
-      const db = createAppDatabase();
+      const db = await createAppDatabase();
       const source = await createSource(db, {
         sourceType: "csv_paste",
         name: "Season Label CSV",
@@ -91,7 +91,7 @@ describe("FixtureSourceAdapter contract — createImportBatch", () => {
     }
 
     it("creates a batch through the adapter contract", async () => {
-      const db = createAppDatabase();
+      const db = await createAppDatabase();
       const fetcher = mockFetchHtml(simpleFixtureTableHtml());
 
       const result = await htmlTableFixtureSourceAdapter.createImportBatch!(
@@ -115,7 +115,7 @@ describe("FixtureSourceAdapter contract — createImportBatch", () => {
     });
 
     it("selects only specified table indices through the adapter contract", async () => {
-      const db = createAppDatabase();
+      const db = await createAppDatabase();
       const multiTableHtml = `<html><body>
 <h2>Saturday Fixtures</h2>
 <table>
@@ -144,7 +144,7 @@ describe("FixtureSourceAdapter contract — createImportBatch", () => {
     });
 
     it("returns error when selected table indices match no tables", async () => {
-      const db = createAppDatabase();
+      const db = await createAppDatabase();
       const fetcher = mockFetchHtml(simpleFixtureTableHtml());
 
       const result = await htmlTableFixtureSourceAdapter.createImportBatch!(

@@ -25,7 +25,7 @@ function requestUrl(input: RequestInfo | URL): string {
 
 describe("fixture search", () => {
   it("falls back to unconstrained historical fixtures when date range has no live or historical matches", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     const mockResolver: PostcodeResolver = {
       resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
@@ -57,7 +57,7 @@ describe("fixture search", () => {
   });
 
   it("falls back to historical fixtures when no live fixtures match and historical seed data exists", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
 
     const mockResolver: PostcodeResolver = {
       resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
@@ -90,7 +90,7 @@ describe("fixture search", () => {
   });
 
   it("returns live fixtures sorted by distance when no radius is supplied", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestUrl(input);
 
@@ -131,7 +131,7 @@ describe("fixture search", () => {
   });
 
   it("prefers fixture price overrides over the club default", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
@@ -172,7 +172,7 @@ describe("fixture search", () => {
   });
 
   it("uses exact postcode coordinates and live driving lookup on first search when cache is missing", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -224,7 +224,7 @@ describe("fixture search", () => {
 
 describe("travel enrichment resilience", () => {
   it("limits concurrent provider calls to 4", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
     let inFlight = 0;
@@ -276,7 +276,7 @@ describe("travel enrichment resilience", () => {
   });
 
   it("pre-filters by radius before making provider calls", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
     let orsCalls = 0;
@@ -334,7 +334,7 @@ describe("travel enrichment resilience", () => {
   });
 
   it("returns live results when cache write fails", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -382,7 +382,7 @@ describe("travel enrichment resilience", () => {
   });
 
   it("preserves existing cached travel values when refreshing a partial row", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     process.env.OPENROUTESERVICE_API_KEY = "ors-key";
 
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

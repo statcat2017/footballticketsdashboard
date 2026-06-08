@@ -97,7 +97,7 @@ describe("travel provider integrations", () => {
 
 describe("travel cache fill command path", () => {
   it("fills missing travel cache rows for upcoming venues", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
@@ -172,7 +172,7 @@ describe("travel cache fill command path", () => {
   });
 
   it("skips writes when no provider credentials are available", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
@@ -208,7 +208,7 @@ describe("travel cache fill command path", () => {
   });
 
   it("prewarms every known ground district against all venues", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     const before = await db.get<{ count: number }>(`
       SELECT COUNT(*) as count
       FROM travel_cache

@@ -57,7 +57,9 @@ npm run build
 
 ## Secrets
 
-- API keys (OpenRouteService, TravelTime, Football Data) live in Cloudflare Secrets for production and in `.dev.vars` for local development. Never commit API keys to `wrangler.jsonc`.
+- Production secrets live in `/etc/nearmefc.env` on the VPS and are loaded by the systemd/deploy process.
+- Local development secrets live in `.dev.vars`.
+- Never commit real secrets or generated environment files.
 
 ## Pre-commit Hook
 

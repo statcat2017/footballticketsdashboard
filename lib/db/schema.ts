@@ -1,4 +1,4 @@
-// Single source of truth for the database schema. Used by both local SQLite and Cloudflare D1.
+// Single source of truth for the database schema.
 export const schemaSql = `
 PRAGMA foreign_keys = ON;
 

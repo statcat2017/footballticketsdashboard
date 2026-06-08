@@ -16,7 +16,7 @@ describe("pyramid explorer data service", () => {
   let data: PyramidExplorerData;
 
   beforeAll(async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     data = await getPyramidExplorerData(db);
   });
 
@@ -133,7 +133,7 @@ describe("pyramid explorer data service", () => {
   });
 
   it("returns empty data when no season exists", async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     await db.exec("DELETE FROM pyramid_seasons");
     const result = await getPyramidExplorerData(db);
     expect(result.season.id).toBe(0);

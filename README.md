@@ -15,8 +15,8 @@ A UK football fixture finder that shows nearby upcoming matches, venue locations
 ## Tech Stack
 
 - **Framework:** Next.js 15 (App Router)
-- **Runtime:** Cloudflare Workers (via OpenNext adapter)
-- **Database:** Cloudflare D1 (production) / SQLite (local)
+- **Runtime:** Node.js on VPS, deployed as a Next.js standalone build
+- **Database:** SQLite via better-sqlite3
 - **Testing:** Vitest + Playwright
 - **Validation:** Zod
 
@@ -68,7 +68,7 @@ data/                   # CSV seed files (clubs, championship clubs)
 - [Schema](docs/schema.md) — All 22 tables, rules, and retired tables
 - [Production Roadmap](docs/production-roadmap.md) — Six phases from demo to launch
 - [Project Plan](docs/project-plan.md) — MVP scope, admin data maintenance, deferred items
-- [Cloudflare Deployment](docs/cloudflare-deployment.md) — Production deploy guide
+- [VPS Deployment](docs/vps-deployment.md) — Production deploy and runbook
 - [API Reference](docs/search-api.md) — POST /api/search contract
 - [Travel Cache](docs/travel-cache.md) — Caching strategy and manual fill commands
 - [Admin Interface Plan](docs/admin-interface-plan.md) — Four-phase admin build plan

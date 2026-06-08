@@ -10,7 +10,7 @@ describe("pyramid graph layout", () => {
   let data: PyramidExplorerData;
 
   beforeAll(async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     data = await getPyramidExplorerData(db);
   });
 
@@ -90,7 +90,7 @@ describe("visual edge derivation", () => {
   let data: PyramidExplorerData;
 
   beforeAll(async () => {
-    const db = createAppDatabase();
+    const db = await createAppDatabase();
     data = await getPyramidExplorerData(db);
   });
 

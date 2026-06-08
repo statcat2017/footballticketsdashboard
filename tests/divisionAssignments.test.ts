@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { applySchema, setupDatabase } from "@/lib/db/setup";
-import { seedDatabase } from "@/lib/db/seed";
+import { initializeAppDatabase } from "@/lib/db/seed-data";
 import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import {
   getDivisionAssignments,
@@ -74,7 +74,7 @@ function createMinimalDb(): AppDatabase {
 
 describe("getDivisionAssignments", () => {
   it("fresh setup seeds current division assignments from pyramid memberships", async () => {
-    const sqlite = setupDatabase(":memory:");
+    const sqlite = await setupDatabase(":memory:");
     const db = createSqliteAppDatabase(sqlite);
 
     try {
@@ -215,8 +215,8 @@ describe("getDivisionAssignments", () => {
     }
   });
 
-  it("seed reruns re-add missing assignments via INSERT OR IGNORE", () => {
-    const sqlite = setupDatabase(":memory:");
+  it("seed reruns re-add missing assignments via INSERT OR IGNORE", async () => {
+    const sqlite = await setupDatabase(":memory:");
 
     try {
       const initial = sqlite.prepare(
@@ -227,7 +227,7 @@ describe("getDivisionAssignments", () => {
       ).get() as { club_id: number };
 
       sqlite.prepare("DELETE FROM division_assignments WHERE club_id = ?").run(assignment.club_id);
-      seedDatabase(sqlite);
+      await initializeAppDatabase(createSqliteAppDatabase(sqlite));
 
       const reAdded = sqlite.prepare(
         "SELECT club_id FROM division_assignments WHERE club_id = ?"
@@ -785,7 +785,7 @@ describe("unassignClubFromTier10", () => {
     expect(audit!.entity_id).toBe("104");
   });
 
-  it("re-seed reuses existing club IDs and never overwrites manual clubs", () => {
+  it("re-seed reuses existing club IDs and never overwrites manual clubs", async () => {
     const sqlite = new Database(":memory:");
     sqlite.pragma("foreign_keys = ON");
     applySchema(sqlite);
@@ -802,7 +802,7 @@ describe("unassignClubFromTier10", () => {
 
       // This must not throw: the fix should detect existing club names and IDs
       // and never try to insert a club with a name that already exists at a different ID.
-      seedDatabase(sqlite);
+      await initializeAppDatabase(createSqliteAppDatabase(sqlite));
 
       // Aston Villa should keep its existing ID — not get a new one that would
       // conflict with the UNIQUE(name) constraint.

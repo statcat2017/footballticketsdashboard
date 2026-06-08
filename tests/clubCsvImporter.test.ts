@@ -24,7 +24,7 @@ describe("club CSV importer", () => {
   });
 
   it("imports clubs and venues idempotently", async () => {
-    const db = createDatabase();
+    const db = await createDatabase();
     const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "clubs-csv-"));
     const filename = path.join(dirname, "clubs.csv");
     fs.writeFileSync(filename, csv);

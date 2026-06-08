@@ -1,4 +1,4 @@
-import { getCloudflareEnv } from "@/lib/runtime-env";
+import { getEnv } from "@/lib/runtime-env";
 
 export interface AdminConfig {
   adminSecret: string;
@@ -6,8 +6,8 @@ export interface AdminConfig {
 }
 
 export async function getAdminConfig(): Promise<AdminConfig | null> {
-  const adminSecret = await getCloudflareEnv("ADMIN_SECRET");
-  const sessionSecret = await getCloudflareEnv("ADMIN_SESSION_SECRET");
+  const adminSecret = getEnv("ADMIN_SECRET");
+  const sessionSecret = getEnv("ADMIN_SESSION_SECRET");
 
   if (!adminSecret || !sessionSecret) {
     return null;

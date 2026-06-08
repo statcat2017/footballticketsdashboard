@@ -4,7 +4,7 @@ export interface TravelProviderRuntimeConfig {
   travelTimeApiKey?: string;
 }
 
-export async function getCloudflareEnv(key: string): Promise<string | undefined> {
+export function getEnv(key: string): string | undefined {
   return process.env[key];
 }
 

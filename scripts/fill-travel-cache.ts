@@ -12,21 +12,25 @@ if (!postcode) {
   process.exit(1);
 }
 
-const db = createSqliteAppDatabase(setupDatabase(filename));
+async function main(): Promise<void> {
+  const db = createSqliteAppDatabase(await setupDatabase(filename));
 
-try {
-  const result = await fillTravelCacheForPostcode(db, postcode, {
-    dateFrom,
-    dateTo,
-    openRouteServiceApiKey: process.env.OPENROUTESERVICE_API_KEY,
-    travelTimeAppId: process.env.TRAVELTIME_APP_ID,
-    travelTimeApiKey: process.env.TRAVELTIME_API_KEY
-  });
+  try {
+    const result = await fillTravelCacheForPostcode(db, postcode, {
+      dateFrom,
+      dateTo,
+      openRouteServiceApiKey: process.env.OPENROUTESERVICE_API_KEY,
+      travelTimeAppId: process.env.TRAVELTIME_APP_ID,
+      travelTimeApiKey: process.env.TRAVELTIME_API_KEY
+    });
 
-  console.log(
-    `travel cache fill complete for ${result.postcodeDistrict}: considered ${result.venuesConsidered}, inserted ${result.rowsInserted}, provider_backfilled ${result.providerBackfilled}, skipped ${result.distanceOnlySkipped}`
-  );
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
+    console.log(
+      `travel cache fill complete for ${result.postcodeDistrict}: considered ${result.venuesConsidered}, inserted ${result.rowsInserted}, provider_backfilled ${result.providerBackfilled}, skipped ${result.distanceOnlySkipped}`
+    );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }
+
+main();

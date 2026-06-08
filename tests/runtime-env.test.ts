@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-describe("getCloudflareEnv", () => {
+describe("getEnv", () => {
   afterEach(() => {
     delete process.env.TEST_KEY;
   });
@@ -8,14 +8,14 @@ describe("getCloudflareEnv", () => {
   it("returns value from process.env", async () => {
     process.env.TEST_KEY = "env-value";
 
-    const { getCloudflareEnv } = await import("@/lib/runtime-env");
-    const result = await getCloudflareEnv("TEST_KEY");
+    const { getEnv } = await import("@/lib/runtime-env");
+    const result = getEnv("TEST_KEY");
     expect(result).toBe("env-value");
   });
 
   it("returns undefined when key is not set", async () => {
-    const { getCloudflareEnv } = await import("@/lib/runtime-env");
-    const result = await getCloudflareEnv("MISSING_KEY");
+    const { getEnv } = await import("@/lib/runtime-env");
+    const result = getEnv("MISSING_KEY");
     expect(result).toBeUndefined();
   });
 });
