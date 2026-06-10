@@ -1,5 +1,5 @@
-import type { AppDatabase } from "@/lib/db/adapter";
-import { writeAdminAuditLog } from "@/lib/admin/audit";
+import type { AppDatabase, SqlWrite } from "@/lib/db/adapter";
+import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 
 export interface AdminClubUpdateInput {
   name?: string;
@@ -288,35 +288,46 @@ export async function updateAdminClub(db: AppDatabase, clubId: number, input: Ad
     throw new Error("Club not found.");
   }
 
+  if (input.name !== undefined && input.name.length > 200) {
+    throw new Error("Club name must be 200 characters or fewer.");
+  }
+
+  if (input.source_url !== undefined && input.source_url !== null && !/^https?:\/\/.+/.test(input.source_url)) {
+    throw new Error("Invalid source URL. Must start with http:// or https://.");
+  }
+
   const updatedName = input.name ?? current.name;
   const updatedAliases = input.aliases !== undefined ? input.aliases : current.aliases;
   const updatedSourceUrl = input.source_url !== undefined ? input.source_url : current.source_url;
   const updatedVerifiedAt = input.verified_at !== undefined ? input.verified_at : current.verified_at;
 
-  await db.run(
-    `UPDATE clubs
-     SET name = ?, aliases = ?, source_url = ?, verified_at = ?, admin_updated_at = ?
-     WHERE id = ?`,
-    [updatedName, updatedAliases, updatedSourceUrl, updatedVerifiedAt, now, clubId]
-  );
-
-  await writeAdminAuditLog(db, {
-    action: "update",
-    entityType: "club",
-    entityId: clubId,
-    before: {
-      name: current.name,
-      aliases: current.aliases,
-      source_url: current.source_url,
-      verified_at: current.verified_at
+  const statements: SqlWrite[] = [
+    {
+      sql: `UPDATE clubs
+            SET name = ?, aliases = ?, source_url = ?, verified_at = ?, admin_updated_at = ?
+            WHERE id = ?`,
+      params: [updatedName, updatedAliases, updatedSourceUrl, updatedVerifiedAt, now, clubId]
     },
-    after: {
-      name: updatedName,
-      aliases: updatedAliases,
-      source_url: updatedSourceUrl,
-      verified_at: updatedVerifiedAt
-    }
-  });
+    buildAdminAuditLogWrite({
+      action: "update",
+      entityType: "club",
+      entityId: clubId,
+      before: {
+        name: current.name,
+        aliases: current.aliases,
+        source_url: current.source_url,
+        verified_at: current.verified_at
+      },
+      after: {
+        name: updatedName,
+        aliases: updatedAliases,
+        source_url: updatedSourceUrl,
+        verified_at: updatedVerifiedAt
+      }
+    })
+  ];
+
+  await db.writeBatch(statements);
 }
 
 const KNOWN_COMPETITION_MAP: Record<string, string> = {

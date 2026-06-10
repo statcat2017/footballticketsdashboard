@@ -17,9 +17,15 @@ function adminLoginRateLimitKey(request: Request): string {
     ?.split(",")
     .map((part) => part.trim())
     .find(Boolean);
-  const ip = cfIp || forwardedIp || "unknown";
+  const ip = cfIp || forwardedIp;
 
-  return `admin-login:${ip}`;
+  const ua = request.headers.get("user-agent")?.trim().substring(0, 50) ?? "";
+  const accept = request.headers.get("accept-language")?.trim().substring(0, 20) ?? "";
+
+  const fingerprint = `${ip ?? "noip"}:${ua}:${accept}`;
+  const hash = fingerprint.split("").reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+
+  return `admin-login:${ip ?? Math.abs(hash).toString(36)}`;
 }
 
 function rateLimitedResponse(resetAt: number) {

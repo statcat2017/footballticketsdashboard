@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/admin/auth";
 import { verifyAdminCsrfToken } from "@/lib/admin/csrf";
 import { getDatabase } from "@/lib/db/client";
-import { addAlias, retireAlias, listAliasesForClub } from "@/lib/db/clubMapping";
+import { addAlias, retireAlias, listAliasesForClub, type ClubAlias } from "@/lib/db/clubMapping";
 import { writeAdminAuditLog } from "@/lib/admin/audit";
 import { adminRedirect } from "@/lib/admin/redirect";
 
@@ -62,14 +62,15 @@ async function handleRetire(request: Request, clubId: number, form: FormData) {
 
   try {
     const db = await getDatabase();
-    await retireAlias(db, aliasId, clubId);
-
-    await writeAdminAuditLog(db, {
-      action: "update",
-      entityType: "club_alias",
-      entityId: aliasId,
-      before: { aliasId, clubId },
-      after: { aliasId, clubId, retired: true },
+    await db.transaction(async (txDb) => {
+      await retireAlias(txDb, aliasId, clubId);
+      await writeAdminAuditLog(txDb, {
+        action: "update",
+        entityType: "club_alias",
+        entityId: aliasId,
+        before: { aliasId, clubId },
+        after: { aliasId, clubId, retired: true },
+      });
     });
 
     return adminRedirect(request, `/admin/clubs/${clubId}`);
@@ -90,14 +91,16 @@ async function handleAddAlias(request: Request, clubId: number, form: FormData) 
 
   try {
     const db = await getDatabase();
-    const created = await addAlias(db, clubId, alias.trim(), { competitionCode: competitionCode ?? undefined, source });
-
-    await writeAdminAuditLog(db, {
-      action: "create",
-      entityType: "club_alias",
-      entityId: created.id,
-      before: null,
-      after: { clubId, alias: created.alias, competitionCode: created.competitionCode, source: created.source },
+    let created: ClubAlias;
+    await db.transaction(async (txDb) => {
+      created = await addAlias(txDb, clubId, alias.trim(), { competitionCode: competitionCode ?? undefined, source });
+      await writeAdminAuditLog(txDb, {
+        action: "create",
+        entityType: "club_alias",
+        entityId: created.id,
+        before: null,
+        after: { clubId, alias: created.alias, competitionCode: created.competitionCode, source: created.source },
+      });
     });
 
     return adminRedirect(request, `/admin/clubs/${clubId}`);

@@ -163,9 +163,8 @@ export async function assignClubToDivision(
 
   const currentCount = await getClubCountInDivision(db, divisionId);
 
-  let warning: string | undefined;
   if (existingAssignment?.division_id !== divisionId && currentCount && currentCount.count >= division.max_size) {
-    warning = `Division "${division.name}" is at capacity (${division.max_size} clubs).`;
+    throw new Error(`Division "${division.name}" is at capacity (${division.max_size} clubs). Remove a club first or increase the division size.`);
   }
 
   const now = new Date().toISOString();
@@ -196,7 +195,7 @@ export async function assignClubToDivision(
 
   await db.writeBatch(statements);
 
-  return { warning };
+  return {};
 }
 
 export async function moveClubToDivision(

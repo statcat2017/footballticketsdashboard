@@ -464,27 +464,25 @@ describe("assignClubToDivision", () => {
     expect(first!.clubs.map((c) => c.name)).toContain("Test Town United");
   });
 
-  it("warns when division is at capacity", async () => {
+  it("throws when division is at capacity", async () => {
     const db = createMinimalDb();
 
-    // Division 12 has max_size=16 and currently 0 clubs assigned
-    // Create 16 clubs and assign them to fill the division
-    for (let i = 200; i < 216; i++) {
+    // Division 12 has max_size=16 and already has club 103 assigned
+    // Create 15 more clubs and assign them to fill the division to 16
+    for (let i = 200; i < 215; i++) {
       db.exec(`INSERT INTO clubs (id, name) VALUES (${i}, 'Fill Club ${i}')`);
       await assignClubToDivision(db, i, 12, "test-admin");
     }
 
-    // Now try to add one more
+    // Now try to add one more — should throw
     db.exec("INSERT INTO clubs (id, name) VALUES (300, 'Overflow FC')");
-    const result = await assignClubToDivision(db, 300, 12, "test-admin");
+    await expect(assignClubToDivision(db, 300, 12, "test-admin"))
+      .rejects.toThrow("at capacity");
 
-    expect(result.warning).toBeDefined();
-    expect(result.warning).toContain("at capacity");
-
-    // Despite the warning, the club should still be assigned
+    // The club should NOT be assigned
     const data = await getDivisionAssignments(db);
     const tier9 = data.divisions.find((d) => d.id === 12);
-    expect(tier9!.clubCount).toBe(18);
+    expect(tier9!.clubCount).toBe(16);
   });
 
   it("does not warn when assigning a club to its current full division", async () => {

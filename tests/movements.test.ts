@@ -448,7 +448,7 @@ describe("applyAllFilledSlots", () => {
     expect(applied).toBe(0);
   });
 
-  it("clears all slots after applying, including unfilled", async () => {
+  it("clears applied slots after applying, leaving unfilled slots intact", async () => {
     const db = createMinimalDb();
     await createSlots(db, 2, 1, "promotion", 3, "test-admin");
 
@@ -463,7 +463,7 @@ describe("applyAllFilledSlots", () => {
     const remaining = await db.get<{ count: number }>(
       "SELECT COUNT(*) AS count FROM movement_slots"
     );
-    expect(remaining!.count).toBe(0);
+    expect(remaining!.count).toBe(2);
   });
 
   it("writes audit log entries", async () => {

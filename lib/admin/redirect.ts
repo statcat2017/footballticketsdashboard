@@ -35,6 +35,11 @@ function requestBaseUrl(request: Request): URL {
 
 export function adminUrl(request: Request, path: string | URL): URL {
   if (path instanceof URL) return path;
+
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(path)) {
+    return new URL("/", requestBaseUrl(request));
+  }
+
   return new URL(path, requestBaseUrl(request));
 }
 

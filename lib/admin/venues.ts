@@ -1,4 +1,4 @@
-import { writeAdminAuditLog, buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
 import { distanceMiles } from "@/lib/distance";
 import type { AppDatabase, SqlWrite } from "@/lib/db/adapter";
 import { revalidatePendingRowsForVenue } from "@/lib/import/resolution.ts";
@@ -107,41 +107,69 @@ export async function getAdminVenue(db: AppDatabase, venueId: number): Promise<A
   return { venue, sharingClubs };
 }
 
+const MAX_NAME_LENGTH = 200;
+const MAX_POSTCODE_LENGTH = 20;
+
+function isValidPostcode(value: string): boolean {
+  return value.length >= 2 && value.length <= MAX_POSTCODE_LENGTH && /[A-Za-z]/.test(value) && /\d/.test(value);
+}
+
+function validateName(name: string): void {
+  if (name.length > MAX_NAME_LENGTH) {
+    throw new Error(`Name must be ${MAX_NAME_LENGTH} characters or fewer.`);
+  }
+}
+
 export async function createAdminVenue(db: AppDatabase, input: AdminVenueCreateInput): Promise<number> {
   const now = new Date().toISOString();
 
-  const result = await db.run(
-    `INSERT INTO venues (name, postcode, latitude, longitude, is_approximate, admin_updated_at,
-      coordinate_precision, coordinates_confidence, coordinates_notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      input.name, input.postcode, input.latitude, input.longitude,
-      input.is_approximate ?? 0, now,
-      input.coordinate_precision ?? null,
-      input.coordinates_confidence ?? null,
-      input.coordinates_notes ?? null
-    ]
-  );
+  validateName(input.name);
 
-  if (result.lastInsertRowid == null) {
-    throw new Error("Failed to create venue: no row ID returned.");
+  if (!isValidPostcode(input.postcode)) {
+    throw new Error("Invalid postcode format.");
   }
 
-  const venueId = result.lastInsertRowid;
+  const existing = await db.get<{ id: number }>(
+    "SELECT id FROM venues WHERE name = ? AND postcode = ?",
+    [input.name, input.postcode]
+  );
+  if (existing) {
+    throw new Error(`A venue named "${input.name}" with postcode "${input.postcode}" already exists.`);
+  }
 
-  await writeAdminAuditLog(db, {
-    action: "create",
-    entityType: "venue",
-    entityId: venueId,
-    after: {
-      name: input.name, postcode: input.postcode,
-      latitude: input.latitude, longitude: input.longitude,
-      is_approximate: input.is_approximate ?? 0,
-      coordinate_precision: input.coordinate_precision,
-      coordinates_confidence: input.coordinates_confidence,
-      coordinates_notes: input.coordinates_notes
-    }
-  });
+  const results = await db.writeBatch([
+    {
+      sql: `INSERT INTO venues (name, postcode, latitude, longitude, is_approximate, admin_updated_at,
+        coordinate_precision, coordinates_confidence, coordinates_notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        input.name, input.postcode, input.latitude, input.longitude,
+        input.is_approximate ?? 0, now,
+        input.coordinate_precision ?? null,
+        input.coordinates_confidence ?? null,
+        input.coordinates_notes ?? null
+      ]
+    },
+    buildAdminAuditLogWrite({
+      action: "create",
+      entityType: "venue",
+      entityId: undefined,
+      after: {
+        name: input.name, postcode: input.postcode,
+        latitude: input.latitude, longitude: input.longitude,
+        is_approximate: input.is_approximate ?? 0,
+        coordinate_precision: input.coordinate_precision,
+        coordinates_confidence: input.coordinates_confidence,
+        coordinates_notes: input.coordinates_notes
+      }
+    })
+  ]);
+
+  const venueId = Number(results[0].lastInsertRowid);
+
+  if (!venueId || venueId <= 0) {
+    throw new Error("Failed to create venue: no row ID returned.");
+  }
 
   return venueId;
 }
@@ -154,15 +182,12 @@ export async function updateAdminVenue(
 ): Promise<AdminVenueUpdateResult> {
   const now = new Date().toISOString();
 
-  const current = await db.get<AdminVenueRow>(
-    `SELECT id, name, postcode, latitude, longitude, is_approximate,
-      coordinate_precision, coordinates_confidence, coordinates_notes
-     FROM venues WHERE id = ?`,
-    [venueId]
-  );
+  if (input.name !== undefined) {
+    validateName(input.name);
+  }
 
-  if (!current) {
-    throw new Error("Venue not found.");
+  if (input.postcode !== undefined && !isValidPostcode(input.postcode)) {
+    throw new Error("Invalid postcode format.");
   }
 
   if (input.latitude !== undefined && (!Number.isFinite(input.latitude) || Math.abs(input.latitude) > 90)) {
@@ -173,46 +198,59 @@ export async function updateAdminVenue(
     throw new Error("Invalid longitude.");
   }
 
-  if (!confirmed) {
-    const sharingCount = await db.get<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM club_venue_assignments
-       WHERE venue_id = ? AND is_primary = 1 AND effective_to IS NULL`,
+  return db.transaction(async (txDb) => {
+    const current = await txDb.get<AdminVenueRow>(
+      `SELECT id, name, postcode, latitude, longitude, is_approximate,
+        coordinate_precision, coordinates_confidence, coordinates_notes
+       FROM venues WHERE id = ?`,
       [venueId]
     );
 
-    if (sharingCount && sharingCount.count > 1) {
-      throw new Error("Venue is shared by multiple clubs. Confirmation required.");
+    if (!current) {
+      throw new Error("Venue not found.");
     }
-  }
 
-  const updatedLatitude = input.latitude ?? current.latitude;
-  const updatedLongitude = input.longitude ?? current.longitude;
+    if (!confirmed) {
+      const sharingCount = await txDb.get<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM club_venue_assignments
+         WHERE venue_id = ? AND is_primary = 1 AND effective_to IS NULL`,
+        [venueId]
+      );
 
-  const coordsChanged =
-    updatedLatitude !== current.latitude ||
-    updatedLongitude !== current.longitude;
-  const distanceMoved = coordsChanged
-    ? distanceMiles(
-        { latitude: current.latitude, longitude: current.longitude },
-        { latitude: updatedLatitude, longitude: updatedLongitude }
-      )
-    : 0;
+      if (sharingCount && sharingCount.count > 1) {
+        throw new Error("Venue is shared by multiple clubs. Confirmation required.");
+      }
+    }
 
-  const results = await db.writeBatch(buildUpdateStatements(venueId, input, current, now, coordsChanged, distanceMoved));
-  let invalidatedTravelCount = 0;
-  if (coordsChanged && distanceMoved > 1) {
-    invalidatedTravelCount = results[0].changes;
-  }
+    const updatedLatitude = input.latitude ?? current.latitude;
+    const updatedLongitude = input.longitude ?? current.longitude;
 
-  const assignedClubs = await db.all<{ club_id: number }>(
-    `SELECT club_id FROM club_venue_assignments
-     WHERE venue_id = ? AND is_primary = 1 AND effective_to IS NULL`,
-    [venueId]
-  );
-  const clubIds = assignedClubs.map((r) => r.club_id);
-  const revalidatedRowCount = await revalidatePendingRowsForVenue(db, venueId, clubIds);
+    const coordsChanged =
+      updatedLatitude !== current.latitude ||
+      updatedLongitude !== current.longitude;
+    const distanceMoved = coordsChanged
+      ? distanceMiles(
+          { latitude: current.latitude, longitude: current.longitude },
+          { latitude: updatedLatitude, longitude: updatedLongitude }
+        )
+      : 0;
 
-  return { invalidatedTravelCount, revalidatedRowCount };
+    const results = await txDb.writeBatch(buildUpdateStatements(venueId, input, current, now, coordsChanged, distanceMoved));
+    let invalidatedTravelCount = 0;
+    if (coordsChanged && distanceMoved > 1) {
+      invalidatedTravelCount = results[0].changes;
+    }
+
+    const assignedClubs = await txDb.all<{ club_id: number }>(
+      `SELECT club_id FROM club_venue_assignments
+       WHERE venue_id = ? AND is_primary = 1 AND effective_to IS NULL`,
+      [venueId]
+    );
+    const clubIds = assignedClubs.map((r) => r.club_id);
+    const revalidatedRowCount = await revalidatePendingRowsForVenue(txDb, venueId, clubIds);
+
+    return { invalidatedTravelCount, revalidatedRowCount };
+  });
 }
 
 function buildUpdateStatements(
@@ -327,15 +365,15 @@ export async function assignAdminVenue(
     params: [clubId, venueId, effectiveFrom, now]
   });
 
-  await db.writeBatch(statements);
-
-  await writeAdminAuditLog(db, {
+  statements.push(buildAdminAuditLogWrite({
     action: "update",
     entityType: "club_venue_assignment",
     entityId: clubId,
     before: oldAssignment ? { venue_assignment_id: oldAssignment.id, effective_to: calcDayBefore(effectiveFrom) } : null,
     after: { venue_id: venueId, effective_from: effectiveFrom, is_primary: 1 }
-  });
+  }));
+
+  await db.writeBatch(statements);
 }
 
 function calcDayBefore(dateStr: string): string {
