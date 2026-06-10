@@ -72,6 +72,10 @@ export async function addAlias(
     throw new Error("Alias cannot be empty or contain only whitespace.");
   }
 
+  if (alias.length > 200) {
+    throw new Error("Alias must be 200 characters or fewer.");
+  }
+
   const club = await db.get<{ name: string }>(`SELECT name FROM clubs WHERE id = ?`, [clubId]);
   if (!club) {
     throw new Error("Club not found.");
@@ -92,6 +96,14 @@ export async function addAlias(
     if (existing) {
       throw new Error("An unscoped alias with this name already exists.");
     }
+  }
+
+  const existingForClub = await db.get<{ id: number }>(
+    `SELECT id FROM club_aliases WHERE club_id = ? AND normalized_alias = ? AND retired_at IS NULL`,
+    [clubId, normalized]
+  );
+  if (existingForClub) {
+    throw new Error("This club already has an active alias with this name.");
   }
 
   const result = await db.run(

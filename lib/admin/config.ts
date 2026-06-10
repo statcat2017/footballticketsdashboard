@@ -20,7 +20,7 @@ export async function requireAdminConfig(): Promise<AdminConfig> {
   const config = await getAdminConfig();
 
   if (!config) {
-    throw new Error("Admin is not configured.");
+    throw new Error("Admin is not configured. Set ADMIN_SECRET and ADMIN_SESSION_SECRET environment variables.");
   }
 
   return config;

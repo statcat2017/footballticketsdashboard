@@ -207,42 +207,44 @@ export async function createSlots(
   count: number,
   actor: string
 ): Promise<{ created: number; skipped: number }> {
-  const source = await getDivision(db, sourceDivisionId);
-  if (!source) throw new Error(`Source division ${sourceDivisionId} not found.`);
+  return db.transaction(async (txDb) => {
+    const source = await getDivision(txDb, sourceDivisionId);
+    if (!source) throw new Error(`Source division ${sourceDivisionId} not found.`);
 
-  const target = await getDivisionByIdWithMaxSize(db, targetDivisionId);
-  if (!target) throw new Error(`Target division ${targetDivisionId} not found.`);
+    const target = await getDivisionByIdWithMaxSize(txDb, targetDivisionId);
+    if (!target) throw new Error(`Target division ${targetDivisionId} not found.`);
 
-  if (sourceDivisionId === targetDivisionId) {
-    throw new Error("Source and target divisions must be different.");
-  }
-
-  const existingSlots = await getExistingSlotIndices(db, sourceDivisionId, targetDivisionId, movementType);
-  const existingIndices = new Set(existingSlots.map((s) => s.slot_index));
-
-  const now = new Date().toISOString();
-  const statements: SqlWrite[] = [];
-  let created = 0;
-  let skipped = 0;
-
-  for (let i = 0; i < count; i++) {
-    if (existingIndices.has(i)) {
-      skipped++;
-      continue;
+    if (sourceDivisionId === targetDivisionId) {
+      throw new Error("Source and target divisions must be different.");
     }
-    statements.push({
-      sql: `INSERT INTO movement_slots (source_division_id, target_division_id, movement_type, slot_index, actor, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      params: [sourceDivisionId, targetDivisionId, movementType, i, actor, now],
-    });
-    created++;
-  }
 
-  if (statements.length > 0) {
-    await db.writeBatch(statements);
-  }
+    const existingSlots = await getExistingSlotIndices(txDb, sourceDivisionId, targetDivisionId, movementType);
+    const existingIndices = new Set(existingSlots.map((s) => s.slot_index));
 
-  return { created, skipped };
+    const now = new Date().toISOString();
+    const statements: SqlWrite[] = [];
+    let created = 0;
+    let skipped = 0;
+
+    for (let i = 0; i < count; i++) {
+      if (existingIndices.has(i)) {
+        skipped++;
+        continue;
+      }
+      statements.push({
+        sql: `INSERT INTO movement_slots (source_division_id, target_division_id, movement_type, slot_index, actor, created_at)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+        params: [sourceDivisionId, targetDivisionId, movementType, i, actor, now],
+      });
+      created++;
+    }
+
+    if (statements.length > 0) {
+      await txDb.writeBatch(statements);
+    }
+
+    return { created, skipped };
+  });
 }
 
 export async function validateSlotFill(
@@ -303,54 +305,56 @@ export async function fillSlot(
   clubId: number,
   actor: string
 ): Promise<{ warnings: string[] }> {
-  const slot = await getMovementSlotById(db, slotId);
-  if (!slot) throw new Error("Slot not found.");
-  if (slot.club_id !== null) throw new Error("Slot is already filled.");
+  return db.transaction(async (txDb) => {
+    const slot = await getMovementSlotById(txDb, slotId);
+    if (!slot) throw new Error("Slot not found.");
+    if (slot.club_id !== null) throw new Error("Slot is already filled.");
 
-  const club = await getClubById(db, clubId);
-  if (!club) throw new Error(`Club ${clubId} not found.`);
+    const club = await getClubById(txDb, clubId);
+    if (!club) throw new Error(`Club ${clubId} not found.`);
 
-  const clubDivision = await getDivisionIdByClubId(db, clubId);
-  if (!clubDivision || clubDivision.division_id !== slot.source_division_id) {
-    throw new Error("Club is not assigned to the source division for this slot.");
-  }
-
-  const existingFill = await getMovementSlotByClubIdAll(db, clubId, slotId);
-  if (existingFill) {
-    throw new Error("Club is already assigned to another filled slot. Unfill that slot first.");
-  }
-
-  const warnings: string[] = [];
-  const edge = await getEdgeByFromToType(db, slot.source_division_id, slot.target_division_id, slot.movement_type);
-  if (!edge) {
-    warnings.push("No pyramid edge exists between these divisions.");
-  }
-
-  const targetDivision = await getDivisionByNameWithMaxSize(db, slot.target_division_id);
-  if (targetDivision) {
-    const targetCount = await getClubCountInDivision(db, slot.target_division_id);
-    if (targetCount && targetCount.count >= targetDivision.max_size) {
-      warnings.push(`Target division "${targetDivision.name}" is at capacity (${targetDivision.max_size} clubs).`);
+    const clubDivision = await getDivisionIdByClubId(txDb, clubId);
+    if (!clubDivision || clubDivision.division_id !== slot.source_division_id) {
+      throw new Error("Club is not assigned to the source division for this slot.");
     }
-  }
 
-  const statements: SqlWrite[] = [
-    {
-      sql: "UPDATE movement_slots SET club_id = ?, actor = ?, notes = COALESCE(notes, '') WHERE id = ?",
-      params: [clubId, actor, slotId],
-    },
-    buildAdminAuditLogWrite({
-      action: "movement_slot_fill",
-      entityType: "movement_slot",
-      entityId: slotId,
-      actor,
-      before: { club_id: null },
-      after: { club_id: clubId },
-    }),
-  ];
+    const existingFill = await getMovementSlotByClubIdAll(txDb, clubId, slotId);
+    if (existingFill) {
+      throw new Error("Club is already assigned to another filled slot. Unfill that slot first.");
+    }
 
-  await db.writeBatch(statements);
-  return { warnings };
+    const warnings: string[] = [];
+    const edge = await getEdgeByFromToType(txDb, slot.source_division_id, slot.target_division_id, slot.movement_type);
+    if (!edge) {
+      warnings.push("No pyramid edge exists between these divisions.");
+    }
+
+    const targetDivision = await getDivisionByNameWithMaxSize(txDb, slot.target_division_id);
+    if (targetDivision) {
+      const targetCount = await getClubCountInDivision(txDb, slot.target_division_id);
+      if (targetCount && targetCount.count >= targetDivision.max_size) {
+        warnings.push(`Target division "${targetDivision.name}" is at capacity (${targetDivision.max_size} clubs).`);
+      }
+    }
+
+    const statements: SqlWrite[] = [
+      {
+        sql: "UPDATE movement_slots SET club_id = ?, actor = ?, notes = COALESCE(notes, '') WHERE id = ?",
+        params: [clubId, actor, slotId],
+      },
+      buildAdminAuditLogWrite({
+        action: "movement_slot_fill",
+        entityType: "movement_slot",
+        entityId: slotId,
+        actor,
+        before: { club_id: null },
+        after: { club_id: clubId },
+      }),
+    ];
+
+    await txDb.writeBatch(statements);
+    return { warnings };
+  });
 }
 
 export async function unfillSlot(
@@ -408,51 +412,55 @@ export async function deleteSlot(
 }
 
 export async function applyAllFilledSlots(db: AppDatabase, actor: string): Promise<number> {
-  const filledSlots = await getFilledSlots(db);
+  return db.transaction(async (txDb) => {
+    const filledSlots = await getFilledSlots(txDb);
 
-  if (filledSlots.length === 0) {
-    return 0;
-  }
-
-  const statements: SqlWrite[] = [];
-
-  for (const slot of filledSlots) {
-    const clubDivision = await getDivisionIdByClubId(db, slot.club_id);
-    if (!clubDivision || clubDivision.division_id !== slot.source_division_id) {
-      throw new Error(
-        `Club ${slot.club_id} is no longer in the source division "${slot.source_division_name}" for movement slot ${slot.id}.`
-      );
+    if (filledSlots.length === 0) {
+      return 0;
     }
 
-    const existingFill = await getMovementSlotByClubIdExcluding(db, slot.club_id, slot.id);
-    if (existingFill) {
-      throw new Error(
-        `Club ${slot.club_id} is double-booked across movement slots ${slot.id} and ${existingFill.id}.`
-      );
+    const statements: SqlWrite[] = [];
+
+    for (const slot of filledSlots) {
+      const clubDivision = await getDivisionIdByClubId(txDb, slot.club_id);
+      if (!clubDivision || clubDivision.division_id !== slot.source_division_id) {
+        throw new Error(
+          `Club ${slot.club_id} is no longer in the source division "${slot.source_division_name}" for movement slot ${slot.id}.`
+        );
+      }
+
+      const existingFill = await getMovementSlotByClubIdExcluding(txDb, slot.club_id, slot.id);
+      if (existingFill) {
+        throw new Error(
+          `Club ${slot.club_id} is double-booked across movement slots ${slot.id} and ${existingFill.id}.`
+        );
+      }
+
+      statements.push({
+        sql: "UPDATE division_assignments SET division_id = ?, admin_updated_at = ? WHERE club_id = ?",
+        params: [slot.target_division_id, new Date().toISOString(), slot.club_id],
+      });
+
+      statements.push(buildAdminAuditLogWrite({
+        action: "movement_slot_apply",
+        entityType: "club_movement",
+        entityId: slot.club_id,
+        actor,
+        before: { club_id: slot.club_id, from_division_id: slot.source_division_id, movement_type: slot.movement_type },
+        after: { club_id: slot.club_id, to_division_id: slot.target_division_id, movement_type: slot.movement_type },
+      }));
     }
 
+    const appliedIds = filledSlots.map((s) => s.id);
+    const placeholders = appliedIds.map(() => "?").join(",");
     statements.push({
-      sql: "UPDATE division_assignments SET division_id = ?, admin_updated_at = ? WHERE club_id = ?",
-      params: [slot.target_division_id, new Date().toISOString(), slot.club_id],
+      sql: `DELETE FROM movement_slots WHERE id IN (${placeholders})`,
+      params: appliedIds,
     });
 
-    statements.push(buildAdminAuditLogWrite({
-      action: "movement_slot_apply",
-      entityType: "club_movement",
-      entityId: slot.club_id,
-      actor,
-      before: { club_id: slot.club_id, from_division_id: slot.source_division_id, movement_type: slot.movement_type },
-      after: { club_id: slot.club_id, to_division_id: slot.target_division_id, movement_type: slot.movement_type },
-    }));
-  }
-
-  statements.push({
-    sql: "DELETE FROM movement_slots",
-    params: [],
+    await txDb.writeBatch(statements);
+    return filledSlots.length;
   });
-
-  await db.writeBatch(statements);
-  return filledSlots.length;
 }
 
 export async function getDivisionsInTierRange(

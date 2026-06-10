@@ -68,14 +68,18 @@ export async function POST(
       return adminRedirect(request, `/admin/venues/${venueId}?error=Cannot delete: venue is used by ${fixtures.length} fixture(s). Reassign fixtures first.`);
     }
 
-    // Null out batch row venue references (nullable FK)
-    await db.run(
-      `UPDATE import_batch_rows SET venue_resolved_id = NULL WHERE venue_resolved_id = ?`,
-      [venueId]
-    );
-
-    // CASCADE handles travel_cache and club_venue_assignments automatically
+    // Explicitly clean up related tables before deleting the venue.
+    // The schema may not have ON DELETE CASCADE for all FKs, so we
+    // handle travel_cache and import_batch_rows here.
     await db.writeBatch([
+      {
+        sql: `DELETE FROM travel_cache WHERE venue_id = ?`,
+        params: [venueId],
+      },
+      {
+        sql: `UPDATE import_batch_rows SET venue_resolved_id = NULL WHERE venue_resolved_id = ?`,
+        params: [venueId],
+      },
       {
         sql: `DELETE FROM venues WHERE id = ?`,
         params: [venueId],

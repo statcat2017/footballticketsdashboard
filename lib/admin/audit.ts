@@ -22,20 +22,28 @@ function serializeAuditValue(value: unknown): string | null {
   return JSON.stringify(value);
 }
 
+export const LAST_INSERT_ROWID = "@last_insert_rowid";
+
 export function buildAdminAuditLogWrite(input: AdminAuditInput): SqlWrite {
+  const useLastRowId = input.entityId === LAST_INSERT_ROWID;
+
   const params: QueryParam[] = [
     input.actor ?? ADMIN_ACTOR,
     input.action,
     input.entityType,
-    input.entityId === undefined || input.entityId === null ? null : String(input.entityId),
     serializeAuditValue(input.before),
     serializeAuditValue(input.after)
   ];
 
-  return {
-    sql: "INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)",
-    params
-  };
+  const sql = useLastRowId
+    ? "INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, last_insert_rowid(), ?, ?)"
+    : "INSERT INTO admin_audit_log (actor, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)";
+
+  if (!useLastRowId) {
+    params.splice(3, 0, input.entityId === undefined || input.entityId === null ? null : String(input.entityId));
+  }
+
+  return { sql, params };
 }
 
 export async function writeAdminAuditLog(db: AppDatabase, input: AdminAuditInput): Promise<void> {

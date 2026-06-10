@@ -22,6 +22,8 @@ export interface AppDatabase {
 }
 
 export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
+  let transactionDepth = 0;
+
   const appDb: AppDatabase = {
     async all<T>(sql: string, params: QueryParam[] = []) {
       return db.prepare(sql).all(...params) as T[];
@@ -44,7 +46,10 @@ export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
         return [];
       }
 
-      db.exec("BEGIN");
+      const nested = transactionDepth > 0;
+      if (!nested) {
+        db.exec("BEGIN");
+      }
       const results: WriteResult[] = [];
 
       try {
@@ -56,21 +61,35 @@ export function createSqliteAppDatabase(db: SqliteDatabase): AppDatabase {
           });
         }
 
-        db.exec("COMMIT");
+        if (!nested) {
+          db.exec("COMMIT");
+        }
         return results;
       } catch (error) {
-        db.exec("ROLLBACK");
+        if (!nested) {
+          db.exec("ROLLBACK");
+        }
         throw error;
       }
     },
     async transaction<T>(fn: (txDb: AppDatabase) => Promise<T>): Promise<T> {
-      db.exec("BEGIN");
+      const nested = transactionDepth > 0;
+      if (!nested) {
+        db.exec("BEGIN");
+      }
+      transactionDepth++;
       try {
         const result = await fn(appDb);
-        db.exec("COMMIT");
+        transactionDepth--;
+        if (!nested) {
+          db.exec("COMMIT");
+        }
         return result;
       } catch (error) {
-        db.exec("ROLLBACK");
+        transactionDepth--;
+        if (!nested) {
+          db.exec("ROLLBACK");
+        }
         throw error;
       }
     }
