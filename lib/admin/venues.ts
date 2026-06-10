@@ -1,4 +1,4 @@
-import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import { buildAdminAuditLogWrite, LAST_INSERT_ROWID } from "@/lib/admin/audit";
 import { distanceMiles } from "@/lib/distance";
 import type { AppDatabase, SqlWrite } from "@/lib/db/adapter";
 import { revalidatePendingRowsForVenue } from "@/lib/import/resolution.ts";
@@ -153,7 +153,7 @@ export async function createAdminVenue(db: AppDatabase, input: AdminVenueCreateI
     buildAdminAuditLogWrite({
       action: "create",
       entityType: "venue",
-      entityId: undefined,
+      entityId: LAST_INSERT_ROWID,
       after: {
         name: input.name, postcode: input.postcode,
         latitude: input.latitude, longitude: input.longitude,
@@ -208,6 +208,19 @@ export async function updateAdminVenue(
 
     if (!current) {
       throw new Error("Venue not found.");
+    }
+
+    const updatedName = input.name ?? current.name;
+    const updatedPostcode = input.postcode ?? current.postcode;
+
+    if (input.name !== undefined || input.postcode !== undefined) {
+      const existing = await txDb.get<{ id: number }>(
+        "SELECT id FROM venues WHERE name = ? AND postcode = ? AND id != ?",
+        [updatedName, updatedPostcode, venueId]
+      );
+      if (existing) {
+        throw new Error(`Another venue named "${updatedName}" with postcode "${updatedPostcode}" already exists.`);
+      }
     }
 
     if (!confirmed) {

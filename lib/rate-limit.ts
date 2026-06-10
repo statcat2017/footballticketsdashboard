@@ -13,12 +13,21 @@ const store = new Map<string, Window>();
 
 const MAX_STORE_SIZE = 10_000;
 
-function evictExpired(): void {
+function evict(): void {
   const now = Date.now();
-  if (store.size <= MAX_STORE_SIZE) return;
+
   for (const [key, entry] of store) {
     if (now > entry.resetAt) {
       store.delete(key);
+    }
+  }
+
+  if (store.size > MAX_STORE_SIZE) {
+    const entries = [...store.entries()];
+    entries.sort((a, b) => a[1].resetAt - b[1].resetAt);
+    const toDelete = store.size - MAX_STORE_SIZE;
+    for (let i = 0; i < toDelete && i < entries.length; i++) {
+      store.delete(entries[i][0]);
     }
   }
 }
@@ -28,7 +37,7 @@ export function checkRateLimit(
   maxRequests: number,
   windowMs: number
 ): RateLimitResult {
-  evictExpired();
+  evict();
 
   const now = Date.now();
   const entry = store.get(key);
@@ -51,7 +60,7 @@ export function getRateLimitStatus(
   maxRequests: number,
   windowMs: number
 ): RateLimitResult {
-  evictExpired();
+  evict();
 
   const now = Date.now();
   const entry = store.get(key);

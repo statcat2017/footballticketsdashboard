@@ -11,21 +11,30 @@ import { adminRedirect } from "@/lib/admin/redirect";
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60_000;
 
-function adminLoginRateLimitKey(request: Request): string {
-  const cfIp = request.headers.get("cf-connecting-ip")?.trim();
+function getClientIp(request: Request): string | null {
   const forwardedIp = request.headers.get("x-forwarded-for")
     ?.split(",")
     .map((part) => part.trim())
     .find(Boolean);
-  const ip = cfIp || forwardedIp;
+  return forwardedIp ?? null;
+}
 
+function adminLoginRateLimitKey(request: Request): string {
+  const ip = getClientIp(request);
+
+  if (ip) {
+    return `admin-login:${ip}`;
+  }
+
+  // When no client IP is available (e.g. direct server-to-server), fall
+  // back to a hash of stable request properties so that all such clients
+  // don't share a single rate-limit bucket.
   const ua = request.headers.get("user-agent")?.trim().substring(0, 50) ?? "";
   const accept = request.headers.get("accept-language")?.trim().substring(0, 20) ?? "";
-
-  const fingerprint = `${ip ?? "noip"}:${ua}:${accept}`;
+  const fingerprint = `noip:${ua}:${accept}`;
   const hash = fingerprint.split("").reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
 
-  return `admin-login:${ip ?? Math.abs(hash).toString(36)}`;
+  return `admin-login:noip-${Math.abs(hash).toString(36)}`;
 }
 
 function rateLimitedResponse(resetAt: number) {
