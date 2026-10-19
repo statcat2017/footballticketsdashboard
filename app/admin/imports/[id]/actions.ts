@@ -6,6 +6,7 @@ import { getDatabase } from "@/lib/db/client";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { getAdminSessionFromCookies } from "@/lib/admin/auth";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import { isPublicCompetitionCategory } from "@/lib/admin/competitionCategories";
 import { addAlias, normalizeName } from "@/lib/db/clubMapping";
 import { createAdminVenue, assignAdminVenue, isValidDate, nextJuly1st } from "@/lib/admin/venues";
 import {
@@ -228,8 +229,8 @@ export async function createCompetition(
   }
 }
 
-export async function updateCompetitionCategory(
-  batchId: number,
+async function updateCompetitionCategoryForAdmin(
+  batchId: number | null,
   _prev: ActionState | null,
   form: FormData,
 ): Promise<ActionState> {
@@ -238,10 +239,9 @@ export async function updateCompetitionCategory(
     const db = await getDatabase();
     const code = readString(form.get("competitionCode"));
     const publicCategory = readString(form.get("publicCategory"));
-    const categories = ["premier-league", "efl", "non-league", "womens", "cup", "friendly", "uncategorized"];
 
     if (!code) return { error: "Choose an existing competition." };
-    if (!publicCategory || !categories.includes(publicCategory)) {
+    if (!publicCategory || !isPublicCompetitionCategory(publicCategory)) {
       return { error: "Choose a valid public competition category." };
     }
 
@@ -258,6 +258,13 @@ export async function updateCompetitionCategory(
       return { success: `Competition "${existing.name}" already uses ${publicCategory}.` };
     }
 
+    const after: Record<string, unknown> = {
+      code,
+      name: existing.name,
+      public_category: publicCategory,
+    };
+    if (batchId !== null) after.import_batch_id = batchId;
+
     await db.writeBatch([
       {
         sql: `UPDATE competitions SET public_category = ? WHERE code = ?`,
@@ -269,16 +276,32 @@ export async function updateCompetitionCategory(
         entityId: code,
         actor,
         before: { code, name: existing.name, public_category: existing.public_category },
-        after: { code, name: existing.name, public_category: publicCategory, import_batch_id: batchId },
+        after,
       }),
     ]);
 
-    await revalidatePage(batchId);
+    revalidatePath("/admin/competitions");
+    if (batchId !== null) await revalidatePage(batchId);
     return { success: `Competition "${existing.name}" category updated.` };
   } catch (error) {
     const message = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
     return { error: message };
   }
+}
+
+export async function updateCompetitionCategory(
+  batchId: number,
+  prev: ActionState | null,
+  form: FormData,
+): Promise<ActionState> {
+  return updateCompetitionCategoryForAdmin(batchId, prev, form);
+}
+
+export async function updateCompetitionCategoryFromAdmin(
+  prev: ActionState | null,
+  form: FormData,
+): Promise<ActionState> {
+  return updateCompetitionCategoryForAdmin(null, prev, form);
 }
 
 export async function createClub(

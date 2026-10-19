@@ -55,6 +55,21 @@ export default async function AdminDashboardPage() {
           }}>
             Data quality &rarr;
           </Link>
+          <Link href="/admin/competitions" style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #147a4d",
+            borderRadius: "7px",
+            background: "#fff",
+            color: "#147a4d",
+            padding: "0.5rem 1rem",
+            fontSize: "14px",
+            fontWeight: 700,
+            textDecoration: "none"
+          }}>
+            Manage competitions &rarr;
+          </Link>
           <Link href="/admin/imports" style={{
             display: "inline-flex",
             alignItems: "center",

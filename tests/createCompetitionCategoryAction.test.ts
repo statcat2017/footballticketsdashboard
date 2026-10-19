@@ -21,7 +21,7 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn()
 }));
 
-import { createCompetition, updateCompetitionCategory } from "@/app/admin/imports/[id]/actions";
+import { createCompetition, updateCompetitionCategory, updateCompetitionCategoryFromAdmin } from "@/app/admin/imports/[id]/actions";
 import { searchFixtures } from "@/lib/search/service";
 
 let sqlite: Awaited<ReturnType<typeof setupDatabase>> | null = null;
@@ -113,5 +113,28 @@ describe("competition creation public category", () => {
     });
 
     expect(results.find((result) => result.competitionCode === "TESTCAT")?.competitionCategory).toBe("efl");
+  });
+
+  it("updates an uncategorized competition from the general admin screen and audits the change", async () => {
+    await db.run(`
+      INSERT INTO competitions (code, name, tier, kind, public_category)
+      VALUES ('GENERALCAT', 'General Category', 4, 'league', 'uncategorized')
+    `);
+    const form = new FormData();
+    form.set("competitionCode", "GENERALCAT");
+    form.set("publicCategory", "non-league");
+
+    await expect(updateCompetitionCategoryFromAdmin(null, form)).resolves.toEqual({
+      success: 'Competition "General Category" category updated.'
+    });
+    await expect(db.get<{ public_category: string }>(
+      "SELECT public_category FROM competitions WHERE code = 'GENERALCAT'"
+    )).resolves.toEqual({ public_category: "non-league" });
+    await expect(db.get<{ actor: string; after_json: string }>(
+      "SELECT actor, after_json FROM admin_audit_log WHERE entity_type = 'competition' AND entity_id = 'GENERALCAT'"
+    )).resolves.toMatchObject({
+      actor: "test-operator",
+      after_json: expect.stringContaining("non-league"),
+    });
   });
 });
