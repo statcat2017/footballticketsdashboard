@@ -162,8 +162,8 @@ function getTicketBlockReason(result: FixtureResult, now = new Date()): string |
   return null;
 }
 
-function FixtureStatusBadge({ result }: { result: FixtureResult }) {
-  const label = getFixtureStatusLabel(result);
+function FixtureStatusBadge({ result, now }: { result: FixtureResult; now: Date }) {
+  const label = getFixtureStatusLabel(result, now);
   if (label === null) return null;
   return <span className="badge fixture-status">{label}</span>;
 }
@@ -179,14 +179,16 @@ function FixtureCaveats({ result }: { result: FixtureResult }) {
 
 function TicketAction({
   result,
+  now,
   className,
   placeholderClassName
 }: {
   result: FixtureResult;
+  now: Date;
   className: string;
   placeholderClassName: string;
 }) {
-  const blockReason = getTicketBlockReason(result);
+  const blockReason = getTicketBlockReason(result, now);
   if (blockReason !== null) {
     return <span className={`${className} ${placeholderClassName}`} aria-label={`Tickets unavailable: ${blockReason}`}>Tickets unavailable</span>;
   }
@@ -201,8 +203,8 @@ function TicketAction({
   return <a className={className} href={result.genericTicketUrl} target="_blank" rel="noreferrer">Check club tickets</a>;
 }
 
-function AdmissionAvailability({ result }: { result: FixtureResult }) {
-  if (getTicketBlockReason(result) !== null) return null;
+function AdmissionAvailability({ result, now }: { result: FixtureResult; now: Date }) {
+  if (getTicketBlockReason(result, now) !== null) return null;
   return <span className="badge check-club">Check club for availability</span>;
 }
 
@@ -217,7 +219,13 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const [dateFilter, setDateFilter] = useState<"this-weekend" | "next-weekend" | "all-upcoming">("this-weekend");
   const [compFilter, setCompFilter] = useState<CompetitionCategory | "all">("all");
   const [travelFilter, setTravelFilter] = useState<"all" | "under30" | "under60">("all");
+  const [now, setNow] = useState(() => new Date());
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setVisibleCount(12);
@@ -458,7 +466,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               <h1>{featuredFixture.title}</h1>
               <p className="featured-meta">
                 <CompetitionBadge category={competitionCategory(featuredFixture.competitionName)} />
-                <FixtureStatusBadge result={featuredFixture} />
+              <FixtureStatusBadge result={featuredFixture} now={now} />
                 {" "}{featuredFixture.venueName}{featuredFixture.venuePostcode ? `, ${featuredFixture.venuePostcode}` : ""} · {formatKickoffDate(featuredFixture.kickoffAt)}
               </p>
               <FixtureCaveats result={featuredFixture} />
@@ -474,7 +482,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               )}
             </div>
             <div className="featured-actions">
-              <TicketAction result={featuredFixture} className="ticket-button" placeholderClassName="ticket-button-disabled" />
+              <TicketAction result={featuredFixture} now={now} className="ticket-button" placeholderClassName="ticket-button-disabled" />
             </div>
           </section>
         )}
@@ -505,7 +513,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                         <div>
                           <div className="primary">{result.title}</div>
                           <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
-                          <FixtureStatusBadge result={result} />
+                          <FixtureStatusBadge result={result} now={now} />
                           <FixtureCaveats result={result} />
                         </div>
                         <div>
@@ -516,7 +524,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           <div className="secondary">{result.venuePostcode} · {result.travel.distanceMiles.toFixed(1)} miles</div>
                         </div>
                         <div>
-                          <AdmissionAvailability result={result} />
+                          <AdmissionAvailability result={result} now={now} />
                           <div className="secondary">{formatPriceLine(result)}</div>
                           {result.price.verifiedAt && (
                             <div className="secondary trust-line">Checked {formatVerifiedAt(result.price.verifiedAt)}</div>
@@ -540,7 +548,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           )}
                         </div>
                         <div className="row-action">
-                          <TicketAction result={result} className="view-link" placeholderClassName="view-placeholder" />
+                          <TicketAction result={result} now={now} className="view-link" placeholderClassName="view-placeholder" />
                         </div>
                       </article>
                     );
@@ -573,7 +581,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                       <article className="fixture-card" key={result.id}>
                         <div className="fixture-card-header">
                           <CompetitionBadge category={compCat} />
-                          <FixtureStatusBadge result={result} />
+                          <FixtureStatusBadge result={result} now={now} />
                           <span className="fixture-card-distance">{result.travel.distanceMiles.toFixed(1)} mi</span>
                         </div>
                         <h3 className="fixture-card-title">{result.title}</h3>
@@ -591,10 +599,10 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           )}
                         </div>
                         <div className="fixture-card-footer">
-                          <AdmissionAvailability result={result} />
+                          <AdmissionAvailability result={result} now={now} />
                           <span className="fixture-card-price">{formatPriceLine(result)}</span>
                         </div>
-                        <TicketAction result={result} className="fixture-card-action" placeholderClassName="fixture-card-action-placeholder" />
+                        <TicketAction result={result} now={now} className="fixture-card-action" placeholderClassName="fixture-card-action-placeholder" />
                         {result.price.verifiedAt && (
                           <p className="trust-line card-trust">Checked {formatVerifiedAt(result.price.verifiedAt)}</p>
                         )}

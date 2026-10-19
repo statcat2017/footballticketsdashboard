@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchDashboard } from "@/app/components/SearchDashboard";
@@ -22,6 +22,7 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -113,6 +114,33 @@ describe("SearchDashboard", () => {
 
     const disabled = await screen.findAllByText("No club ticket link");
     expect(disabled.length).toBeGreaterThan(0);
+  });
+
+  it("disables ticket links after kickoff while the page stays open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T14:59:30.000Z"));
+    fetchMock.mockResolvedValueOnce(jsonResponse([
+      customFixture(1, {
+        kickoffAt: "2026-06-01T15:00:00.000Z",
+        fixtureDate: "2026-06-01",
+        genericTicketUrl: "https://tickets.example.com/match"
+      })
+    ]));
+
+    render(<SearchDashboard />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByRole("link", { name: "Check club tickets" })).not.toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(screen.queryAllByRole("link", { name: "Check club tickets" })).toHaveLength(0);
+    expect(screen.getAllByText("Tickets unavailable").length).toBeGreaterThan(0);
   });
 
   it("resets visibleCount when sort key changes", async () => {
