@@ -228,6 +228,68 @@ describe("fixture search", () => {
     });
   });
 
+  it("keeps adult override evidence separate from stale club-level concession evidence", async () => {
+    const db = await createAppDatabase();
+    await db.run(`
+      INSERT OR IGNORE INTO fixture_seasons (label, starts_on, ends_on, is_current)
+      VALUES ('2026-27', '2026-07-01', '2027-06-30', 1)
+    `);
+    await db.run("UPDATE club_ticket_prices SET source_url = ?, verified_at = ?, confidence = ?, season_label = ? WHERE club_id = 1", [
+      "https://club.example.test/old-prices", "2025-01-10", "verified", "2025-26"
+    ]);
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label,
+        status, is_demo_data, is_historical
+      ) VALUES (
+        'test', 'split-price-evidence', 'PL', 1, 2, 1,
+        '2026-10-24T15:00:00.000Z', '2026-10-24', '15:00', 'confirmed', '2026-27',
+        'scheduled', 0, 0
+      )
+    `);
+    const fixture = await db.get<{ id: number }>(
+      "SELECT id FROM fixtures WHERE source = 'test' AND source_id = 'split-price-evidence'"
+    );
+    await db.run(`
+      INSERT INTO fixture_ticket_price_overrides (
+        fixture_id, sale_mode, adult_price_pence, concession_price_pence,
+        source_url, verified_at, note, confidence, season_label
+      ) VALUES (?, 'pay_on_gate', 1250, NULL,
+        'https://club.example.test/current-fixture-price', '2026-10-18', 'Adult price update', 'verified', '2026-27')
+    `, [fixture?.id ?? 0]);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-10-24",
+      dateTo: "2026-10-24"
+    }, {
+      postcodeResolver: { resolve: async () => ({ latitude: 51.4817, longitude: -0.191 }) },
+      travelProviderOverrides: []
+    });
+    const result = results.find((row) => row.id === fixture?.id);
+
+    expect(result?.price.adultEvidence).toMatchObject({
+      sourceUrl: "https://club.example.test/current-fixture-price",
+      verifiedAt: "2026-10-18",
+      confidence: "verified",
+      seasonLabel: "2026-27",
+      isOverride: true,
+      confirmation: { required: false, reasons: [] }
+    });
+    expect(result?.price.concessionEvidence).toMatchObject({
+      sourceUrl: "https://club.example.test/old-prices",
+      verifiedAt: "2025-01-10",
+      confidence: "verified",
+      seasonLabel: "2025-26",
+      isOverride: false,
+      confirmation: {
+        required: true,
+        reasons: expect.arrayContaining(["older_than_threshold", "different_season"])
+      }
+    });
+  });
+
   it("preserves fixture price evidence across a persistent-file reopen", async () => {
     const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-price-reopen-"));
     const filename = path.join(dirname, "prices.sqlite");

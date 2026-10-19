@@ -11,7 +11,7 @@ import {
 import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
 import type { TravelProvider } from "../travel/providers.ts";
 import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
-import type { FixtureResult, SearchRequest } from "../types.ts";
+import type { FixtureResult, PriceEvidenceSummary, SearchRequest } from "../types.ts";
 import type { PriceConfirmationPolicy } from "../pricing/policy.ts";
 import { DEFAULT_PRICE_CONFIRMATION_POLICY, priceConfirmationReasons } from "../pricing/policy.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
@@ -42,10 +42,16 @@ interface FixtureRow {
   sale_mode: "all_ticket" | "pay_on_gate" | null;
   adult_price_pence: number | null;
   concession_price_pence: number | null;
-  source_url: string | null;
-  verified_at: string | null;
-  price_confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown" | null;
-  price_season_label: string | null;
+  adult_source_url: string | null;
+  adult_verified_at: string | null;
+  adult_price_confidence: string | null;
+  adult_price_season_label: string | null;
+  adult_is_override: number;
+  concession_source_url: string | null;
+  concession_verified_at: string | null;
+  concession_price_confidence: string | null;
+  concession_price_season_label: string | null;
+  concession_is_override: number;
   has_price_override: number;
   price_override_note: string | null;
   cached_distance_miles: number | null;
@@ -177,14 +183,16 @@ function queryFixtures(
       COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
       COALESCE(fpo.adult_price_pence, ctp.adult_price_pence) as adult_price_pence,
       COALESCE(fpo.concession_price_pence, ctp.concession_price_pence) as concession_price_pence,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.source_url ELSE ctp.source_url END as source_url,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.verified_at ELSE ctp.verified_at END as verified_at,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.confidence ELSE ctp.confidence END as price_confidence,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.season_label ELSE ctp.season_label END as price_season_label,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.source_url ELSE ctp.source_url END as adult_source_url,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.verified_at ELSE ctp.verified_at END as adult_verified_at,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.confidence ELSE ctp.confidence END as adult_price_confidence,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.season_label ELSE ctp.season_label END as adult_price_season_label,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN 1 ELSE 0 END as adult_is_override,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.source_url ELSE ctp.source_url END as concession_source_url,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.verified_at ELSE ctp.verified_at END as concession_verified_at,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.confidence ELSE ctp.confidence END as concession_price_confidence,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.season_label ELSE ctp.season_label END as concession_price_season_label,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN 1 ELSE 0 END as concession_is_override,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,
@@ -244,14 +252,16 @@ function queryAllHistoricalFixtures(
       COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
       COALESCE(fpo.adult_price_pence, ctp.adult_price_pence) as adult_price_pence,
       COALESCE(fpo.concession_price_pence, ctp.concession_price_pence) as concession_price_pence,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.source_url ELSE ctp.source_url END as source_url,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.verified_at ELSE ctp.verified_at END as verified_at,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.confidence ELSE ctp.confidence END as price_confidence,
-      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
-        THEN fpo.season_label ELSE ctp.season_label END as price_season_label,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.source_url ELSE ctp.source_url END as adult_source_url,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.verified_at ELSE ctp.verified_at END as adult_verified_at,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.confidence ELSE ctp.confidence END as adult_price_confidence,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN fpo.season_label ELSE ctp.season_label END as adult_price_season_label,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL THEN 1 ELSE 0 END as adult_is_override,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.source_url ELSE ctp.source_url END as concession_source_url,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.verified_at ELSE ctp.verified_at END as concession_verified_at,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.confidence ELSE ctp.confidence END as concession_price_confidence,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN fpo.season_label ELSE ctp.season_label END as concession_price_season_label,
+      CASE WHEN fpo.concession_price_pence IS NOT NULL THEN 1 ELSE 0 END as concession_is_override,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,
@@ -270,6 +280,55 @@ function queryAllHistoricalFixtures(
     ORDER BY COALESCE(f.kickoff_at, f.fixture_date) DESC
     LIMIT 50
   `, [postcodeDistrictValue]);
+}
+
+function buildPriceEvidence(
+  row: FixtureRow,
+  type: "adult" | "concession",
+  policy: PriceConfirmationPolicy
+): PriceEvidenceSummary | null {
+  const evidence = type === "adult"
+    ? {
+        amount: row.adult_price_pence,
+        sourceUrl: row.adult_source_url,
+        verifiedAt: row.adult_verified_at,
+        confidence: row.adult_price_confidence,
+        seasonLabel: row.adult_price_season_label,
+        isOverride: row.adult_is_override === 1
+      }
+    : {
+        amount: row.concession_price_pence,
+        sourceUrl: row.concession_source_url,
+        verifiedAt: row.concession_verified_at,
+        confidence: row.concession_price_confidence,
+        seasonLabel: row.concession_price_season_label,
+        isOverride: row.concession_is_override === 1
+      };
+
+  if (evidence.amount === null) return null;
+
+  const confidence = ["verified", "imported", "inferred", "approximate", "unknown"].includes(evidence.confidence ?? "")
+    ? evidence.confidence as PriceEvidenceSummary["confidence"]
+    : "unknown";
+  const reasons = priceConfirmationReasons({
+    checkedAt: evidence.verifiedAt,
+    priceSeasonLabel: evidence.seasonLabel,
+    fixtureSeasonLabel: row.season_label,
+    maxAgeDays: policy.maxAgeDays
+  });
+
+  return {
+    sourceUrl: evidence.sourceUrl,
+    verifiedAt: evidence.verifiedAt,
+    confidence,
+    seasonLabel: evidence.seasonLabel,
+    isOverride: evidence.isOverride,
+    confirmation: {
+      required: reasons.length > 0,
+      maxAgeDays: policy.maxAgeDays,
+      reasons
+    }
+  };
 }
 
 function toResult(
@@ -298,9 +357,12 @@ function toResult(
     warnings.push("One-off fixture: check the fixture source for ticket information.");
   }
 
-  const confirmationReasons = priceConfirmationReasons({
-    checkedAt: row.verified_at,
-    priceSeasonLabel: row.price_season_label,
+  const adultEvidence = buildPriceEvidence(row, "adult", priceConfirmationPolicy);
+  const concessionEvidence = buildPriceEvidence(row, "concession", priceConfirmationPolicy);
+  const primaryEvidence = adultEvidence ?? concessionEvidence;
+  const legacyConfirmationReasons = primaryEvidence?.confirmation.reasons ?? priceConfirmationReasons({
+    checkedAt: null,
+    priceSeasonLabel: null,
     fixtureSeasonLabel: row.season_label,
     maxAgeDays: priceConfirmationPolicy.maxAgeDays
   });
@@ -327,16 +389,18 @@ function toResult(
       saleMode: row.sale_mode,
       adultPricePence: row.adult_price_pence,
       concessionPricePence: row.concession_price_pence,
-      sourceUrl: row.source_url,
-      verifiedAt: row.verified_at,
-      confidence: row.price_confidence ?? "unknown",
+      sourceUrl: primaryEvidence?.sourceUrl ?? null,
+      verifiedAt: primaryEvidence?.verifiedAt ?? null,
+      confidence: primaryEvidence?.confidence ?? "unknown",
       isOverride: row.has_price_override === 1,
       overrideNote: row.price_override_note,
-      seasonLabel: row.price_season_label,
+      seasonLabel: primaryEvidence?.seasonLabel ?? null,
+      adultEvidence,
+      concessionEvidence,
       confirmation: {
-        required: confirmationReasons.length > 0,
+        required: legacyConfirmationReasons.length > 0,
         maxAgeDays: priceConfirmationPolicy.maxAgeDays,
-        reasons: confirmationReasons
+        reasons: legacyConfirmationReasons
       }
     },
     travel: {

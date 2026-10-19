@@ -173,7 +173,23 @@ describe("SearchDashboard", () => {
 
   it("shows trust line when verifiedAt is present", async () => {
     const fixtures = [
-      customFixture(1, { price: { saleMode: null, adultPricePence: null, concessionPricePence: null, sourceUrl: "https://club.example.com", verifiedAt: new Date().toISOString(), confidence: "verified", isOverride: false, overrideNote: null } }),
+      customFixture(1, { price: {
+        saleMode: null,
+        adultPricePence: 1200,
+        sourceUrl: "https://club.example.com",
+        verifiedAt: new Date().toISOString(),
+        confidence: "verified",
+        isOverride: false,
+        overrideNote: null,
+        adultEvidence: {
+          sourceUrl: "https://club.example.com",
+          verifiedAt: new Date().toISOString(),
+          confidence: "verified",
+          seasonLabel: "2025-26",
+          isOverride: false,
+          confirmation: { required: false, maxAgeDays: 90, reasons: [] }
+        }
+      } }),
     ];
     fetchMock.mockResolvedValueOnce(jsonResponse(fixtures));
 
@@ -230,6 +246,14 @@ function fixture(id: number): FixtureResult {
       isOverride: false,
       overrideNote: null,
       seasonLabel: null,
+      adultEvidence: {
+        sourceUrl: null, verifiedAt: null, confidence: "verified", seasonLabel: null, isOverride: false,
+        confirmation: { required: false, maxAgeDays: 90, reasons: [] }
+      },
+      concessionEvidence: {
+        sourceUrl: null, verifiedAt: null, confidence: "verified", seasonLabel: null, isOverride: false,
+        confirmation: { required: false, maxAgeDays: 90, reasons: [] }
+      },
       confirmation: { required: false, maxAgeDays: 90, reasons: [] }
     },
     travel: {

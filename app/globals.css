@@ -505,6 +505,12 @@ select {
   line-height: 1.35;
 }
 
+.price-evidence-item + .price-evidence-item {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--grey-200);
+}
+
 .price-evidence-details {
   display: flex;
   align-items: baseline;

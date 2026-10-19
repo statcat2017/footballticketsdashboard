@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FixtureResult } from "@/lib/types";
+import type { FixtureResult, PriceEvidenceSummary } from "@/lib/types";
 import { computeDateRange } from "@/lib/date";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
@@ -49,15 +49,6 @@ function formatMoney(pence: number | null): string {
   return moneyFormatter.format(pence / 100);
 }
 
-function formatPriceLine(result: FixtureResult): string {
-  const prices = [
-    result.price.adultPricePence === null ? null : `Adult ${formatMoney(result.price.adultPricePence)}`,
-    result.price.concessionPricePence === null ? null : `Concession ${formatMoney(result.price.concessionPricePence)}`
-  ].filter((price): price is string => price !== null);
-
-  return prices.length > 0 ? prices.join(" · ") : "Admission price not confirmed";
-}
-
 function formatKickoffDate(value: string | null): string {
   if (value === null) return "Kick-off TBC";
   return kickoffFormatter.format(new Date(value));
@@ -103,35 +94,72 @@ function safeHttpUrl(value: string | null): string | null {
   }
 }
 
-function priceConfirmationReason(result: FixtureResult, reason: FixtureResult["price"]["confirmation"]["reasons"][number]): string {
+function priceConfirmationReason(
+  result: FixtureResult,
+  evidence: PriceEvidenceSummary,
+  reason: PriceEvidenceSummary["confirmation"]["reasons"][number]
+): string {
   switch (reason) {
     case "missing_checked_date": return "No valid checked date is recorded.";
-    case "older_than_threshold": return `Checked more than ${result.price.confirmation.maxAgeDays} days ago.`;
-    case "different_season": return `Price season ${result.price.seasonLabel} differs from fixture season ${result.seasonLabel}.`;
+    case "older_than_threshold": return `Checked more than ${evidence.confirmation.maxAgeDays} days ago.`;
+    case "different_season": return `Price season ${evidence.seasonLabel} differs from fixture season ${result.seasonLabel}.`;
   }
 }
 
 function PriceEvidence({ result, className = "" }: { result: FixtureResult; className?: string }) {
-  const sourceUrl = safeHttpUrl(result.price.sourceUrl);
+  const entries = [
+    { label: "Adult", amount: result.price.adultPricePence, evidence: result.price.adultEvidence },
+    { label: "Concession", amount: result.price.concessionPricePence, evidence: result.price.concessionEvidence }
+  ] as const;
+  const hasFieldConfirmation = entries.some((entry) => entry.evidence?.confirmation.required);
 
   return (
     <div className={`price-evidence ${className}`.trim()}>
-      <div className="price-evidence-value">{formatPriceLine(result)}</div>
-      <div className="price-evidence-details">
-        <span>{confidenceLabel(result.price.confidence)}</span>
-        <span>{result.price.verifiedAt ? `Checked ${formatVerifiedAt(result.price.verifiedAt)}` : "No checked date recorded"}</span>
-        <span>{result.price.seasonLabel ? `Price season ${result.price.seasonLabel}` : "Price season not recorded"}</span>
-        {result.price.isOverride && <span>Includes fixture-specific pricing</span>}
-        {sourceUrl ? (
-          <a className="price-source-link" href={sourceUrl} target="_blank" rel="noreferrer">Price source</a>
-        ) : (
-          <span>Price source unavailable</span>
-        )}
-      </div>
-      {result.price.confirmation.required && (
+      {entries.map(({ label, amount, evidence }) => {
+        const sourceUrl = safeHttpUrl(evidence?.sourceUrl ?? null);
+        return (
+          <div className="price-evidence-item" key={label} aria-label={`${label} price evidence`}>
+            <div className="price-evidence-value">{label} {formatMoney(amount)}</div>
+            <div className="price-evidence-details">
+              {evidence ? (
+                <>
+                  <span>{confidenceLabel(evidence.confidence)}</span>
+                  <span>{evidence.verifiedAt ? `Checked ${formatVerifiedAt(evidence.verifiedAt)}` : "No checked date recorded"}</span>
+                  <span>{evidence.seasonLabel ? `Price season ${evidence.seasonLabel}` : "Price season not recorded"}</span>
+                  {evidence.isOverride && <span>Fixture-specific price</span>}
+                  {sourceUrl ? (
+                    <a className="price-source-link" href={sourceUrl} target="_blank" rel="noreferrer">{label} price source</a>
+                  ) : (
+                    <span>Price source unavailable</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span>No {label.toLowerCase()} price evidence recorded</span>
+                  <span>No checked date recorded</span>
+                  <span>Price season not recorded</span>
+                  <span>Price source unavailable</span>
+                </>
+              )}
+            </div>
+            {evidence?.confirmation.required && (
+              <p className="price-confirmation" role="note">
+                <strong>Confirm {label.toLowerCase()} price:</strong>{" "}
+                {evidence.confirmation.reasons.map((reason) => priceConfirmationReason(result, evidence, reason)).join(" ")}
+              </p>
+            )}
+          </div>
+        );
+      })}
+      {!hasFieldConfirmation && !result.price.adultEvidence && !result.price.concessionEvidence && result.price.confirmation.required && (
         <p className="price-confirmation" role="note">
           <strong>Confirm under our guide price policy:</strong>{" "}
-          {result.price.confirmation.reasons.map((reason) => priceConfirmationReason(result, reason)).join(" ")}
+          {result.price.confirmation.reasons.map((reason) => reason === "missing_checked_date"
+            ? "No valid checked date is recorded."
+            : reason === "older_than_threshold"
+              ? `Checked more than ${result.price.confirmation.maxAgeDays} days ago.`
+              : `Price season ${result.price.seasonLabel} differs from fixture season ${result.seasonLabel}.`
+          ).join(" ")}
         </p>
       )}
     </div>

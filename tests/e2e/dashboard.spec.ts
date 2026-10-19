@@ -28,6 +28,22 @@ test("search displays exact admission prices with evidence and preserves price p
       isOverride: boolean;
       seasonLabel: string | null;
       confirmation: { required: boolean; maxAgeDays: number; reasons: string[] };
+      adultEvidence: {
+        sourceUrl: string | null;
+        verifiedAt: string | null;
+        confidence: string;
+        seasonLabel: string | null;
+        isOverride: boolean;
+        confirmation: { required: boolean; maxAgeDays: number; reasons: string[] };
+      } | null;
+      concessionEvidence: {
+        sourceUrl: string | null;
+        verifiedAt: string | null;
+        confidence: string;
+        seasonLabel: string | null;
+        isOverride: boolean;
+        confirmation: { required: boolean; maxAgeDays: number; reasons: string[] };
+      } | null;
     };
     travel: { source: string };
   }> };
@@ -46,6 +62,22 @@ test("search displays exact admission prices with evidence and preserves price p
     verifiedAt: null,
     seasonLabel: null,
     confirmation: { required: true, maxAgeDays: 90, reasons: ["missing_checked_date"] }
+  });
+  expect(overrideFixture?.price.adultEvidence).toMatchObject({
+    sourceUrl: "https://prices.example.test/chelsea/e2e-live",
+    verifiedAt: null,
+    isOverride: true,
+    confirmation: { required: true, reasons: ["missing_checked_date"] }
+  });
+  expect(overrideFixture?.price.concessionEvidence).toMatchObject({
+    sourceUrl: "https://www.chelseafc.com/en/tickets",
+    verifiedAt: "2026-05-10",
+    seasonLabel: "2025-26",
+    isOverride: false,
+    confirmation: {
+      required: true,
+      reasons: expect.arrayContaining(["older_than_threshold", "different_season"])
+    }
   });
   expect(overrideFixture?.genericTicketUrl).toBe("https://www.chelseafc.com/en/tickets");
   expect(defaultFixture?.price).toMatchObject({
@@ -78,22 +110,30 @@ test("search displays exact admission prices with evidence and preserves price p
 
   await expect(page.locator(".desktop-table")).toBeVisible();
   await expect(page.locator(".featured-price-evidence")).toContainText("Adult £12.50");
-  await expect(page.locator(".featured-price-evidence").getByRole("link", { name: "Price source" })).toHaveAttribute(
+  await expect(page.locator(".featured-price-evidence").getByRole("link", { name: "Adult price source" })).toHaveAttribute(
     "href",
     "https://prices.example.test/chelsea/e2e-live"
   );
   await expect(page.locator(".featured-price-evidence")).toContainText("Verified confidence");
   await expect(page.locator(".featured-price-evidence")).toContainText("No checked date recorded");
   await expect(page.locator(".featured-price-evidence")).toContainText("Price season not recorded");
-  await expect(page.locator(".featured-price-evidence .price-confirmation")).toContainText("No valid checked date is recorded");
+  await expect(page.locator(".featured-price-evidence .price-confirmation").filter({ hasText: "No valid checked date is recorded" })).toContainText("Confirm adult price");
 
   const overrideRow = page.locator(".fixture-row").filter({ hasText: "Chelsea vs Arsenal" });
   await expect(overrideRow).toContainText("£12.50");
   await expect(overrideRow).toContainText("£20.00");
-  await expect(overrideRow.getByRole("link", { name: "Price source" })).toHaveAttribute(
+  await expect(overrideRow.getByRole("link", { name: "Adult price source" })).toHaveAttribute(
     "href",
     "https://prices.example.test/chelsea/e2e-live"
   );
+  const concessionEvidence = overrideRow.locator(".price-evidence-item").filter({ hasText: "Concession £20.00" });
+  await expect(concessionEvidence).toContainText("Checked 10 May 2026");
+  await expect(concessionEvidence).toContainText("Price season 2025-26");
+  await expect(concessionEvidence.getByRole("link", { name: "Concession price source" })).toHaveAttribute(
+    "href",
+    "https://www.chelseafc.com/en/tickets"
+  );
+  await expect(concessionEvidence.locator(".price-confirmation")).toContainText("Checked more than 90 days ago");
   await expect(overrideRow.getByRole("link", { name: "Tickets" })).toHaveAttribute(
     "href",
     "https://www.chelseafc.com/en/tickets"
@@ -102,21 +142,23 @@ test("search displays exact admission prices with evidence and preserves price p
   const defaultRow = page.locator(".fixture-row").filter({ hasText: "Chelsea vs Queens Park Rangers" });
   await expect(defaultRow).toContainText("£30.00");
   await expect(defaultRow).toContainText("£20.00");
-  await expect(defaultRow.locator(".price-confirmation")).toContainText("guide price policy");
-  await expect(defaultRow.locator(".price-confirmation")).toContainText("differs from fixture season 2026-27");
+  const defaultAdultEvidence = defaultRow.locator(".price-evidence-item").filter({ hasText: "Adult £30.00" });
+  await expect(defaultAdultEvidence.locator(".price-confirmation")).toContainText("differs from fixture season 2026-27");
 
   const staleRow = page.locator(".fixture-row").filter({ hasText: "Chelsea vs Birmingham City" });
-  await expect(staleRow.locator(".price-confirmation")).toContainText("Checked more than 90 days ago");
+  const staleAdultEvidence = staleRow.locator(".price-evidence-item").filter({ hasText: "Adult £25.00" });
+  await expect(staleAdultEvidence.locator(".price-confirmation")).toContainText("Checked more than 90 days ago");
 
   const missingPriceRow = page.locator(".fixture-row").filter({ hasText: "No Price Home vs No Price Away" });
-  await expect(missingPriceRow).toContainText("Admission price not confirmed");
+  await expect(missingPriceRow).toContainText("Adult TBC");
+  await expect(missingPriceRow).toContainText("Concession TBC");
   await expect(missingPriceRow).toContainText("No checked date recorded");
   await expect(missingPriceRow).toContainText("Price source unavailable");
   await expect(missingPriceRow.locator(".price-confirmation")).toContainText("No valid checked date is recorded");
 
   const missingCheckedDateRow = page.locator(".fixture-row").filter({ hasText: "No Check Home vs No Check Away" });
   await expect(missingCheckedDateRow).toContainText("Adult £9.00");
-  await expect(missingCheckedDateRow.getByRole("link", { name: "Price source" })).toHaveAttribute(
+  await expect(missingCheckedDateRow.getByRole("link", { name: "Adult price source" })).toHaveAttribute(
     "href",
     "https://prices.example.test/one-off/no-check"
   );
@@ -126,7 +168,7 @@ test("search displays exact admission prices with evidence and preserves price p
   const mobileOverride = page.locator(".fixture-card").filter({ hasText: "Chelsea vs Arsenal" });
   await expect(mobileOverride).toContainText("Adult £12.50");
   await expect(mobileOverride).toContainText("Verified confidence");
-  await expect(mobileOverride.getByRole("link", { name: "Price source" })).toHaveAttribute(
+  await expect(mobileOverride.getByRole("link", { name: "Adult price source" })).toHaveAttribute(
     "href",
     "https://prices.example.test/chelsea/e2e-live"
   );
