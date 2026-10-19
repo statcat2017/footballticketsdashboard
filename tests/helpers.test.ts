@@ -50,14 +50,14 @@ describe("competitionCodeFromDivisionCode", () => {
   });
 });
 
-import { defaultDateRange, inferAssumedKickoff, parseKickoffFromDateTime } from "@/lib/date";
+import { computeDateRange, defaultDateRange, inferAssumedKickoff, parseKickoffFromDateTime } from "@/lib/date";
 
 describe("defaultDateRange", () => {
-  it("returns today and today+14 days by default", () => {
+  it("returns today and the end of the next 14 calendar days by default", () => {
     const now = new Date("2026-05-19T12:00:00.000Z");
     const result = defaultDateRange(now);
     expect(result.dateFrom).toBe("2026-05-19");
-    expect(result.dateTo).toBe("2026-06-02");
+    expect(result.dateTo).toBe("2026-06-01");
   });
 
   it("respects custom daysAhead parameter", () => {
@@ -72,6 +72,71 @@ describe("defaultDateRange", () => {
     const result = defaultDateRange(now, 10);
     expect(result.dateFrom).toBe("2026-05-25");
     expect(result.dateTo).toBe("2026-06-04");
+  });
+
+  it("adds calendar days across the UK spring clock change", () => {
+    const now = new Date("2026-03-28T23:30:00.000Z");
+    expect(defaultDateRange(now)).toEqual({ dateFrom: "2026-03-28", dateTo: "2026-04-10" });
+  });
+});
+
+describe("computeDateRange", () => {
+  it.each([
+    ["Monday", "2026-10-19T12:00:00.000Z", "2026-10-23", "2026-10-25"],
+    ["Tuesday", "2026-10-20T12:00:00.000Z", "2026-10-23", "2026-10-25"],
+    ["Wednesday", "2026-10-21T12:00:00.000Z", "2026-10-23", "2026-10-25"],
+    ["Thursday", "2026-10-22T12:00:00.000Z", "2026-10-23", "2026-10-25"],
+    ["Friday", "2026-10-23T12:00:00.000Z", "2026-10-23", "2026-10-25"],
+    ["Saturday", "2026-10-24T12:00:00.000Z", "2026-10-24", "2026-10-25"],
+    ["Sunday", "2026-10-25T12:00:00.000Z", "2026-10-25", "2026-10-25"]
+  ])("selects the remaining Friday–Sunday window on %s", (_day, now, dateFrom, dateTo) => {
+    expect(computeDateRange("this-weekend", new Date(now))).toEqual({ dateFrom, dateTo });
+  });
+
+  it.each([
+    ["Monday", "2026-10-19T12:00:00.000Z"],
+    ["Tuesday", "2026-10-20T12:00:00.000Z"],
+    ["Wednesday", "2026-10-21T12:00:00.000Z"],
+    ["Thursday", "2026-10-22T12:00:00.000Z"],
+    ["Friday", "2026-10-23T12:00:00.000Z"],
+    ["Saturday", "2026-10-24T12:00:00.000Z"],
+    ["Sunday", "2026-10-25T12:00:00.000Z"]
+  ])("selects the following Friday–Sunday window on %s without Monday", (_day, now) => {
+    expect(computeDateRange("next-weekend", new Date(now))).toEqual({ dateFrom: "2026-10-30", dateTo: "2026-11-01" });
+  });
+
+  it("uses the UK local calendar day around midnight and across month and year boundaries", () => {
+    expect(computeDateRange("this-weekend", new Date("2026-10-22T23:30:00.000Z"))).toEqual({
+      dateFrom: "2026-10-23",
+      dateTo: "2026-10-25"
+    });
+    expect(computeDateRange("next-weekend", new Date("2026-12-31T12:00:00.000Z"))).toEqual({
+      dateFrom: "2027-01-08",
+      dateTo: "2027-01-10"
+    });
+  });
+
+  it("returns the same calendar window under different process timezones", () => {
+    const originalTimezone = process.env.TZ;
+    try {
+      process.env.TZ = "Pacific/Honolulu";
+      const hawaiiWindow = computeDateRange("this-weekend", new Date("2026-10-22T23:30:00.000Z"));
+      process.env.TZ = "Asia/Tokyo";
+      const tokyoWindow = computeDateRange("this-weekend", new Date("2026-10-22T23:30:00.000Z"));
+      expect(tokyoWindow).toEqual(hawaiiWindow);
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
+  it("provides a 14-day default and a named wider all-dates range", () => {
+    const now = new Date("2026-10-19T12:00:00.000Z");
+    expect(computeDateRange("next-14-days", now)).toEqual({ dateFrom: "2026-10-19", dateTo: "2026-11-01" });
+    expect(computeDateRange("all-upcoming", now)).toEqual({ dateFrom: "2026-10-19", dateTo: "2027-10-19" });
   });
 });
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/db/client";
 import { getTravelProviderRuntimeConfig } from "@/lib/runtime-env";
 import { searchFixtures } from "@/lib/search/service";
-import { defaultDateRange } from "@/lib/date";
+import { defaultDateRange, DEMO_SAMPLE_DATE_RANGE } from "@/lib/date";
 import { scheduleSearchTravelBackfill } from "@/lib/travel/backfill";
 
 const postcodePattern = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
@@ -26,7 +26,8 @@ const searchSchema = z.object({
     z.number().positive().max(500).optional()
   ),
   dateFrom: z.string().optional(),
-  dateTo: z.string().optional()
+  dateTo: z.string().optional(),
+  demoMode: z.boolean().optional()
 }).superRefine((value, context) => {
   if (value.dateFrom && !isValidIsoDate(value.dateFrom)) {
     context.addIssue({
@@ -67,7 +68,7 @@ function isClientSearchError(error: unknown): error is Error {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  const defaults = defaultDateRange();
+  const defaults = body?.demoMode === true ? DEMO_SAMPLE_DATE_RANGE : defaultDateRange();
   const parsed = searchSchema.safeParse({
     ...body,
     dateFrom: body?.dateFrom ?? defaults.dateFrom,
@@ -97,7 +98,9 @@ export async function POST(request: Request) {
         dateFrom: parsed.data.dateFrom,
         dateTo: parsed.data.dateTo,
         radiusMiles: parsed.data.radiusMiles ?? null,
-        usedHistoricalFallback: results.some((result) => result.isHistorical)
+        postcode: parsed.data.postcode,
+        demoMode: parsed.data.demoMode ?? false,
+        usedHistoricalFallback: false
       }
     });
   } catch (error) {

@@ -2,10 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FixtureResult } from "@/lib/types";
-import { computeDateRange } from "@/lib/date";
+import { computeDateRange, DEMO_SAMPLE_DATE_RANGE } from "@/lib/date";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
 type CompetitionCategory = "premier-league" | "efl" | "non-league" | "womens" | "cup" | "friendly";
+type DateFilter = "this-weekend" | "next-weekend" | "next-14-days" | "all-upcoming";
+type SearchContext = { postcode: string; dateFrom: string; dateTo: string; demoMode: boolean };
 
 const moneyFormatter = new Intl.NumberFormat("en-GB", {
   style: "currency",
@@ -33,6 +35,15 @@ const dateRangeFormatter = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
   day: "numeric",
   month: "short",
+  year: "numeric",
+  timeZone: "Europe/London"
+});
+
+const demoFixtureDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
   timeZone: "Europe/London"
 });
 
@@ -65,6 +76,18 @@ function formatDateRange(results: FixtureResult[]): string {
     .sort();
   if (dates.length === 0) return "";
   return `${dateRangeFormatter.format(new Date(dates[0]))} - ${dateRangeFormatter.format(new Date(dates[dates.length - 1]))}`;
+}
+
+function formatDateBounds(dateFrom: string, dateTo: string): string {
+  const start = dateRangeFormatter.format(new Date(`${dateFrom}T12:00:00.000Z`));
+  const end = dateRangeFormatter.format(new Date(`${dateTo}T12:00:00.000Z`));
+  return dateFrom === dateTo ? start : `${start} - ${end}`;
+}
+
+function formatDemoFixtureDate(result: FixtureResult): string {
+  const date = result.fixtureDate ?? result.kickoffAt?.slice(0, 10);
+  if (!date) return "date not recorded";
+  return demoFixtureDateFormatter.format(new Date(`${date}T12:00:00.000Z`));
 }
 
 function formatVerifiedAt(value: string | null): string {
@@ -129,10 +152,12 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const [state, setState] = useState<SearchState>("idle");
   const [error, setError] = useState("");
   const [results, setResults] = useState<FixtureResult[]>([]);
+  const [searchContext, setSearchContext] = useState<SearchContext | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const [geoState, setGeoState] = useState<"idle" | "locating" | "failed">("idle");
   const [visibleCount, setVisibleCount] = useState(12);
   const [sortKey, setSortKey] = useState<"distance" | "kickoff" | "admission" | "travel">("distance");
-  const [dateFilter, setDateFilter] = useState<"this-weekend" | "next-weekend" | "all-upcoming">("this-weekend");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("next-14-days");
   const [compFilter, setCompFilter] = useState<CompetitionCategory | "all">("all");
   const [travelFilter, setTravelFilter] = useState<"all" | "under30" | "under60">("all");
   const abortRef = useRef<AbortController | null>(null);
@@ -203,10 +228,12 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
     }));
   }, [sortedResults, visibleCount, sortKey]);
 
-  const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
+  const dateRange = searchContext
+    ? formatDateBounds(searchContext.dateFrom, searchContext.dateTo)
+    : formatDateRange(sortedResults);
   const remainingCount = sortedResults.length - visibleCount;
 
-  const runSearch = useCallback(async (searchPostcode: string, options?: { dateFrom?: string; dateTo?: string }) => {
+  const runSearch = useCallback(async (searchPostcode: string, options?: { dateFrom?: string; dateTo?: string; demoMode?: boolean }) => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     setState("loading");
@@ -219,7 +246,8 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         body: JSON.stringify({
           postcode: searchPostcode,
           dateFrom: options?.dateFrom,
-          dateTo: options?.dateTo
+          dateTo: options?.dateTo,
+          demoMode: options?.demoMode ?? false
         }),
         signal: abortRef.current.signal
       });
@@ -232,6 +260,12 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
       }
 
       setResults(payload.results);
+      setSearchContext({
+        postcode: payload.meta?.postcode ?? searchPostcode,
+        dateFrom: payload.meta?.dateFrom ?? options?.dateFrom ?? "",
+        dateTo: payload.meta?.dateTo ?? options?.dateTo ?? "",
+        demoMode: payload.meta?.demoMode ?? options?.demoMode ?? false
+      });
       setVisibleCount(12);
       setState("ready");
     } catch (error) {
@@ -242,14 +276,36 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   }, []);
 
   useEffect(() => {
-    void runSearch(postcode, computeDateRange(dateFilter));
+    void runSearch(postcode, computeDateRange("next-14-days"));
     return () => abortRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSearch]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runSearch(postcode, computeDateRange(dateFilter));
+    await runSearch(postcode, currentSearchOptions());
+  }
+
+  function currentSearchOptions() {
+    return demoMode
+      ? { ...DEMO_SAMPLE_DATE_RANGE, demoMode: true }
+      : { ...computeDateRange(dateFilter), demoMode: false };
+  }
+
+  function selectDateFilter(filter: DateFilter) {
+    setDateFilter(filter);
+    setDemoMode(false);
+    void runSearch(postcode, { ...computeDateRange(filter), demoMode: false });
+  }
+
+  function toggleDemoMode() {
+    const nextDemoMode = !demoMode;
+    setDemoMode(nextDemoMode);
+    if (nextDemoMode) {
+      void runSearch(postcode, { ...DEMO_SAMPLE_DATE_RANGE, demoMode: true });
+      return;
+    }
+    void runSearch(postcode, { ...computeDateRange(dateFilter), demoMode: false });
   }
 
   async function handleLocate() {
@@ -265,7 +321,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
       if (!pc) throw new Error("No postcode found");
       setPostcode(pc);
       setGeoState("idle");
-      await runSearch(pc, computeDateRange(dateFilter));
+      await runSearch(pc, currentSearchOptions());
     } catch {
       setGeoState("failed");
       setError("Could not determine your location. Enable location services or type a postcode.");
@@ -309,16 +365,18 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         </button>
         <div className="divider" aria-hidden="true" />
         <div className="filters" aria-label="Date filters">
-          <button className={`pill ${dateFilter === "this-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("this-weekend"); void runSearch(postcode, computeDateRange("this-weekend")); }}>This weekend</button>
-          <button className={`pill ${dateFilter === "next-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("next-weekend"); void runSearch(postcode, computeDateRange("next-weekend")); }}>Next weekend</button>
-          <button className={`pill ${dateFilter === "all-upcoming" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("all-upcoming"); void runSearch(postcode, computeDateRange("all-upcoming")); }}>All dates</button>
+          <button className={`pill ${!demoMode && dateFilter === "next-14-days" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => selectDateFilter("next-14-days")}>Next 14 days</button>
+          <button className={`pill ${!demoMode && dateFilter === "this-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => selectDateFilter("this-weekend")}>This weekend</button>
+          <button className={`pill ${!demoMode && dateFilter === "next-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => selectDateFilter("next-weekend")}>Next weekend</button>
+          <button className={`pill ${!demoMode && dateFilter === "all-upcoming" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => selectDateFilter("all-upcoming")}>All dates</button>
+          <button className={`pill ${demoMode ? "active" : ""}`} type="button" aria-pressed={demoMode} disabled={state === "loading"} onClick={toggleDemoMode}>{demoMode ? "Hide demo fixtures" : "Show demo fixtures"}</button>
         </div>
       </form>
 
       <main className="results" aria-live="polite">
         {state === "ready" && (
           <div className="meta-row">
-            <div><strong>{resultCount} fixtures</strong> near {postcode}{dateRange ? ` · ${dateRange}` : ""}</div>
+            <div><strong>{resultCount} fixtures</strong> near {searchContext?.postcode ?? postcode}{dateRange ? ` · ${dateRange}` : ""}</div>
             <div className="meta-controls">
               <select className="filter-select" aria-label="Competition filter" value={compFilter} onChange={(event) => setCompFilter(event.target.value as typeof compFilter)}>
                 <option value="all">All competitions</option>
@@ -341,6 +399,13 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 <option value="admission">Sort by admission</option>
               </select>
             </div>
+          </div>
+        )}
+
+        {state === "ready" && searchContext?.demoMode && (
+          <div className="demo-banner" role="status">
+            <strong>Historical demo fixtures</strong>
+            <span>Sample period: {dateRange}. These matches have already taken place and are sample data, not upcoming events.</span>
           </div>
         )}
 
@@ -370,6 +435,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
             <div>
               <span className="featured-badge">Featured</span>
               <span className="featured-reason">{featuredReason(featuredFixture, sortedResults)}</span>
+              {featuredFixture.isDemoData && <DemoFixtureLabel result={featuredFixture} />}
               <h1>{featuredFixture.title}</h1>
               <p className="featured-meta">
                 <CompetitionBadge category={competitionCategory(featuredFixture.competitionName)} />
@@ -387,7 +453,9 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               )}
             </div>
             <div className="featured-actions">
-              {featuredFixture.genericTicketUrl ? (
+              {featuredFixture.isDemoData || featuredFixture.isHistorical ? (
+                <span className="ticket-button ticket-button-disabled">Historical demo sample</span>
+              ) : featuredFixture.genericTicketUrl ? (
                 <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
               ) : featuredFixture.officialSiteUrl ? (
                 <a className="ticket-button" href={featuredFixture.officialSiteUrl} target="_blank" rel="noreferrer">View match details</a>
@@ -423,6 +491,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                       <article className="grid-row fixture-row" key={result.id}>
                         <div>
                           <div className="primary">{result.title}</div>
+                          {result.isDemoData && <DemoFixtureLabel result={result} />}
                           <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
                         </div>
                         <div>
@@ -457,7 +526,9 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           )}
                         </div>
                         <div className="row-action">
-                          {result.genericTicketUrl ? (
+                          {result.isDemoData || result.isHistorical ? (
+                            <span className="view-link view-placeholder">Historical sample</span>
+                          ) : result.genericTicketUrl ? (
                             <a className="view-link" href={result.genericTicketUrl} target="_blank" rel="noreferrer">Tickets</a>
                           ) : result.officialSiteUrl ? (
                             <a className="view-link" href={result.officialSiteUrl} target="_blank" rel="noreferrer">View</a>
@@ -499,6 +570,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           <span className="fixture-card-distance">{result.travel.distanceMiles.toFixed(1)} mi</span>
                         </div>
                         <h3 className="fixture-card-title">{result.title}</h3>
+                        {result.isDemoData && <DemoFixtureLabel result={result} />}
                         <p className="fixture-card-meta">{formatKickoffDate(result.kickoffAt)}</p>
                         <p className="fixture-card-venue">{result.venueName}{result.venuePostcode ? `, ${result.venuePostcode}` : ""}</p>
                         <div className="fixture-card-travel">
@@ -515,7 +587,9 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           <span className="badge check-club">Check club for availability</span>
                           <span className="fixture-card-price">{formatPriceLine(result)}</span>
                         </div>
-                        {result.genericTicketUrl ? (
+                        {result.isDemoData || result.isHistorical ? (
+                          <span className="fixture-card-action fixture-card-action-placeholder">Historical demo sample</span>
+                        ) : result.genericTicketUrl ? (
                           <a className="fixture-card-action" href={result.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
                         ) : result.officialSiteUrl ? (
                           <a className="fixture-card-action" href={result.officialSiteUrl} target="_blank" rel="noreferrer">View details</a>
@@ -555,6 +629,10 @@ function CompetitionBadge({ category }: { category: CompetitionCategory }) {
       {competitionBadgeLabel(category)}
     </span>
   );
+}
+
+function DemoFixtureLabel({ result }: { result: FixtureResult }) {
+  return <span className="demo-label">Demo sample · {formatDemoFixtureDate(result)}</span>;
 }
 
 function MapPinIcon({ className }: { className?: string }) {

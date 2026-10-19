@@ -13,7 +13,7 @@ import type { TravelProvider } from "../travel/providers.ts";
 import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
-import { defaultDateRange } from "../date.ts";
+import { DEMO_SAMPLE_DATE_RANGE, defaultDateRange } from "../date.ts";
 
 interface FixtureRow {
   id: number;
@@ -80,7 +80,7 @@ export async function searchFixtures(
     travelProviderOverrides?: TravelProvider[];
   } = {}
 ): Promise<FixtureResult[]> {
-  const defaults = defaultDateRange();
+  const defaults = request.demoMode ? DEMO_SAMPLE_DATE_RANGE : defaultDateRange();
   const dateRange = {
     dateFrom: request.dateFrom ?? defaults.dateFrom,
     dateTo: request.dateTo ?? defaults.dateTo
@@ -102,15 +102,12 @@ export async function searchFixtures(
     origin = await resolvePostcodeOrigin(request.postcode);
   }
 
-  let rows = await queryFixtures(db, dateRange, origin.district);
-
-  if (rows.length === 0) {
-    rows = await queryFixtures(db, dateRange, origin.district, true);
-  }
-
-  if (rows.length === 0) {
-    rows = await queryAllHistoricalFixtures(db, origin.district);
-  }
+  let rows = await queryFixtures(
+    db,
+    dateRange,
+    origin.district,
+    request.demoMode === true ? "demo" : "upcoming"
+  );
 
   rows = rows.filter((row) => Number.isFinite(row.latitude) && Number.isFinite(row.longitude));
 
@@ -145,7 +142,7 @@ function queryFixtures(
   db: AppDatabase,
   request: Required<Pick<SearchRequest, "dateFrom" | "dateTo">>,
   postcodeDistrictValue: string,
-  includeHistorical = false
+  mode: "upcoming" | "demo"
 ): Promise<FixtureRow[]> {
   return db.all<FixtureRow>(`
     SELECT
@@ -191,11 +188,13 @@ function queryFixtures(
     LEFT JOIN fixture_ticket_price_overrides fpo ON fpo.fixture_id = f.id
     LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
     WHERE (
-      (f.kickoff_at >= ? AND f.kickoff_at < date(?, '+1 day'))
-      OR (f.kickoff_at IS NULL AND f.fixture_date BETWEEN ? AND ?)
+      f.fixture_date BETWEEN ? AND ?
+      OR (f.fixture_date IS NULL AND f.kickoff_at >= ? AND f.kickoff_at < date(?, '+1 day'))
     )
-      ${includeHistorical ? "AND f.is_historical = 1" : "AND f.is_historical = 0 AND f.status = 'scheduled'"}
-    ORDER BY COALESCE(f.kickoff_at, f.fixture_date) ASC
+      ${mode === "demo"
+        ? "AND f.is_demo_data = 1 AND f.is_historical = 1"
+        : "AND f.is_demo_data = 0 AND f.is_historical = 0 AND f.status = 'scheduled'"}
+    ORDER BY COALESCE(f.fixture_date, f.kickoff_at) ASC
   `, [
     postcodeDistrictValue,
     request.dateFrom,
@@ -203,59 +202,6 @@ function queryFixtures(
     request.dateFrom,
     request.dateTo
   ]);
-}
-
-function queryAllHistoricalFixtures(
-  db: AppDatabase,
-  postcodeDistrictValue: string
-): Promise<FixtureRow[]> {
-  return db.all<FixtureRow>(`
-    SELECT
-      f.id,
-      f.competition_code,
-      c.name as competition_name,
-      f.kickoff_at,
-      f.is_demo_data,
-      f.is_historical,
-      COALESCE(home.name, f.home_one_off_name) as home_club,
-      COALESCE(away.name, f.away_one_off_name) as away_club,
-      f.home_one_off,
-      f.away_one_off,
-      f.fixture_date,
-      f.kickoff_time,
-      f.kickoff_time_status,
-      f.season_label,
-      home.official_site_url,
-      home.generic_ticket_url,
-      v.id as venue_id,
-      v.name as venue_name,
-      v.postcode as venue_postcode,
-      v.latitude,
-      v.longitude,
-      COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
-      COALESCE(fpo.adult_price_pence, ctp.adult_price_pence) as adult_price_pence,
-      COALESCE(fpo.concession_price_pence, ctp.concession_price_pence) as concession_price_pence,
-      COALESCE(fpo.source_url, ctp.source_url) as source_url,
-      COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
-      COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
-      CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
-      fpo.note as price_override_note,
-      tc.distance_miles as cached_distance_miles,
-      tc.driving_minutes,
-      tc.public_transport_minutes,
-      tc.provider as cached_provider
-    FROM fixtures f
-    JOIN competitions c ON c.code = f.competition_code
-    LEFT JOIN clubs home ON home.id = f.home_club_id
-    LEFT JOIN clubs away ON away.id = f.away_club_id
-    JOIN venues v ON v.id = f.venue_id
-    LEFT JOIN club_ticket_prices ctp ON ctp.club_id = home.id
-    LEFT JOIN fixture_ticket_price_overrides fpo ON fpo.fixture_id = f.id
-    LEFT JOIN travel_cache tc ON tc.venue_id = v.id AND tc.postcode_district = ?
-    WHERE f.is_historical = 1
-    ORDER BY COALESCE(f.kickoff_at, f.fixture_date) DESC
-    LIMIT 50
-  `, [postcodeDistrictValue]);
 }
 
 function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: number }): FixtureResult {
@@ -269,7 +215,11 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
   ];
 
   if (row.is_historical) {
-    warnings.push("Historical fixture shown because no live fixtures match the current window.");
+    warnings.push("Historical fixture shown in demo mode; this match has already taken place.");
+  }
+
+  if (row.is_demo_data) {
+    warnings.push("Demonstration sample data; fixture details may not reflect current information.");
   }
 
   if (row.cached_distance_miles === null) {

@@ -4,6 +4,7 @@ import type { QueryParam } from "@/lib/db/adapter";
 import { createAppDatabase } from "@/lib/db/client";
 import type { PostcodeResolver } from "@/lib/postcode";
 import { searchFixtures } from "@/lib/search/service";
+import { DEMO_SAMPLE_DATE_RANGE } from "@/lib/date";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -24,7 +25,7 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 describe("fixture search", () => {
-  it("falls back to unconstrained historical fixtures when date range has no live or historical matches", async () => {
+  it("returns an empty result when no upcoming fixtures match the requested window", async () => {
     const db = await createAppDatabase();
 
     const mockResolver: PostcodeResolver = {
@@ -45,18 +46,10 @@ describe("fixture search", () => {
       dateTo: "2026-05-05"
     }, { postcodeResolver: mockResolver });
 
-    expect(results.length).toBeGreaterThan(0);
-    for (const result of results) {
-      expect(result.isHistorical).toBe(true);
-      expect(result.warnings).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("Historical fixture shown")
-        ])
-      );
-    }
+    expect(results).toEqual([]);
   });
 
-  it("falls back to historical fixtures when no live fixtures match and historical seed data exists", async () => {
+  it("returns date-matching historical samples only in explicit demo mode", async () => {
     const db = await createAppDatabase();
 
     const mockResolver: PostcodeResolver = {
@@ -74,19 +67,83 @@ describe("fixture search", () => {
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
       dateFrom: "2025-05-01",
-      dateTo: "2025-05-31"
-    }, { postcodeResolver: mockResolver });
+      dateTo: "2025-05-31",
+      demoMode: true
+    }, { postcodeResolver: mockResolver, travelProviderOverrides: [] });
 
-    expect(results.length).toBeGreaterThan(0);
+    expect(results).toHaveLength(3);
     for (const result of results) {
       expect(result.isHistorical).toBe(true);
       expect(result.isDemoData).toBe(true);
       expect(result.warnings).toEqual(
         expect.arrayContaining([
-          expect.stringContaining("Historical fixture shown")
+          expect.stringContaining("Historical fixture shown in demo mode"),
+          expect.stringContaining("Demonstration sample data")
         ])
       );
     }
+  });
+
+  it("uses the actual sample period when demo mode has no explicit dates", async () => {
+    const db = await createAppDatabase();
+    const mockResolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
+    };
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      demoMode: true
+    }, { postcodeResolver: mockResolver, travelProviderOverrides: [] });
+
+    expect(results).toHaveLength(4);
+    expect(results.map((result) => result.fixtureDate).sort()).toEqual([
+      "2025-04-26",
+      "2025-05-03",
+      "2025-05-18",
+      "2025-05-25"
+    ]);
+    expect(results.every((result) => result.fixtureDate! >= DEMO_SAMPLE_DATE_RANGE.dateFrom
+      && result.fixtureDate! <= DEMO_SAMPLE_DATE_RANGE.dateTo)).toBe(true);
+  });
+
+  it("keeps demo results inside the selected date and radius constraints", async () => {
+    const db = await createAppDatabase();
+    const mockResolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
+    };
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2025-05-10",
+      dateTo: "2025-05-20",
+      radiusMiles: 0.5,
+      demoMode: true
+    }, { postcodeResolver: mockResolver, travelProviderOverrides: [] });
+
+    expect(results.map((result) => result.fixtureDate)).toEqual(["2025-05-18"]);
+    expect(results.every((result) => result.travel.distanceMiles <= 0.5)).toBe(true);
+  });
+
+  it("matches a fixture by its UK fixture date when its UTC timestamp falls on the prior day", async () => {
+    const db = await createAppDatabase();
+    const mockResolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
+    };
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, fixture_date, kickoff_time, status, is_demo_data, is_historical
+      ) VALUES ('test', 'uk-midnight', 'PL', 1, 2, 1,
+        '2026-10-24T23:30:00.000Z', '2026-10-25', '00:30', 'scheduled', 0, 0)
+    `);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-10-25",
+      dateTo: "2026-10-25"
+    }, { postcodeResolver: mockResolver, travelProviderOverrides: [] });
+
+    expect(results.map((result) => result.fixtureDate)).toEqual(["2026-10-25"]);
   });
 
   it("returns live fixtures sorted by distance when no radius is supplied", async () => {

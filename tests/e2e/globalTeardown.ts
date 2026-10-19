@@ -1,10 +1,7 @@
-import fs from "node:fs";
+import { removeE2eDatabaseFiles } from "./databasePath.ts";
 
 async function globalTeardown(): Promise<void> {
-  const dir = process.env.E2E_DB_DIR;
-  if (dir) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  removeE2eDatabaseFiles();
 }
 
 export default globalTeardown;
