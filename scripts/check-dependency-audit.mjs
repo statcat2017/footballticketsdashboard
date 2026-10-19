@@ -16,12 +16,29 @@ function runAudit(args) {
     maxBuffer: 20 * 1024 * 1024
   });
 
+  if (result.error) {
+    throw new Error(`Could not run npm audit: ${result.error.message}`);
+  }
+
+  if (result.status !== 0 && result.status !== 1) {
+    throw new Error(`npm audit exited with status ${result.status}: ${result.stderr}`);
+  }
+
   let audit;
   try {
     audit = JSON.parse(result.stdout);
   } catch {
     throw new Error(`npm audit did not return JSON. ${result.stderr || result.stdout}`);
   }
+
+  if (audit.error) {
+    throw new Error(`npm audit failed (${audit.error.code ?? "unknown error"}): ${audit.error.summary ?? audit.error.message ?? "registry audit unavailable"}`);
+  }
+
+  if (result.status === 1 && Object.keys(audit.vulnerabilities ?? {}).length === 0) {
+    throw new Error("npm audit exited with findings status but returned no vulnerability data.");
+  }
+
   return audit;
 }
 
