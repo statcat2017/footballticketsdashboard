@@ -228,6 +228,59 @@ export async function createCompetition(
   }
 }
 
+export async function updateCompetitionCategory(
+  batchId: number,
+  _prev: ActionState | null,
+  form: FormData,
+): Promise<ActionState> {
+  try {
+    const actor = await requireActor();
+    const db = await getDatabase();
+    const code = readString(form.get("competitionCode"));
+    const publicCategory = readString(form.get("publicCategory"));
+    const categories = ["premier-league", "efl", "non-league", "womens", "cup", "friendly", "uncategorized"];
+
+    if (!code) return { error: "Choose an existing competition." };
+    if (!publicCategory || !categories.includes(publicCategory)) {
+      return { error: "Choose a valid public competition category." };
+    }
+
+    const existing = await db.get<{
+      code: string;
+      name: string;
+      public_category: string;
+    }>(
+      `SELECT code, name, public_category FROM competitions WHERE code = ?`, [code]
+    );
+    if (!existing) return { error: `Competition "${code}" was not found.` };
+
+    if (existing.public_category === publicCategory) {
+      return { success: `Competition "${existing.name}" already uses ${publicCategory}.` };
+    }
+
+    await db.writeBatch([
+      {
+        sql: `UPDATE competitions SET public_category = ? WHERE code = ?`,
+        params: [publicCategory, code],
+      },
+      buildAdminAuditLogWrite({
+        action: "update",
+        entityType: "competition",
+        entityId: code,
+        actor,
+        before: { code, name: existing.name, public_category: existing.public_category },
+        after: { code, name: existing.name, public_category: publicCategory, import_batch_id: batchId },
+      }),
+    ]);
+
+    await revalidatePage(batchId);
+    return { success: `Competition "${existing.name}" category updated.` };
+  } catch (error) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
+    return { error: message };
+  }
+}
+
 export async function createClub(
   batchId: number,
   _prev: ActionState | null,
