@@ -51,6 +51,8 @@ Deployment checks:
 http://localhost:3000/api/health
 ```
 
+For a read-only database inventory and an isolated snapshot restore check, follow [Database Recovery](./database-recovery.md). Do not start the application from a restored database until startup preservation has been verified.
+
 ## Naming
 
 | Context | Name |

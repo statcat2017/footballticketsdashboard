@@ -36,6 +36,9 @@ npm run dev         # Starts dev server
 | `npm run build` | Production build |
 | `npm run db:setup` | Create/reset local SQLite with seed data |
 | `npm run db:migrate` | Apply pending migrations |
+| `npm run db:snapshot -- inspect <file>` | Report SQLite integrity, schema, and data counts without opening the app |
+| `npm run db:snapshot -- backup <source> <new-snapshot>` | Create and validate a consistent SQLite snapshot |
+| `npm run db:snapshot -- restore <snapshot> <new-staging-file>` | Restore and validate to a new isolated SQLite file |
 | `npm run import:clubs` | Import club seed data from CSV |
 | `npm run travel:fill` | Populate travel cache |
 | `npm run lint` | Run ESLint |
@@ -69,6 +72,7 @@ data/                   # CSV seed files (clubs, championship clubs)
 - [Production Roadmap](docs/production-roadmap.md) — Six phases from demo to launch
 - [Project Plan](docs/project-plan.md) — MVP scope, admin data maintenance, deferred items
 - [VPS Deployment](docs/vps-deployment.md) — Production deploy and runbook
+- [Database Recovery](docs/database-recovery.md) — Read-only inventory, consistent snapshots, and isolated restore checks
 - [API Reference](docs/search-api.md) — POST /api/search contract
 - [Travel Cache](docs/travel-cache.md) — Caching strategy and manual fill commands
 - [Admin Interface Plan](docs/admin-interface-plan.md) — Four-phase admin build plan

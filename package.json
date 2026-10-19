@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "NODE_ENV=production next build",
     "db:migrate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-migrate-prod.ts",
+    "db:snapshot": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/sqlite-snapshot.ts",
     "db:setup": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-setup.ts",
     "import:clubs": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/import-clubs.ts",
     "import:football-data": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/import-football-data.ts",
