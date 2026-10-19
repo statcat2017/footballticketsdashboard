@@ -30,11 +30,13 @@ If `dateFrom` or `dateTo` are omitted, the API applies the default search window
     {
       "id": 123,
       "title": "Chelsea vs Arsenal",
+      "fixtureStatus": "scheduled",
       "competitionCode": "PL",
       "competitionName": "Premier League",
       "kickoffAt": "2026-05-12T19:00:00.000Z",
       "venueName": "Stamford Bridge",
       "venuePostcode": "SW6 1HS",
+      "venueIsApproximate": false,
       "homeClub": "Chelsea",
       "awayClub": "Arsenal",
       "officialSiteUrl": "https://www.chelseafc.com/",
@@ -57,7 +59,8 @@ If `dateFrom` or `dateTo` are omitted, the API applies the default search window
       "isDemoData": false,
       "isHistorical": false,
       "warnings": [
-        "Admission prices are best-effort guide prices. Confirm with the club before travelling."
+        "Kick-off time is not confirmed.",
+        "Travel time unavailable for this postcode district; showing straight-line distance only."
       ]
     }
   ],
@@ -75,6 +78,8 @@ Notes:
 - `price.saleMode` is `all_ticket`, `pay_on_gate`, or `null` when the club should be checked directly.
 - `price.isOverride` is `true` when fixture-specific pricing overrides the club default.
 - `travel.source` is `cache` when postcode-district travel data exists, otherwise `distance_only`.
+- `fixtureStatus` carries `scheduled`, `postponed`, `cancelled`, `finished`, or `unknown` from the fixture record. Date-matching postponed, cancelled, and unknown fixtures are returned; finished fixtures are excluded from current fixtures.
+- `venueIsApproximate` and `warnings` expose demo-data, kick-off, venue, price, travel, and one-off-fixture caveats. The dashboard renders the price disclaimer once for the result set, not once per fixture.
 - Empty live windows return an empty `results` array. The API does not silently fall back to historical demo fixtures.
 - `usedHistoricalFallback` is currently `false` for normal operation and remains in the response as an explicit metadata flag.
 

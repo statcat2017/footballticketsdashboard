@@ -176,8 +176,9 @@ export async function lookupTflPublicTransportMinutes(
   fetchImpl?: typeof fetch
 ): Promise<number | null> {
   try {
+    const baseUrl = (process.env.TFL_API_BASE_URL ?? "https://api.tfl.gov.uk").replace(/\/+$/, "");
     const payload = await fetchJson(
-      `https://api.tfl.gov.uk/Journey/JourneyResults/${from.latitude},${from.longitude}/to/${to.latitude},${to.longitude}`,
+      `${baseUrl}/Journey/JourneyResults/${from.latitude},${from.longitude}/to/${to.latitude},${to.longitude}`,
       tflJourneyResponseSchema,
       {
         method: "GET",

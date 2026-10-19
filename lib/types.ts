@@ -29,6 +29,8 @@ export interface TravelSummary {
 export interface FixtureResult {
   id: number;
   title: string;
+  /** Original fixture status; attendance links are only available for future scheduled fixtures. */
+  fixtureStatus: "scheduled" | "postponed" | "cancelled" | "finished" | "unknown";
   competitionCode: string;
   competitionName: string;
   kickoffAt: string | null;
@@ -38,6 +40,7 @@ export interface FixtureResult {
   seasonLabel: string | null;
   venueName: string;
   venuePostcode: string;
+  venueIsApproximate: boolean;
   homeClub: string;
   awayClub: string;
   homeOneOff: boolean;

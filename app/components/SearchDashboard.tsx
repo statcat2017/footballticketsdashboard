@@ -105,6 +105,8 @@ function competitionBadgeLabel(category: CompetitionCategory): string {
 }
 
 function featuredReason(result: FixtureResult, allResults: FixtureResult[]): string {
+  if (getTicketBlockReason(result) !== null) return "Fixture update";
+
   const closest = [...allResults].sort((a, b) => a.travel.distanceMiles - b.travel.distanceMiles)[0];
   if (result.id === closest?.id) return "Closest to you";
 
@@ -124,6 +126,88 @@ function featuredReason(result: FixtureResult, allResults: FixtureResult[]): str
   return "Recommended";
 }
 
+function getFixtureStatusLabel(result: FixtureResult, now = new Date()): string | null {
+  switch (result.fixtureStatus) {
+    case "postponed": return "Postponed";
+    case "cancelled": return "Cancelled";
+    case "finished": return "Finished";
+    case "unknown": return "Status unconfirmed";
+    case "scheduled": {
+      const blockReason = getTicketBlockReason(result, now);
+      return blockReason === "Already started" || blockReason === "Kick-off time unconfirmed" ? blockReason : null;
+    }
+  }
+}
+
+function getTicketBlockReason(result: FixtureResult, now = new Date()): string | null {
+  switch (result.fixtureStatus) {
+    case "postponed": return "Postponed";
+    case "cancelled": return "Cancelled";
+    case "finished": return "Finished";
+    case "unknown": return "Status unconfirmed";
+  }
+
+  if (result.isHistorical) return "Historical fixture";
+
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(now);
+  if (result.fixtureDate && result.fixtureDate < today) return "Already started";
+
+  if (result.kickoffAt) {
+    const kickoffTime = Date.parse(result.kickoffAt);
+    if (Number.isFinite(kickoffTime) && kickoffTime <= now.getTime()) return "Already started";
+  }
+
+  if (result.fixtureDate === today && !result.kickoffAt) return "Kick-off time unconfirmed";
+  if (!result.fixtureDate && !result.kickoffAt) return "Kick-off time unconfirmed";
+  return null;
+}
+
+function FixtureStatusBadge({ result, now }: { result: FixtureResult; now: Date }) {
+  const label = getFixtureStatusLabel(result, now);
+  if (label === null) return null;
+  return <span className="badge fixture-status">{label}</span>;
+}
+
+function FixtureCaveats({ result }: { result: FixtureResult }) {
+  if (result.warnings.length === 0) return null;
+  return (
+    <ul className="fixture-caveats" aria-label="Fixture caveats">
+      {result.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+    </ul>
+  );
+}
+
+function TicketAction({
+  result,
+  now,
+  className,
+  placeholderClassName
+}: {
+  result: FixtureResult;
+  now: Date;
+  className: string;
+  placeholderClassName: string;
+}) {
+  const blockReason = getTicketBlockReason(result, now);
+  if (blockReason !== null) {
+    return <span className={`${className} ${placeholderClassName}`} aria-label={`Tickets unavailable: ${blockReason}`}>Tickets unavailable</span>;
+  }
+
+  if (!result.genericTicketUrl) {
+    if (result.officialSiteUrl) {
+      return <a className={className} href={result.officialSiteUrl} target="_blank" rel="noreferrer">Club website</a>;
+    }
+    return <span className={`${className} ${placeholderClassName}`}>No club ticket link</span>;
+  }
+
+  return <a className={className} href={result.genericTicketUrl} target="_blank" rel="noreferrer">Check club tickets</a>;
+}
+
+function AdmissionAvailability({ result, now }: { result: FixtureResult; now: Date }) {
+  if (getTicketBlockReason(result, now) !== null) return null;
+  return <span className="badge check-club">Check club for availability</span>;
+}
+
 export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boolean }) {
   const [postcode, setPostcode] = useState("SE20 7RS");
   const [state, setState] = useState<SearchState>("idle");
@@ -135,7 +219,13 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const [dateFilter, setDateFilter] = useState<"this-weekend" | "next-weekend" | "all-upcoming">("this-weekend");
   const [compFilter, setCompFilter] = useState<CompetitionCategory | "all">("all");
   const [travelFilter, setTravelFilter] = useState<"all" | "under30" | "under60">("all");
+  const [now, setNow] = useState(() => new Date());
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setVisibleCount(12);
@@ -317,31 +407,34 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
 
       <main className="results" aria-live="polite">
         {state === "ready" && (
-          <div className="meta-row">
-            <div><strong>{resultCount} fixtures</strong> near {postcode}{dateRange ? ` · ${dateRange}` : ""}</div>
-            <div className="meta-controls">
-              <select className="filter-select" aria-label="Competition filter" value={compFilter} onChange={(event) => setCompFilter(event.target.value as typeof compFilter)}>
-                <option value="all">All competitions</option>
-                <option value="premier-league">Premier League</option>
-                <option value="efl">EFL</option>
-                <option value="non-league">Non-league</option>
-                <option value="womens">Women&apos;s</option>
-                <option value="cup">Cup</option>
-                <option value="friendly">Friendly</option>
-              </select>
-              <select className="filter-select" aria-label="Travel time filter" value={travelFilter} onChange={(event) => setTravelFilter(event.target.value as typeof travelFilter)}>
-                <option value="all">Any travel time</option>
-                <option value="under30">Under 30 min</option>
-                <option value="under60">Under 60 min</option>
-              </select>
-              <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => setSortKey(event.target.value as typeof sortKey)}>
-                <option value="distance">Sort by distance</option>
-                <option value="travel">Sort by travel time</option>
-                <option value="kickoff">Sort by kick-off</option>
-                <option value="admission">Sort by admission</option>
-              </select>
+          <>
+            <div className="meta-row">
+              <div><strong>{resultCount} fixtures</strong> near {postcode}{dateRange ? ` · ${dateRange}` : ""}</div>
+              <div className="meta-controls">
+                <select className="filter-select" aria-label="Competition filter" value={compFilter} onChange={(event) => setCompFilter(event.target.value as typeof compFilter)}>
+                  <option value="all">All competitions</option>
+                  <option value="premier-league">Premier League</option>
+                  <option value="efl">EFL</option>
+                  <option value="non-league">Non-league</option>
+                  <option value="womens">Women&apos;s</option>
+                  <option value="cup">Cup</option>
+                  <option value="friendly">Friendly</option>
+                </select>
+                <select className="filter-select" aria-label="Travel time filter" value={travelFilter} onChange={(event) => setTravelFilter(event.target.value as typeof travelFilter)}>
+                  <option value="all">Any travel time</option>
+                  <option value="under30">Under 30 min</option>
+                  <option value="under60">Under 60 min</option>
+                </select>
+                <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => setSortKey(event.target.value as typeof sortKey)}>
+                  <option value="distance">Sort by distance</option>
+                  <option value="travel">Sort by travel time</option>
+                  <option value="kickoff">Sort by kick-off</option>
+                  <option value="admission">Sort by admission</option>
+                </select>
+              </div>
             </div>
-          </div>
+            <p className="public-price-disclaimer" role="note">Admission prices are best-effort guide prices and may be club-level estimates. Confirm price, availability, and arrangements with the club before travelling.</p>
+          </>
         )}
 
         {state === "loading" && (
@@ -373,8 +466,10 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               <h1>{featuredFixture.title}</h1>
               <p className="featured-meta">
                 <CompetitionBadge category={competitionCategory(featuredFixture.competitionName)} />
+              <FixtureStatusBadge result={featuredFixture} now={now} />
                 {" "}{featuredFixture.venueName}{featuredFixture.venuePostcode ? `, ${featuredFixture.venuePostcode}` : ""} · {formatKickoffDate(featuredFixture.kickoffAt)}
               </p>
+              <FixtureCaveats result={featuredFixture} />
               <p className="featured-travel">
                 <span className="chip"><CarIcon /> Drive {travelMinutes(featuredFixture.travel.drivingMinutes)}</span>
                 {featuredFixture.travel.publicTransportMinutes !== null && (
@@ -387,13 +482,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               )}
             </div>
             <div className="featured-actions">
-              {featuredFixture.genericTicketUrl ? (
-                <a className="ticket-button" href={featuredFixture.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
-              ) : featuredFixture.officialSiteUrl ? (
-                <a className="ticket-button" href={featuredFixture.officialSiteUrl} target="_blank" rel="noreferrer">View match details</a>
-              ) : (
-                <span className="ticket-button ticket-button-disabled">Details unavailable</span>
-              )}
+              <TicketAction result={featuredFixture} now={now} className="ticket-button" placeholderClassName="ticket-button-disabled" />
             </div>
           </section>
         )}
@@ -424,6 +513,8 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                         <div>
                           <div className="primary">{result.title}</div>
                           <div className="secondary">{formatKickoffDate(result.kickoffAt)}</div>
+                          <FixtureStatusBadge result={result} now={now} />
+                          <FixtureCaveats result={result} />
                         </div>
                         <div>
                           <CompetitionBadge category={compCat} />
@@ -433,7 +524,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           <div className="secondary">{result.venuePostcode} · {result.travel.distanceMiles.toFixed(1)} miles</div>
                         </div>
                         <div>
-                          <span className="badge check-club">Check club for availability</span>
+                          <AdmissionAvailability result={result} now={now} />
                           <div className="secondary">{formatPriceLine(result)}</div>
                           {result.price.verifiedAt && (
                             <div className="secondary trust-line">Checked {formatVerifiedAt(result.price.verifiedAt)}</div>
@@ -457,13 +548,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           )}
                         </div>
                         <div className="row-action">
-                          {result.genericTicketUrl ? (
-                            <a className="view-link" href={result.genericTicketUrl} target="_blank" rel="noreferrer">Tickets</a>
-                          ) : result.officialSiteUrl ? (
-                            <a className="view-link" href={result.officialSiteUrl} target="_blank" rel="noreferrer">View</a>
-                          ) : (
-                            <span className="view-link view-placeholder">Details</span>
-                          )}
+                          <TicketAction result={result} now={now} className="view-link" placeholderClassName="view-placeholder" />
                         </div>
                       </article>
                     );
@@ -496,10 +581,12 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                       <article className="fixture-card" key={result.id}>
                         <div className="fixture-card-header">
                           <CompetitionBadge category={compCat} />
+                          <FixtureStatusBadge result={result} now={now} />
                           <span className="fixture-card-distance">{result.travel.distanceMiles.toFixed(1)} mi</span>
                         </div>
                         <h3 className="fixture-card-title">{result.title}</h3>
                         <p className="fixture-card-meta">{formatKickoffDate(result.kickoffAt)}</p>
+                        <FixtureCaveats result={result} />
                         <p className="fixture-card-venue">{result.venueName}{result.venuePostcode ? `, ${result.venuePostcode}` : ""}</p>
                         <div className="fixture-card-travel">
                           <span className="chip"><CarIcon /> Drive {travelMinutes(result.travel.drivingMinutes)}</span>
@@ -512,16 +599,10 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                           )}
                         </div>
                         <div className="fixture-card-footer">
-                          <span className="badge check-club">Check club for availability</span>
+                          <AdmissionAvailability result={result} now={now} />
                           <span className="fixture-card-price">{formatPriceLine(result)}</span>
                         </div>
-                        {result.genericTicketUrl ? (
-                          <a className="fixture-card-action" href={result.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
-                        ) : result.officialSiteUrl ? (
-                          <a className="fixture-card-action" href={result.officialSiteUrl} target="_blank" rel="noreferrer">View details</a>
-                        ) : (
-                          <span className="fixture-card-action fixture-card-action-placeholder">View details</span>
-                        )}
+                        <TicketAction result={result} now={now} className="fixture-card-action" placeholderClassName="fixture-card-action-placeholder" />
                         {result.price.verifiedAt && (
                           <p className="trust-line card-trust">Checked {formatVerifiedAt(result.price.verifiedAt)}</p>
                         )}
