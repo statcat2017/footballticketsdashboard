@@ -6,7 +6,7 @@ const defaultDateRange = vi.fn(() => ({
   dateFrom: "2026-05-11",
   dateTo: "2026-05-21"
 }));
-const scheduleSearchTravelBackfill = vi.fn();
+const scheduleSearchTravelBackfill = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/db/client", () => ({
   getDatabase
@@ -185,7 +185,12 @@ describe("search API route", () => {
           drivingMinutes: 6,
           publicTransportMinutes: 8,
           publicTransportUrl: "https://www.google.com/maps/dir/?api=1&origin=51.4817%2C-0.191&destination=51.4817%2C-0.191&travelmode=transit&dir_action=navigate",
-          source: "cache"
+          source: "cache",
+          postcodeDistrict: "SW6",
+          isDistrictApproximate: true,
+          isPartial: false,
+          isStale: false,
+          calculatedAt: "2026-05-10T10:00:00.000Z"
         },
         isDemoData: false,
         isHistorical: false,
@@ -206,21 +211,11 @@ describe("search API route", () => {
       radiusMiles: 25,
       dateFrom: "2026-05-11",
       dateTo: "2026-05-21"
-    }, {
-      travelProviders: {
-        openRouteServiceApiKey: undefined,
-        travelTimeAppId: undefined,
-        travelTimeApiKey: undefined
-      }
     });
     expect(scheduleSearchTravelBackfill).toHaveBeenCalledWith(db, {
       postcode: "SW6 1HS",
       dateFrom: "2026-05-11",
       dateTo: "2026-05-21"
-    }, {
-      openRouteServiceApiKey: undefined,
-      travelTimeAppId: undefined,
-      travelTimeApiKey: undefined
     });
 
     expect(response.status).toBe(200);

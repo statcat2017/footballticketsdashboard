@@ -65,6 +65,7 @@ const postcodesIoResponseSchema = z.object({
 });
 
 const AREA_FALLBACK_COORDINATES = buildAreaFallbackCoordinates();
+export const POSTCODE_LOOKUP_TIMEOUT_MS = 1500;
 
 export interface ResolvedPostcodeOrigin {
   normalized: string;
@@ -145,27 +146,42 @@ export async function resolvePostcodeOrigin(
 export async function lookupPostcodeCoordinate(
   postcode: string,
   fetchImpl: typeof fetch,
-  postcodesIoBaseUrl = "https://api.postcodes.io"
+  postcodesIoBaseUrl = "https://api.postcodes.io",
+  timeoutMs = POSTCODE_LOOKUP_TIMEOUT_MS
 ): Promise<Coordinate | null> {
   const compact = postcode.replace(/\s+/g, "");
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   try {
-    const response = await fetchImpl(`${postcodesIoBaseUrl}/postcodes/${compact}`);
+    const lookup = (async () => {
+      const response = await fetchImpl(`${postcodesIoBaseUrl}/postcodes/${compact}`, { signal: controller.signal });
 
-    if (!response.ok) {
-      return null;
-    }
+      if (!response.ok) {
+        return null;
+      }
 
-    const parsed = postcodesIoResponseSchema.parse(await response.json());
-    const result = parsed.result;
+      const parsed = postcodesIoResponseSchema.parse(await response.json());
+      const result = parsed.result;
 
-    if (!result) {
-      return null;
-    }
+      return result ? { latitude: result.latitude, longitude: result.longitude } : null;
+    })();
 
-    return { latitude: result.latitude, longitude: result.longitude };
+    return await Promise.race([
+      lookup,
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          resolve(null);
+        }, timeoutMs);
+      })
+    ]);
   } catch {
     return null;
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 

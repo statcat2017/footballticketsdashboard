@@ -497,6 +497,18 @@ select {
   flex-wrap: wrap;
 }
 
+.travel-details {
+  min-width: 0;
+}
+
+.travel-status {
+  margin: 4px 0 0;
+  color: var(--grey-500);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

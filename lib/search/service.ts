@@ -8,12 +8,12 @@ import {
   type PostcodeResolver,
   type ResolvedPostcodeOrigin
 } from "../postcode.ts";
-import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
-import type { TravelProvider } from "../travel/providers.ts";
 import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
-import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
 import { defaultDateRange } from "../date.ts";
+
+// Keep the displayed freshness window aligned with the persistent refresh policy in #232.
+const STALE_TRAVEL_AFTER_MS = 90 * 24 * 60 * 60 * 1000;
 
 interface FixtureRow {
   id: number;
@@ -48,36 +48,14 @@ interface FixtureRow {
   cached_distance_miles: number | null;
   driving_minutes: number | null;
   public_transport_minutes: number | null;
-  cached_provider: string | null;
-  travel_source?: "cache" | "live" | "distance_only";
-}
-
-function mergeProviders(...providers: Array<string | null | undefined>): string | null {
-  const merged: string[] = [];
-
-  for (const provider of providers) {
-    if (!provider) {
-      continue;
-    }
-
-    for (const part of provider.split("+")) {
-      if (part && !merged.includes(part)) {
-        merged.push(part);
-      }
-    }
-  }
-
-  return merged.length > 0 ? merged.join("+") : null;
+  travel_calculated_at: string | null;
 }
 
 export async function searchFixtures(
   db: AppDatabase,
   request: SearchRequest,
   options: {
-    travelProviders?: TravelProviderRuntimeConfig;
     postcodeResolver?: PostcodeResolver;
-    /** Replaces the entire travel provider pipeline for testing. */
-    travelProviderOverrides?: TravelProvider[];
   } = {}
 ): Promise<FixtureResult[]> {
   const defaults = defaultDateRange();
@@ -125,10 +103,8 @@ export async function searchFixtures(
         return dist <= radiusFilter;
       });
 
-  const enrichedRows = await enrichTravelRows(db, inRadius, origin, options.travelProviders, options.travelProviderOverrides);
-
-  return enrichedRows
-    .map((row) => toResult(row, origin.coordinate))
+  return inRadius
+    .map((row) => toResult(row, origin))
     .filter((result) => request.radiusMiles === undefined || result.travel.distanceMiles <= request.radiusMiles)
     .sort((first, second) => {
       const distance = first.travel.distanceMiles - second.travel.distanceMiles;
@@ -181,7 +157,7 @@ function queryFixtures(
       tc.distance_miles as cached_distance_miles,
       tc.driving_minutes,
       tc.public_transport_minutes,
-      tc.provider as cached_provider
+      tc.calculated_at as travel_calculated_at
     FROM fixtures f
     JOIN competitions c ON c.code = f.competition_code
     LEFT JOIN clubs home ON home.id = f.home_club_id
@@ -243,7 +219,7 @@ function queryAllHistoricalFixtures(
       tc.distance_miles as cached_distance_miles,
       tc.driving_minutes,
       tc.public_transport_minutes,
-      tc.provider as cached_provider
+      tc.calculated_at as travel_calculated_at
     FROM fixtures f
     JOIN competitions c ON c.code = f.competition_code
     LEFT JOIN clubs home ON home.id = f.home_club_id
@@ -258,8 +234,8 @@ function queryAllHistoricalFixtures(
   `, [postcodeDistrictValue]);
 }
 
-function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: number }): FixtureResult {
-  const calculatedDistance = distanceMiles(userLocation, {
+function toResult(row: FixtureRow, origin: ResolvedPostcodeOrigin): FixtureResult {
+  const calculatedDistance = distanceMiles(origin.coordinate, {
     latitude: row.latitude,
     longitude: row.longitude
   });
@@ -274,6 +250,22 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
 
   if (row.cached_distance_miles === null) {
     warnings.push("Travel time unavailable for this postcode district; showing straight-line distance only.");
+  }
+
+  const source = row.cached_distance_miles === null ? "distance_only" : "cache";
+  const calculatedAt = row.travel_calculated_at;
+  const calculatedAtTime = calculatedAt ? Date.parse(calculatedAt) : Number.NaN;
+  const isStale = source === "cache"
+    && (!Number.isFinite(calculatedAtTime) || Date.now() - calculatedAtTime > STALE_TRAVEL_AFTER_MS);
+  const isPartial = source === "cache"
+    && (row.driving_minutes === null || row.public_transport_minutes === null);
+
+  if (isPartial) {
+    warnings.push("Some travel modes are unavailable for this postcode district.");
+  }
+
+  if (isStale) {
+    warnings.push("Travel estimate may be out of date.");
   }
 
   if (row.home_one_off === 1 && row.generic_ticket_url === null) {
@@ -312,155 +304,19 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
       distanceMiles: Math.round(distance * 10) / 10,
       drivingMinutes: row.driving_minutes,
       publicTransportMinutes: row.public_transport_minutes,
-      publicTransportUrl: buildGoogleMapsTransitDirectionsUrl(userLocation, {
+      publicTransportUrl: buildGoogleMapsTransitDirectionsUrl(origin.coordinate, {
         latitude: row.latitude,
         longitude: row.longitude
       }),
-      source: row.travel_source ?? (row.cached_distance_miles === null ? "distance_only" : "cache")
+      source,
+      postcodeDistrict: origin.district,
+      isDistrictApproximate: source === "cache" || origin.source === "fallback",
+      isPartial,
+      isStale,
+      calculatedAt
     },
     isDemoData: row.is_demo_data === 1,
     isHistorical: row.is_historical === 1,
     warnings
-  };
-}
-
-async function enrichTravelRows(
-  db: AppDatabase,
-  rows: FixtureRow[],
-  origin: ResolvedPostcodeOrigin,
-  travelProviders?: TravelProviderRuntimeConfig,
-  travelProviderOverrides?: TravelProvider[]
-): Promise<FixtureRow[]> {
-  const byVenue = new Map<number, {
-    row: FixtureRow;
-    buildEntry: () => ReturnType<typeof buildTravelCacheEntry>;
-  }>();
-
-  for (const row of rows) {
-    const hasCachedTravel = row.cached_distance_miles !== null
-      && row.driving_minutes !== null
-      && row.public_transport_minutes !== null;
-
-    if (hasCachedTravel || byVenue.has(row.venue_id)) {
-      continue;
-    }
-
-    byVenue.set(row.venue_id, {
-      row,
-      buildEntry: () => travelProviderOverrides
-        ? buildEntryWithOverrides(travelProviderOverrides, origin, row)
-        : buildTravelCacheEntry({
-            postcodeDistrictValue: origin.district,
-            origin: origin.coordinate,
-            venue: {
-              venue_id: row.venue_id,
-              venue_name: row.venue_name,
-              latitude: row.latitude,
-              longitude: row.longitude
-            },
-            providers: travelProviders ?? {}
-          })
-    });
-  }
-
-  const MAX_CONCURRENT = 4;
-  const venueArray = Array.from(byVenue.entries());
-  const entryResults: Array<readonly [number, Awaited<ReturnType<typeof buildTravelCacheEntry>>]> = [];
-
-  for (let i = 0; i < venueArray.length; i += MAX_CONCURRENT) {
-    const chunk = venueArray.slice(i, i + MAX_CONCURRENT);
-    const chunkResults = await Promise.all(chunk.map(async ([venueId, { row, buildEntry }]) => {
-      const entry = await buildEntry();
-      if (entry.provider) {
-        const mergedDistanceMiles = row.cached_distance_miles ?? entry.distanceMiles;
-        const mergedDrivingMinutes = row.driving_minutes ?? entry.drivingMinutes;
-        const mergedPublicTransportMinutes = row.public_transport_minutes ?? entry.publicTransportMinutes;
-        const mergedProvider = mergeProviders(row.cached_provider, entry.provider);
-
-        try {
-          await upsertTravelCacheRow(
-            db,
-            origin.district,
-            venueId,
-            mergedDistanceMiles,
-            mergedDrivingMinutes,
-            mergedPublicTransportMinutes,
-            mergedProvider ?? entry.provider,
-            new Date().toISOString()
-          );
-        } catch (error) {
-          console.error("failed to cache travel entry for venue", venueId, error);
-        }
-      }
-      return [venueId, entry] as const;
-    }));
-    entryResults.push(...chunkResults);
-  }
-  const entries = new Map(entryResults);
-
-  return rows.map((row) => {
-    const entry = entries.get(row.venue_id);
-
-    if (!entry?.provider) {
-      if (row.cached_distance_miles !== null) {
-        return { ...row, travel_source: "cache" };
-      }
-
-      return { ...row, travel_source: "distance_only" };
-    }
-
-    const mergedDistanceMiles = row.cached_distance_miles ?? entry.distanceMiles;
-    const mergedDrivingMinutes = row.driving_minutes ?? entry.drivingMinutes;
-    const mergedPublicTransportMinutes = row.public_transport_minutes ?? entry.publicTransportMinutes;
-    const mergedProvider = mergeProviders(row.cached_provider, entry.provider);
-
-    return {
-      ...row,
-      cached_distance_miles: mergedDistanceMiles,
-      driving_minutes: mergedDrivingMinutes,
-      public_transport_minutes: mergedPublicTransportMinutes,
-      cached_provider: mergedProvider,
-      travel_source: row.cached_distance_miles !== null ? "cache" : "live"
-    };
-  });
-}
-
-async function buildEntryWithOverrides(
-  providers: TravelProvider[],
-  origin: ResolvedPostcodeOrigin,
-  row: FixtureRow
-): Promise<{
-  venueId: number;
-  distanceMiles: number;
-  drivingMinutes: number | null;
-  publicTransportMinutes: number | null;
-  provider: string | null;
-}> {
-  const destination = { latitude: row.latitude, longitude: row.longitude };
-  const results = await Promise.allSettled(
-    providers.map(p => p.estimate(origin.coordinate, destination))
-  );
-
-  let drivingMinutes: number | null = null;
-  let publicTransportMinutes: number | null = null;
-  const providerNames: string[] = [];
-
-  for (const result of results) {
-    if (result.status === "fulfilled" && result.value) {
-      const estimate = result.value;
-      if (estimate.drivingMinutes !== null) drivingMinutes = estimate.drivingMinutes;
-      if (estimate.publicTransportMinutes !== null) publicTransportMinutes = estimate.publicTransportMinutes;
-      if (estimate.provider) providerNames.push(estimate.provider);
-    }
-  }
-
-  const distanceMilesValue = Math.round(distanceMiles(origin.coordinate, destination) * 10) / 10;
-
-  return {
-    venueId: row.venue_id,
-    distanceMiles: distanceMilesValue,
-    drivingMinutes,
-    publicTransportMinutes,
-    provider: providerNames.length > 0 ? providerNames.join("+") : null
   };
 }
