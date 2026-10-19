@@ -12,6 +12,8 @@ import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts"
 import type { TravelProvider } from "../travel/providers.ts";
 import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
+import type { PriceConfirmationPolicy } from "../pricing/policy.ts";
+import { DEFAULT_PRICE_CONFIRMATION_POLICY, priceConfirmationReasons } from "../pricing/policy.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
 import { defaultDateRange } from "../date.ts";
 
@@ -43,6 +45,7 @@ interface FixtureRow {
   source_url: string | null;
   verified_at: string | null;
   price_confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown" | null;
+  price_season_label: string | null;
   has_price_override: number;
   price_override_note: string | null;
   cached_distance_miles: number | null;
@@ -78,6 +81,7 @@ export async function searchFixtures(
     postcodeResolver?: PostcodeResolver;
     /** Replaces the entire travel provider pipeline for testing. */
     travelProviderOverrides?: TravelProvider[];
+    priceConfirmationPolicy?: PriceConfirmationPolicy;
   } = {}
 ): Promise<FixtureResult[]> {
   const defaults = defaultDateRange();
@@ -128,7 +132,7 @@ export async function searchFixtures(
   const enrichedRows = await enrichTravelRows(db, inRadius, origin, options.travelProviders, options.travelProviderOverrides);
 
   return enrichedRows
-    .map((row) => toResult(row, origin.coordinate))
+    .map((row) => toResult(row, origin.coordinate, options.priceConfirmationPolicy ?? DEFAULT_PRICE_CONFIRMATION_POLICY))
     .filter((result) => request.radiusMiles === undefined || result.travel.distanceMiles <= request.radiusMiles)
     .sort((first, second) => {
       const distance = first.travel.distanceMiles - second.travel.distanceMiles;
@@ -176,6 +180,7 @@ function queryFixtures(
       COALESCE(fpo.source_url, ctp.source_url) as source_url,
       COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
       COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
+      COALESCE(fpo.season_label, ctp.season_label) as price_season_label,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,
@@ -238,6 +243,7 @@ function queryAllHistoricalFixtures(
       COALESCE(fpo.source_url, ctp.source_url) as source_url,
       COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
       COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
+      COALESCE(fpo.season_label, ctp.season_label) as price_season_label,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,
@@ -258,7 +264,11 @@ function queryAllHistoricalFixtures(
   `, [postcodeDistrictValue]);
 }
 
-function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: number }): FixtureResult {
+function toResult(
+  row: FixtureRow,
+  userLocation: { latitude: number; longitude: number },
+  priceConfirmationPolicy: PriceConfirmationPolicy
+): FixtureResult {
   const calculatedDistance = distanceMiles(userLocation, {
     latitude: row.latitude,
     longitude: row.longitude
@@ -279,6 +289,13 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
   if (row.home_one_off === 1 && row.generic_ticket_url === null) {
     warnings.push("One-off fixture: check the fixture source for ticket information.");
   }
+
+  const confirmationReasons = priceConfirmationReasons({
+    checkedAt: row.verified_at,
+    priceSeasonLabel: row.price_season_label,
+    fixtureSeasonLabel: row.season_label,
+    maxAgeDays: priceConfirmationPolicy.maxAgeDays
+  });
 
   return {
     id: row.id,
@@ -306,7 +323,13 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
       verifiedAt: row.verified_at,
       confidence: row.price_confidence ?? "unknown",
       isOverride: row.has_price_override === 1,
-      overrideNote: row.price_override_note
+      overrideNote: row.price_override_note,
+      seasonLabel: row.price_season_label,
+      confirmation: {
+        required: confirmationReasons.length > 0,
+        maxAgeDays: priceConfirmationPolicy.maxAgeDays,
+        reasons: confirmationReasons
+      }
     },
     travel: {
       distanceMiles: Math.round(distance * 10) / 10,

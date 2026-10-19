@@ -10,7 +10,15 @@ type CompetitionCategory = "premier-league" | "efl" | "non-league" | "womens" | 
 const moneyFormatter = new Intl.NumberFormat("en-GB", {
   style: "currency",
   currency: "GBP",
-  maximumFractionDigits: 0
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+
+const verifiedAtFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "Europe/London"
 });
 
 const kickoffFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -42,10 +50,12 @@ function formatMoney(pence: number | null): string {
 }
 
 function formatPriceLine(result: FixtureResult): string {
-  if (result.price.adultPricePence === null && result.price.concessionPricePence === null) {
-    return "Price not confirmed";
-  }
-  return `${formatMoney(result.price.adultPricePence)} conc ${formatMoney(result.price.concessionPricePence)}`;
+  const prices = [
+    result.price.adultPricePence === null ? null : `Adult ${formatMoney(result.price.adultPricePence)}`,
+    result.price.concessionPricePence === null ? null : `Concession ${formatMoney(result.price.concessionPricePence)}`
+  ].filter((price): price is string => price !== null);
+
+  return prices.length > 0 ? prices.join(" · ") : "Admission price not confirmed";
 }
 
 function formatKickoffDate(value: string | null): string {
@@ -70,12 +80,62 @@ function formatDateRange(results: FixtureResult[]): string {
 function formatVerifiedAt(value: string | null): string {
   if (value === null) return "";
   const verified = new Date(value);
-  const now = new Date();
-  const diffHours = Math.round((now.getTime() - verified.getTime()) / (1000 * 60 * 60));
-  if (diffHours < 1) return "Just now";
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.round(diffHours / 24);
-  return `${diffDays}d ago`;
+  return Number.isFinite(verified.getTime()) ? verifiedAtFormatter.format(verified) : "Unknown date";
+}
+
+function confidenceLabel(confidence: FixtureResult["price"]["confidence"]): string {
+  switch (confidence) {
+    case "verified": return "Verified confidence";
+    case "imported": return "Imported confidence";
+    case "inferred": return "Inferred confidence";
+    case "approximate": return "Approximate confidence";
+    case "unknown": return "Confidence unknown";
+  }
+}
+
+function safeHttpUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function priceConfirmationReason(result: FixtureResult, reason: FixtureResult["price"]["confirmation"]["reasons"][number]): string {
+  switch (reason) {
+    case "missing_checked_date": return "No valid checked date is recorded.";
+    case "older_than_threshold": return `Checked more than ${result.price.confirmation.maxAgeDays} days ago.`;
+    case "different_season": return `Price season ${result.price.seasonLabel} differs from fixture season ${result.seasonLabel}.`;
+  }
+}
+
+function PriceEvidence({ result, className = "" }: { result: FixtureResult; className?: string }) {
+  const sourceUrl = safeHttpUrl(result.price.sourceUrl);
+
+  return (
+    <div className={`price-evidence ${className}`.trim()}>
+      <div className="price-evidence-value">{formatPriceLine(result)}</div>
+      <div className="price-evidence-details">
+        <span>{confidenceLabel(result.price.confidence)}</span>
+        <span>{result.price.verifiedAt ? `Checked ${formatVerifiedAt(result.price.verifiedAt)}` : "No checked date recorded"}</span>
+        {result.price.seasonLabel && <span>Price season {result.price.seasonLabel}</span>}
+        {result.price.isOverride && <span>Includes fixture-specific pricing</span>}
+        {sourceUrl ? (
+          <a className="price-source-link" href={sourceUrl} target="_blank" rel="noreferrer">Price source</a>
+        ) : (
+          <span>Price source unavailable</span>
+        )}
+      </div>
+      {result.price.confirmation.required && (
+        <p className="price-confirmation" role="note">
+          <strong>Confirm under our guide price policy:</strong>{" "}
+          {result.price.confirmation.reasons.map((reason) => priceConfirmationReason(result, reason)).join(" ")}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function travelMinutes(value: number | null): string {
@@ -382,9 +442,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 )}
                 <span className="featured-distance">{featuredFixture.travel.distanceMiles.toFixed(1)} miles away</span>
               </p>
-              {featuredFixture.price.verifiedAt && (
-                <p className="trust-line">Last checked {formatVerifiedAt(featuredFixture.price.verifiedAt)}{featuredFixture.price.sourceUrl ? ` · Source link available` : ""}</p>
-              )}
+              <PriceEvidence result={featuredFixture} className="featured-price-evidence" />
             </div>
             <div className="featured-actions">
               {featuredFixture.genericTicketUrl ? (
@@ -434,10 +492,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                         </div>
                         <div>
                           <span className="badge check-club">Check club for availability</span>
-                          <div className="secondary">{formatPriceLine(result)}</div>
-                          {result.price.verifiedAt && (
-                            <div className="secondary trust-line">Checked {formatVerifiedAt(result.price.verifiedAt)}</div>
-                          )}
+                          <PriceEvidence result={result} className="desktop-price-evidence" />
                         </div>
                         <div className="travel-chips">
                           <span className="chip">
@@ -513,17 +568,14 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                         </div>
                         <div className="fixture-card-footer">
                           <span className="badge check-club">Check club for availability</span>
-                          <span className="fixture-card-price">{formatPriceLine(result)}</span>
                         </div>
+                        <PriceEvidence result={result} className="mobile-price-evidence" />
                         {result.genericTicketUrl ? (
                           <a className="fixture-card-action" href={result.genericTicketUrl} target="_blank" rel="noreferrer">Get tickets</a>
                         ) : result.officialSiteUrl ? (
                           <a className="fixture-card-action" href={result.officialSiteUrl} target="_blank" rel="noreferrer">View details</a>
                         ) : (
                           <span className="fixture-card-action fixture-card-action-placeholder">View details</span>
-                        )}
-                        {result.price.verifiedAt && (
-                          <p className="trust-line card-trust">Checked {formatVerifiedAt(result.price.verifiedAt)}</p>
                         )}
                       </article>
                     );

@@ -191,7 +191,7 @@ function jsonResponse(results: FixtureResult[]): Response {
   });
 }
 
-function customFixture(id: number, overrides: Partial<FixtureResult> & { travel?: Partial<FixtureResult["travel"]>; price?: Partial<FixtureResult["price"]> }): FixtureResult {
+function customFixture(id: number, overrides: Omit<Partial<FixtureResult>, "travel" | "price"> & { travel?: Partial<FixtureResult["travel"]>; price?: Partial<FixtureResult["price"]> }): FixtureResult {
   const base = fixture(id);
   return {
     ...base,
@@ -228,7 +228,9 @@ function fixture(id: number): FixtureResult {
       verifiedAt: null,
       confidence: "verified",
       isOverride: false,
-      overrideNote: null
+      overrideNote: null,
+      seasonLabel: null,
+      confirmation: { required: false, maxAgeDays: 90, reasons: [] }
     },
     travel: {
       distanceMiles: id,

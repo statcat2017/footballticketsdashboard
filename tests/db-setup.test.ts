@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { setupDatabase } from "@/lib/db/setup";
+import { applyPendingMigrations, rollbackLast } from "@/lib/db/migrate";
 import { SEED_DATA } from "@/lib/db/seed-data";
 import {
   MEN_PYRAMID_CLUBS,
@@ -19,6 +20,30 @@ const totalClubs = (() => {
 })();
 
 describe("database setup", () => {
+  it("adds reversible nullable season provenance to ticket-price tables", async () => {
+    const db = await setupDatabase(":memory:");
+    const migrationsDir = path.join(process.cwd(), "lib", "db", "migrations");
+    const priceBefore = db.prepare("SELECT adult_price_pence FROM club_ticket_prices WHERE club_id = 1").get() as {
+      adult_price_pence: number;
+    };
+
+    const hasSeasonColumn = (table: string): boolean => {
+      const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      return columns.some((column) => column.name === "season_label");
+    };
+
+    expect(hasSeasonColumn("club_ticket_prices")).toBe(true);
+    expect(hasSeasonColumn("fixture_ticket_price_overrides")).toBe(true);
+    expect(rollbackLast(db, migrationsDir)).toBe("030-ticket-price-season.sql");
+    expect(hasSeasonColumn("club_ticket_prices")).toBe(false);
+    expect(hasSeasonColumn("fixture_ticket_price_overrides")).toBe(false);
+
+    applyPendingMigrations(db, migrationsDir);
+    expect(hasSeasonColumn("club_ticket_prices")).toBe(true);
+    expect(db.prepare("SELECT adult_price_pence FROM club_ticket_prices WHERE club_id = 1").get()).toEqual(priceBefore);
+    db.close();
+  });
+
   it("creates a SQLite file and can be run repeatedly without duplicating seed rows", async () => {
     const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-db-"));
     const filename = path.join(dirname, "nearmefc.sqlite");

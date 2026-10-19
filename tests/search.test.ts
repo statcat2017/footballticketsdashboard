@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import type { QueryParam } from "@/lib/db/adapter";
-import { createAppDatabase } from "@/lib/db/client";
+import { createAppDatabase, createDatabase } from "@/lib/db/client";
+import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import type { PostcodeResolver } from "@/lib/postcode";
 import { searchFixtures } from "@/lib/search/service";
 
@@ -169,6 +173,61 @@ describe("fixture search", () => {
       isOverride: true,
       overrideNote: "Non League Day offer"
     });
+  });
+
+  it("preserves fixture price evidence across a persistent-file reopen", async () => {
+    const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-price-reopen-"));
+    const filename = path.join(dirname, "prices.sqlite");
+    let sqlite = await createDatabase(filename);
+
+    try {
+      const db = createSqliteAppDatabase(sqlite);
+      await db.run(`
+        INSERT INTO fixtures (
+          source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+          kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label,
+          status, is_demo_data, is_historical
+        ) VALUES ('price-reopen', 'fixture-1', 'PL', 1, 2, 1,
+          '2099-06-01T15:00:00.000Z', '2099-06-01', '15:00', 'confirmed', '2025-26',
+          'scheduled', 0, 0)
+      `);
+      const fixture = await db.get<{ id: number }>(
+        "SELECT id FROM fixtures WHERE source = 'price-reopen' AND source_id = 'fixture-1'"
+      );
+      const checkedAt = new Date().toISOString().slice(0, 10);
+      await db.run(`
+        INSERT INTO fixture_ticket_price_overrides (
+          fixture_id, sale_mode, adult_price_pence, concession_price_pence,
+          source_url, verified_at, note, confidence, season_label
+        ) VALUES (?, 'pay_on_gate', 1250, NULL,
+          'https://prices.example.test/reopened-fixture', ?, 'Reopen test', 'verified', '2025-26')
+      `, [fixture?.id ?? 0, checkedAt]);
+
+      sqlite.close();
+      sqlite = await createDatabase(filename);
+      const reopenedDb = createSqliteAppDatabase(sqlite);
+      const results = await searchFixtures(reopenedDb, {
+        postcode: "SW6 1HS",
+        dateFrom: "2099-06-01",
+        dateTo: "2099-06-02"
+      });
+      const result = results.find((row) => row.title === "Chelsea vs Arsenal");
+
+      expect(result?.price).toMatchObject({
+        adultPricePence: 1250,
+        concessionPricePence: 2000,
+        sourceUrl: "https://prices.example.test/reopened-fixture",
+        verifiedAt: checkedAt,
+        confidence: "verified",
+        isOverride: true,
+        seasonLabel: "2025-26",
+        confirmation: { required: false, maxAgeDays: 90, reasons: [] }
+      });
+      expect(result?.genericTicketUrl).toBe("https://www.chelseafc.com/en/tickets");
+    } finally {
+      sqlite.close();
+      fs.rmSync(dirname, { recursive: true, force: true });
+    }
   });
 
   it("uses exact postcode coordinates and live driving lookup on first search when cache is missing", async () => {

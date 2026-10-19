@@ -16,6 +16,12 @@ export interface PriceSummary {
   confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown";
   isOverride: boolean;
   overrideNote: string | null;
+  seasonLabel: string | null;
+  confirmation: {
+    required: boolean;
+    maxAgeDays: number;
+    reasons: Array<"missing_checked_date" | "older_than_threshold" | "different_season">;
+  };
 }
 
 export interface TravelSummary {
