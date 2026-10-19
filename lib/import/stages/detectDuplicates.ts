@@ -5,6 +5,7 @@ import type { ImportBatchRow } from "../types.ts";
 import { findDuplicateBatchRow, findDuplicateInSameBatch, findRelaxedDuplicateInSameBatch, hasMeaningfulChanges } from "../validation.ts";
 import { makeIssue } from "../validation.ts";
 import { findExistingFixtureDuplicateByParticipantsAndDate } from "../fixtureIdentity.ts";
+import { getLondonKickoffParts } from "../kickoffTime.ts";
 
 export async function detectDuplicates(
   db: AppDatabase,
@@ -21,6 +22,7 @@ export async function detectDuplicates(
     venueResolvedId: ctx.venueId,
     kickoffDate: ctx.normalizedDate ?? ctx.row.kickoffDate,
     kickoffTime: ctx.normalizedTime ?? ctx.row.kickoffTime,
+    kickoffOffset: ctx.normalizedOffset ?? ctx.row.kickoffOffset,
     awayIsOneOff: ctx.resolvedAwayIsOneOff,
   } as ImportBatchRow;
 
@@ -114,10 +116,14 @@ export async function detectDuplicates(
 
 function buildSameBatchKey(row: ImportBatchRow): string | null {
   if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
-  return `${row.homeParticipantRaw}|${row.awayParticipantRaw}|${row.kickoffDate}|${row.kickoffTime ?? ""}|${row.venueRaw ?? ""}|${row.competitionRaw ?? ""}`;
+  const kickoff = getLondonKickoffParts(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+  const date = kickoff?.date ?? row.kickoffDate;
+  const time = kickoff?.time ?? row.kickoffTime ?? "";
+  return `${row.homeParticipantRaw}|${row.awayParticipantRaw}|${date}|${time}|${row.venueRaw ?? ""}|${row.competitionRaw ?? ""}`;
 }
 
 function buildRelaxedSameBatchKey(row: ImportBatchRow): string | null {
   if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
-  return `relaxed|${row.homeParticipantRaw}|${row.awayParticipantRaw}|${row.kickoffDate}`;
+  const date = getLondonKickoffParts(row.kickoffDate, row.kickoffTime, row.kickoffOffset)?.date ?? row.kickoffDate;
+  return `relaxed|${row.homeParticipantRaw}|${row.awayParticipantRaw}|${date}`;
 }

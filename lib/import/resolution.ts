@@ -56,6 +56,7 @@ export async function validateRowById(
   };
   if (validation.normalizedDate !== undefined) updates.kickoffDate = validation.normalizedDate;
   if (validation.normalizedTime !== undefined) updates.kickoffTime = validation.normalizedTime;
+  if (validation.normalizedOffset !== undefined) updates.kickoffOffset = validation.normalizedOffset;
   if (validation.normalizedStatus !== undefined) updates.status = validation.normalizedStatus;
 
   if (options?.skipReturn) {
@@ -90,6 +91,7 @@ export async function editAndRevalidateRow(
     venueRaw: { column: "venue_raw", current: row.venueRaw },
     kickoffDate: { column: "kickoff_date", current: row.kickoffDate },
     kickoffTime: { column: "kickoff_time", current: row.kickoffTime },
+    kickoffOffset: { column: "kickoff_offset", current: row.kickoffOffset ?? null },
     ticketUrl: { column: "ticket_url", current: row.ticketUrl },
     sourceUrl: { column: "source_url", current: row.sourceUrl },
   };
@@ -140,6 +142,7 @@ function rawFieldToRecord(row: ImportBatchRow): Record<string, string | null> {
     venueRaw: row.venueRaw,
     kickoffDate: row.kickoffDate,
     kickoffTime: row.kickoffTime,
+    kickoffOffset: row.kickoffOffset ?? null,
     status: row.status,
     ticketUrl: row.ticketUrl,
     sourceUrl: row.sourceUrl,

@@ -8,11 +8,13 @@ import {
   createSource,
   createBatch,
   addBatchRows,
+  createImportBatchFromCsv,
   getBatchRows,
   updateBatchRowOutcome,
 } from "@/lib/import";
 import { validateImportBatch } from "@/lib/import/validation";
 import { applyBatchRows } from "@/lib/import/apply";
+import { searchFixtures } from "@/lib/search/service";
 import type { NormalizedFixtureRow } from "@/lib/import";
 
 function setupTestDb(): AppDatabase {
@@ -92,6 +94,144 @@ async function createTestBatch(
 }
 
 describe("validateImportBatch", () => {
+  it("imports local summer, winter, and explicit-offset times and searches on the local fixture date", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const csv = [
+      "Home,Away,Date,Time,Competition,Venue",
+      "Chelsea,Norwich City,2026-07-04,15:00,PL,Stamford Bridge",
+      "Manchester United,Queens Park Rangers,2026-01-10,15:00,ELC,Old Trafford",
+      "Queens Park Rangers,Birmingham City,2026-07-05,15:00+01:00,ELC,Loftus Road"
+    ].join("\n");
+    const batch = await createImportBatchFromCsv(db, csv, sourceId, "test");
+
+    const validation = await validateImportBatch(db, batch.batchId);
+    expect(validation).toMatchObject({ insertCount: 3, blockedCount: 0 });
+    await applyBatchRows(db, batch.batchId, "test");
+
+    const fixtures = await db.all<{
+      home_club_id: number;
+      away_club_id: number;
+      kickoff_at: string;
+      fixture_date: string;
+      kickoff_time: string;
+      kickoff_time_basis: string;
+      kickoff_time_status: string;
+    }>(`
+      SELECT home_club_id, away_club_id, kickoff_at, fixture_date, kickoff_time,
+        kickoff_time_basis, kickoff_time_status
+      FROM fixtures WHERE source = 'import_batch' ORDER BY fixture_date
+    `);
+    expect(fixtures).toEqual([
+      expect.objectContaining({
+        home_club_id: 3,
+        away_club_id: 4,
+        kickoff_at: "2026-01-10T15:00:00.000Z",
+        fixture_date: "2026-01-10",
+        kickoff_time: "15:00",
+        kickoff_time_basis: "Europe/London",
+        kickoff_time_status: "confirmed"
+      }),
+      expect.objectContaining({
+        home_club_id: 1,
+        away_club_id: 5,
+        kickoff_at: "2026-07-04T14:00:00.000Z",
+        fixture_date: "2026-07-04",
+        kickoff_time: "15:00",
+        kickoff_time_basis: "Europe/London",
+        kickoff_time_status: "confirmed"
+      }),
+      expect.objectContaining({
+        home_club_id: 4,
+        away_club_id: 6,
+        kickoff_at: "2026-07-05T14:00:00.000Z",
+        fixture_date: "2026-07-05",
+        kickoff_time: "15:00",
+        kickoff_time_basis: "+01:00",
+        kickoff_time_status: "confirmed"
+      })
+    ]);
+
+    const rows = await getBatchRows(db, batch.batchId);
+    expect(rows[2].kickoffOffset).toBe("+01:00");
+    expect(rows[2].evidenceJson).toContain("15:00+01:00");
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-07-04",
+      dateTo: "2026-07-04"
+    }, {
+      postcodeResolver: { resolve: async () => ({ latitude: 51.4817, longitude: -0.191 }) },
+      travelProviderOverrides: []
+    });
+    expect(results.map((result) => ({ title: result.title, fixtureDate: result.fixtureDate, kickoffAt: result.kickoffAt }))).toContainEqual({
+      title: "Chelsea vs Norwich City",
+      fixtureDate: "2026-07-04",
+      kickoffAt: "2026-07-04T14:00:00.000Z"
+    });
+  });
+
+  it("blocks ambiguous and nonexistent London times but accepts an explicit offset", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [
+      {
+        homeParticipantRaw: "Chelsea", awayParticipantRaw: "Norwich City", competitionRaw: "PL",
+        kickoffDate: "2026-03-29", kickoffTime: "01:30", venueRaw: "Stamford Bridge"
+      },
+      {
+        homeParticipantRaw: "Manchester United", awayParticipantRaw: "Queens Park Rangers", competitionRaw: "ELC",
+        kickoffDate: "2026-10-25", kickoffTime: "01:30", venueRaw: "Old Trafford"
+      },
+      {
+        homeParticipantRaw: "Queens Park Rangers", awayParticipantRaw: "Norwich City", competitionRaw: "ELC",
+        kickoffDate: "2026-10-25", kickoffTime: "01:30", kickoffOffset: "+01:00", venueRaw: "Loftus Road"
+      }
+    ]);
+
+    const validation = await validateImportBatch(db, batchId);
+    expect(validation).toMatchObject({ insertCount: 1, blockedCount: 2 });
+    const rows = await getBatchRows(db, batchId);
+    expect(rows[0].warningsJson).toContain("nonexistent_kickoff_time");
+    expect(rows[1].warningsJson).toContain("ambiguous_kickoff_time");
+
+    await applyBatchRows(db, batchId, "test");
+    const fixture = await db.get<{ kickoff_at: string; kickoff_time_basis: string }>(
+      `SELECT kickoff_at, kickoff_time_basis FROM fixtures WHERE source = 'import_batch'`
+    );
+    expect(fixture).toEqual({ kickoff_at: "2026-10-25T00:30:00.000Z", kickoff_time_basis: "+01:00" });
+  });
+
+  it("keeps a known date with an unknown time when kickoff assumptions are disabled", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [{
+      homeParticipantRaw: "Norwich City",
+      awayParticipantRaw: "Queens Park Rangers",
+      competitionRaw: "ELC",
+      kickoffDate: "2026-03-29",
+      venueRaw: "Carrow Road"
+    }]);
+
+    await validateImportBatch(db, batchId, { kickoffAssumptionPolicy: { enabled: false } });
+    await applyBatchRows(db, batchId, "test", { kickoffAssumptionPolicy: { enabled: false } });
+
+    const fixture = await db.get<{
+      fixture_date: string;
+      kickoff_at: string | null;
+      kickoff_time: string | null;
+      kickoff_time_basis: string | null;
+      kickoff_time_status: string;
+    }>(`SELECT fixture_date, kickoff_at, kickoff_time, kickoff_time_basis, kickoff_time_status FROM fixtures WHERE source = 'import_batch'`);
+    expect(fixture).toEqual({
+      fixture_date: "2026-03-29",
+      kickoff_at: null,
+      kickoff_time: null,
+      kickoff_time_basis: null,
+      kickoff_time_status: "unknown"
+    });
+  });
+
   it("marks complete row as insert when no existing fixture", async () => {
     const db = setupTestDb();
     const sourceId = await createTestSource(db);
@@ -141,6 +281,29 @@ describe("validateImportBatch", () => {
     expect(rows[0].matchResult).toBe("update");
     expect(rows[0].homeParticipantResolvedId).toBe(1);
     expect(rows[0].awayParticipantResolvedId).toBe(2);
+  });
+
+  it("updates a fixture when the source offset changes its UTC instant", async () => {
+    const db = setupTestDb();
+    const sourceId = await createTestSource(db);
+    const batchId = await createTestBatch(db, sourceId, [{
+      homeParticipantRaw: "Chelsea",
+      awayParticipantRaw: "Arsenal",
+      competitionRaw: "PL",
+      kickoffDate: "2026-05-20",
+      kickoffTime: "15:00",
+      kickoffOffset: "+01:00",
+      venueRaw: "Stamford Bridge"
+    }]);
+
+    const validation = await validateImportBatch(db, batchId);
+    expect(validation.updateCount).toBe(1);
+    await applyBatchRows(db, batchId, "test");
+
+    const fixture = await db.get<{ kickoff_at: string; kickoff_time_basis: string }>(
+      "SELECT kickoff_at, kickoff_time_basis FROM fixtures WHERE id = 100"
+    );
+    expect(fixture).toEqual({ kickoff_at: "2026-05-20T14:00:00.000Z", kickoff_time_basis: "+01:00" });
   });
 
   it("resolves club via alias", async () => {
@@ -499,11 +662,20 @@ describe("applyBatchRows", () => {
     await validateImportBatch(db, batchId, { kickoffAssumptionPolicy });
     await applyBatchRows(db, batchId, "test", { kickoffAssumptionPolicy });
 
-    const fixture = await db.get<{ kickoff_time: string | null; kickoff_time_status: string }>(
-      `SELECT kickoff_time, kickoff_time_status FROM fixtures WHERE source = 'import_batch'`
+    const fixture = await db.get<{
+      kickoff_time: string | null;
+      kickoff_at: string | null;
+      kickoff_time_basis: string | null;
+      kickoff_time_status: string;
+    }>(
+      `SELECT kickoff_time, kickoff_at, kickoff_time_basis, kickoff_time_status FROM fixtures WHERE source = 'import_batch'`
     );
-    expect(fixture?.kickoff_time).toBe("20:00");
-    expect(fixture?.kickoff_time_status).toBe("assumed");
+    expect(fixture).toEqual({
+      kickoff_time: "20:00",
+      kickoff_at: "2026-05-20T19:00:00.000Z",
+      kickoff_time_basis: "Europe/London",
+      kickoff_time_status: "assumed"
+    });
   });
 
   it("applies update rows and updates existing fixtures", async () => {

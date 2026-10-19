@@ -24,6 +24,8 @@ export type IssueCode =
   | "ambiguous_club"
   | "invalid_date"
   | "invalid_time"
+  | "ambiguous_kickoff_time"
+  | "nonexistent_kickoff_time"
   | "assumed_time"
   | "invalid_status"
   | "invalid_source_url"
@@ -61,6 +63,7 @@ export interface RowEditFields {
   venueRaw?: string | null;
   kickoffDate?: string | null;
   kickoffTime?: string | null;
+  kickoffOffset?: string | null;
   status?: FixtureStatus | null;
   ticketUrl?: string | null;
   sourceUrl?: string | null;
@@ -130,6 +133,7 @@ export interface ImportBatchRow {
   venueResolvedId: number | null;
   kickoffDate: string | null;
   kickoffTime: string | null;
+  kickoffOffset?: string | null;
   status: FixtureStatus | null;
   ticketUrl: string | null;
   adultPricePence: number | null;
@@ -153,6 +157,7 @@ export interface NormalizedFixtureRow {
   venueRaw?: string;
   kickoffDate?: string;
   kickoffTime?: string;
+  kickoffOffset?: string | null;
   status?: FixtureStatus;
   ticketUrl?: string;
   adultPricePence?: number;
@@ -202,5 +207,6 @@ export interface BatchRowOutcomeUpdate {
   venueResolvedId?: number | null;
   kickoffDate?: string | null;
   kickoffTime?: string | null;
+  kickoffOffset?: string | null;
   status?: FixtureStatus | null;
 }

@@ -2,7 +2,7 @@ import type { AppDatabase } from "../../db/adapter.ts";
 import type { FixtureAdapterParseError, FixtureSourceAdapter, NormalizedFixtureRow, KickoffAssumptionPolicy } from "../types.ts";
 import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../importBatch.ts";
 import { getOrCreateSource } from "../sourceRegistry.ts";
-import { HEADER_ALIASES, parseDateField, parseTimeField, parseStatusField, parsePriceField } from "./csv.ts";
+import { HEADER_ALIASES, parseDateField, parseTimeAndOffsetField, parseTimeField, parseStatusField, parsePriceField } from "./csv.ts";
 
 export interface DetectedTable {
   tableIndex: number;
@@ -311,10 +311,13 @@ export function parseHtmlTableRows(
       if (parsed) {
         normalized.kickoffDate = parsed.date;
         if (parsed.time) normalized.kickoffTime = parsed.time;
+        if (parsed.offset) normalized.kickoffOffset = parsed.offset;
       }
     }
     if (fieldValues.kickoffTime) {
-      normalized.kickoffTime = parseTimeField(fieldValues.kickoffTime) ?? fieldValues.kickoffTime;
+      const parsed = parseTimeAndOffsetField(fieldValues.kickoffTime);
+      normalized.kickoffTime = parsed?.time ?? parseTimeField(fieldValues.kickoffTime) ?? fieldValues.kickoffTime;
+      if (parsed?.offset) normalized.kickoffOffset = parsed.offset;
     }
     if (fieldValues.competitionRaw) normalized.competitionRaw = fieldValues.competitionRaw;
     if (fieldValues.venueRaw) normalized.venueRaw = fieldValues.venueRaw;

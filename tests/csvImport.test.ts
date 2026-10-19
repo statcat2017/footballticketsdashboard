@@ -108,6 +108,28 @@ describe("parseCsv — date and time parsing", () => {
     expect(result.rows[0].kickoffTime).toBe("15:00");
   });
 
+  it("retains explicit offsets in combined and separate date/time fields", () => {
+    const combined = parseCsv(basicCsv(
+      "Home,Away,Date",
+      "Team A,Team B,2026-07-04T15:00:00+01:00"
+    )).rows[0];
+    expect(combined).toMatchObject({
+      kickoffDate: "2026-07-04",
+      kickoffTime: "15:00",
+      kickoffOffset: "+01:00"
+    });
+
+    const separate = parseCsv(basicCsv(
+      "Home,Away,Date,Time",
+      "Team A,Team B,2026-07-04,15:00Z"
+    )).rows[0];
+    expect(separate).toMatchObject({
+      kickoffDate: "2026-07-04",
+      kickoffTime: "15:00",
+      kickoffOffset: "+00:00"
+    });
+  });
+
   it("parses 24-hour time", () => {
     const csv = basicCsv("Home, Away,Time", "Team A,Team B,19:45");
     const result = parseCsv(csv);

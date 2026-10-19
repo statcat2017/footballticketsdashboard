@@ -1,6 +1,7 @@
 import type { AppDatabase } from "../../db/adapter.ts";
 import type { FixtureAdapterParseError, FixtureSourceAdapter, NormalizedFixtureRow, FixtureStatus, KickoffAssumptionPolicy } from "../types.ts";
 import { createBatch, addBatchRows, updateBatchCounts, updateBatchStatus } from "../importBatch.ts";
+import { normalizeKickoffOffset } from "../kickoffTime.ts";
 
 export type CsvParseError = FixtureAdapterParseError;
 
@@ -95,12 +96,15 @@ export function parseCsv(csvText: string): CsvParseResult {
       if (parsed) {
         normalized.kickoffDate = parsed.date;
         if (parsed.time) normalized.kickoffTime = parsed.time;
+        if (parsed.offset) normalized.kickoffOffset = parsed.offset;
       } else {
         normalized.kickoffDate = fieldValues.kickoffDate;
       }
     }
     if (fieldValues.kickoffTime) {
-      normalized.kickoffTime = parseTimeField(fieldValues.kickoffTime) ?? fieldValues.kickoffTime;
+      const parsed = parseTimeAndOffsetField(fieldValues.kickoffTime);
+      normalized.kickoffTime = parsed?.time ?? fieldValues.kickoffTime;
+      if (parsed?.offset) normalized.kickoffOffset = parsed.offset;
     }
     if (fieldValues.competitionRaw) {
       normalized.competitionRaw = fieldValues.competitionRaw;
@@ -324,16 +328,30 @@ function detectHeadersAndMapping(
   };
 }
 
-export function parseDateField(value: string): { date: string; time?: string } | undefined {
+export function parseDateField(value: string): { date: string; time?: string; offset?: string } | undefined {
   const trimmed = value.trim();
   let timePart: string | undefined;
+  let offsetPart: string | undefined;
   let datePart = trimmed;
+
+  const isoDateTime = /^(\d{4}-\d{1,2}-\d{1,2})[T ](\d{1,2}:\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:\d{2})?$/i.exec(trimmed);
+  if (isoDateTime) {
+    if (isoDateTime[3] && isoDateTime[3] !== "00") return undefined;
+    const date = parseDateField(isoDateTime[1]);
+    const time = parseTimeField(isoDateTime[2]);
+    if (!date || !time) return undefined;
+    const offset = isoDateTime[4] ? normalizeKickoffOffset(isoDateTime[4]) : undefined;
+    if (isoDateTime[4] && !offset) return undefined;
+    return { date: date.date, time, offset };
+  }
 
   const parts = trimmed.split(/\s+/);
   if (parts.length > 1) {
     const last = parts[parts.length - 1];
     if (/^\d{1,2}:\d{2}/.test(last)) {
-      timePart = parseTimeField(last);
+      const parsed = parseTimeAndOffsetField(last);
+      timePart = parsed?.time;
+      offsetPart = parsed?.offset;
       datePart = parts.slice(0, -1).join(" ");
     }
   }
@@ -346,7 +364,7 @@ export function parseDateField(value: string): { date: string; time?: string } |
     month = parseInt(isoMatch[2], 10);
     day = parseInt(isoMatch[3], 10);
     if (!isValidDate(year, month, day)) return undefined;
-    return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
+    return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart, offset: offsetPart };
   }
 
   const ukMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(datePart);
@@ -355,7 +373,7 @@ export function parseDateField(value: string): { date: string; time?: string } |
     month = parseInt(ukMatch[2], 10);
     year = parseInt(ukMatch[3], 10);
     if (!isValidDate(year, month, day)) return undefined;
-    return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
+    return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart, offset: offsetPart };
   }
 
   const months: Record<string, string> = {
@@ -371,7 +389,7 @@ export function parseDateField(value: string): { date: string; time?: string } |
       month = parseInt(monthStr, 10);
       year = parseInt(longMatch[3], 10);
       if (!isValidDate(year, month, day)) return undefined;
-      return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
+      return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart, offset: offsetPart };
     }
   }
 
@@ -383,11 +401,26 @@ export function parseDateField(value: string): { date: string; time?: string } |
       day = parseInt(usMatch[2], 10);
       year = parseInt(usMatch[3], 10);
       if (!isValidDate(year, month, day)) return undefined;
-      return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart };
+      return { date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: timePart, offset: offsetPart };
     }
   }
 
   return undefined;
+}
+
+export function parseTimeAndOffsetField(value: string): { time: string; offset?: string } | undefined {
+  const trimmed = value.trim();
+  const match = /^(.+?)\s*(Z|[+-]\d{2}:\d{2})$/i.exec(trimmed);
+  if (!match) {
+    const time = parseTimeField(trimmed);
+    return time ? { time } : undefined;
+  }
+
+  const offset = normalizeKickoffOffset(match[2]);
+  const timeText = /^(\d{1,2}:\d{2}):00$/.exec(match[1])?.[1] ?? match[1];
+  const time = parseTimeField(timeText);
+  if (!offset || !time) return undefined;
+  return { time, offset };
 }
 
 export function parseTimeField(value: string): string | undefined {
