@@ -34,7 +34,7 @@ describe("database setup", () => {
 
     expect(hasSeasonColumn("club_ticket_prices")).toBe(true);
     expect(hasSeasonColumn("fixture_ticket_price_overrides")).toBe(true);
-    expect(rollbackLast(db, migrationsDir)).toBe("030-ticket-price-season.sql");
+    expect(rollbackLast(db, migrationsDir)).toBe("034-ticket-price-season.sql");
     expect(hasSeasonColumn("club_ticket_prices")).toBe(false);
     expect(hasSeasonColumn("fixture_ticket_price_overrides")).toBe(false);
 
