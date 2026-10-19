@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createAppDatabase } from "@/lib/db/client";
-import { fillTravelCacheForGroundDistricts, fillTravelCacheForPostcode } from "@/lib/travel/cache";
+import { fillTravelCacheForDistrict, fillTravelCacheForGroundDistricts, fillTravelCacheForPostcode } from "@/lib/travel/cache";
 import {
   lookupOpenRouteServiceDrivingMinutes,
   lookupTravelEstimate,
@@ -205,6 +205,26 @@ describe("travel cache fill command path", () => {
 
     expect(row?.count).toBe(0);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips unsupported districts instead of substituting a London origin", async () => {
+    const db = await createAppDatabase();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      routes: [{ summary: { duration: 600 } }]
+    }), { status: 200 }));
+
+    const result = await fillTravelCacheForDistrict(db, "ZZ99", {
+      openRouteServiceApiKey: "ors-key",
+      fetchImpl: fetchImpl as typeof fetch
+    });
+
+    expect(result).toMatchObject({
+      postcodeDistrict: "ZZ99",
+      rowsInserted: 0,
+      providerBackfilled: 0
+    });
+    expect(result.distanceOnlySkipped).toBe(result.venuesConsidered);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("prewarms every known ground district against all venues", async () => {

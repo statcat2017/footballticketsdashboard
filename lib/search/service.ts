@@ -5,6 +5,10 @@ import {
   normalizePostcode,
   postcodeDistrict,
   districtFallbackCoordinate,
+  isValidUkCoordinate,
+  PostcodeResolutionError,
+  POSTCODE_LOOKUP_TIMEOUT_MS,
+  type Coordinate,
   type PostcodeResolver,
   type ResolvedPostcodeOrigin
 } from "../postcode.ts";
@@ -76,6 +80,8 @@ export async function searchFixtures(
   options: {
     travelProviders?: TravelProviderRuntimeConfig;
     postcodeResolver?: PostcodeResolver;
+    resolvedOrigin?: ResolvedPostcodeOrigin;
+    allowApproximateOrigin?: boolean;
     /** Replaces the entire travel provider pipeline for testing. */
     travelProviderOverrides?: TravelProvider[];
   } = {}
@@ -86,20 +92,15 @@ export async function searchFixtures(
     dateTo: request.dateTo ?? defaults.dateTo
   };
 
-  let origin: ResolvedPostcodeOrigin;
-
-  if (options.postcodeResolver) {
-    const normalized = normalizePostcode(request.postcode);
-    const district = postcodeDistrict(normalized);
-    const coordinate = await options.postcodeResolver.resolve(normalized);
-
-    if (!coordinate) {
-      origin = { normalized, district, coordinate: districtFallbackCoordinate(district), source: "fallback" };
-    } else {
-      origin = { normalized, district, coordinate, source: "known" };
-    }
-  } else {
-    origin = await resolvePostcodeOrigin(request.postcode);
+  const origin = options.resolvedOrigin ?? await resolveSearchOrigin(request.postcode, options.postcodeResolver);
+  if (!isValidUkCoordinate(origin.coordinate)) {
+    throw new PostcodeResolutionError("We could not resolve a valid UK location for that postcode.", false);
+  }
+  if (origin.source === "fallback" && !options.allowApproximateOrigin) {
+    throw new PostcodeResolutionError(
+      `We could not verify ${origin.normalized}. Search from an approximate postcode-area origin instead?`,
+      true
+    );
   }
 
   let rows = await queryFixtures(db, dateRange, origin.district);
@@ -112,13 +113,13 @@ export async function searchFixtures(
     rows = await queryAllHistoricalFixtures(db, origin.district);
   }
 
-  rows = rows.filter((row) => Number.isFinite(row.latitude) && Number.isFinite(row.longitude));
+  rows = rows.filter((row) => isValidUkCoordinate({ latitude: row.latitude, longitude: row.longitude }));
 
-  const radiusFilter = request.radiusMiles;
-  const inRadius = radiusFilter === undefined
+  const radiusFilter = request.radiusMiles === undefined ? 25 : request.radiusMiles;
+  const inRadius = radiusFilter === null
     ? rows
     : rows.filter((row) => {
-        const dist = row.cached_distance_miles ?? distanceMiles(origin.coordinate, {
+        const dist = distanceMiles(origin.coordinate, {
           latitude: row.latitude,
           longitude: row.longitude
         });
@@ -129,7 +130,6 @@ export async function searchFixtures(
 
   return enrichedRows
     .map((row) => toResult(row, origin.coordinate))
-    .filter((result) => request.radiusMiles === undefined || result.travel.distanceMiles <= request.radiusMiles)
     .sort((first, second) => {
       const distance = first.travel.distanceMiles - second.travel.distanceMiles;
 
@@ -139,6 +139,43 @@ export async function searchFixtures(
 
       return (first.kickoffAt ?? "").localeCompare(second.kickoffAt ?? "");
     });
+}
+
+export async function resolveSearchOrigin(
+  postcode: string,
+  postcodeResolver?: PostcodeResolver
+): Promise<ResolvedPostcodeOrigin> {
+  if (!postcodeResolver) return resolvePostcodeOrigin(postcode);
+
+  const normalized = normalizePostcode(postcode);
+  const district = postcodeDistrict(normalized);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<null>((resolve) => {
+    timeout = setTimeout(() => resolve(null), POSTCODE_LOOKUP_TIMEOUT_MS);
+  });
+
+  let coordinate: Coordinate | null;
+  try {
+    coordinate = await Promise.race([postcodeResolver.resolve(normalized), timedOut]);
+  } catch {
+    coordinate = null;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+
+  if (coordinate && isValidUkCoordinate(coordinate)) {
+    return { normalized, district, coordinate, source: "api" };
+  }
+
+  const fallback = districtFallbackCoordinate(district);
+  if (!fallback) {
+    throw new PostcodeResolutionError(
+      "We could not locate that postcode or find an approximate postcode-area location. Check the postcode or try again.",
+      false
+    );
+  }
+
+  return { normalized, district, coordinate: fallback, source: "fallback" };
 }
 
 function queryFixtures(
@@ -263,7 +300,7 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     latitude: row.latitude,
     longitude: row.longitude
   });
-  const distance = row.cached_distance_miles ?? calculatedDistance;
+  const distance = calculatedDistance;
   const warnings: string[] = [
     "Admission prices are best-effort guide prices. Confirm with the club before travelling."
   ];

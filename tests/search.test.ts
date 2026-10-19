@@ -4,6 +4,7 @@ import type { QueryParam } from "@/lib/db/adapter";
 import { createAppDatabase } from "@/lib/db/client";
 import type { PostcodeResolver } from "@/lib/postcode";
 import { searchFixtures } from "@/lib/search/service";
+import { distanceMiles } from "@/lib/distance";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -24,6 +25,56 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 describe("fixture search", () => {
+  it("uses exact origin-to-venue distance for radius boundaries, not district cache distance", async () => {
+    const db = await createAppDatabase();
+    const origin = { latitude: 51.4817, longitude: -0.191 };
+    const boundaryCoordinate = { latitude: origin.latitude + 25 / 69, longitude: origin.longitude };
+    const outsideCoordinate = { latitude: origin.latitude + 26 / 69, longitude: origin.longitude };
+    const boundaryDistance = distanceMiles(origin, boundaryCoordinate);
+
+    await db.run(`
+      INSERT INTO venues (id, name, postcode, latitude, longitude) VALUES
+        (9001, 'Boundary Ground', 'XX1 1XX', ?, ?),
+        (9002, 'Outside Ground', 'XX2 2XX', ?, ?),
+        (9003, 'Invalid Ground', 'XX3 3XX', 999, 999)
+    `, [boundaryCoordinate.latitude, boundaryCoordinate.longitude, outsideCoordinate.latitude, outsideCoordinate.longitude]);
+    for (const [sourceId, venueId] of [["boundary", 9001], ["outside", 9002], ["invalid", 9003]] as const) {
+      await db.run(`
+        INSERT INTO fixtures (
+          source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+          kickoff_at, status, is_demo_data, is_historical
+        ) VALUES ('test', ?, 'PL', 1, 2, ?, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
+      `, [sourceId, venueId]);
+    }
+    await db.run(`
+      INSERT INTO travel_cache (
+        postcode_district, venue_id, distance_miles, driving_minutes,
+        public_transport_minutes, provider, calculated_at
+      ) VALUES
+        ('SW6', 9001, 55, 30, 40, 'cached', '2026-05-01'),
+        ('SW6', 9002, 0.1, 30, 40, 'cached', '2026-05-01'),
+        ('SW6', 9003, 0.1, 30, 40, 'cached', '2026-05-01')
+    `);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      radiusMiles: boundaryDistance,
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    });
+
+    expect(results.map((result) => result.venueName)).toEqual(["Boundary Ground"]);
+    expect(results[0]?.travel.distanceMiles).toBe(Math.round(boundaryDistance * 10) / 10);
+
+    const justInsideBoundary = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      radiusMiles: boundaryDistance - 0.01,
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-20"
+    });
+    expect(justInsideBoundary).toEqual([]);
+  });
+
   it("falls back to unconstrained historical fixtures when date range has no live or historical matches", async () => {
     const db = await createAppDatabase();
 
@@ -89,7 +140,7 @@ describe("fixture search", () => {
     }
   });
 
-  it("returns live fixtures sorted by distance when no radius is supplied", async () => {
+  it("returns live fixtures sorted by distance for the all-distance radius", async () => {
     const db = await createAppDatabase();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestUrl(input);
@@ -113,6 +164,7 @@ describe("fixture search", () => {
 
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
+      radiusMiles: null,
       dateFrom: "2026-05-10",
       dateTo: "2026-05-15"
     });
@@ -201,6 +253,7 @@ describe("fixture search", () => {
 
     const results = await searchFixtures(db, {
       postcode: "B9 4RL",
+      radiusMiles: null,
       dateFrom: "2026-05-10",
       dateTo: "2026-05-20"
     }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
@@ -266,6 +319,7 @@ describe("travel enrichment resilience", () => {
 
     await searchFixtures(db, {
       postcode: "B9 4RL",
+      radiusMiles: null,
       dateFrom: "2026-05-10",
       dateTo: "2026-05-20"
     }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
@@ -371,6 +425,7 @@ describe("travel enrichment resilience", () => {
 
     const results = await searchFixtures(db, {
       postcode: "B9 4RL",
+      radiusMiles: null,
       dateFrom: "2026-05-10",
       dateTo: "2026-05-20"
     }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });

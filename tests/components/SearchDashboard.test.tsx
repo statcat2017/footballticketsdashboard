@@ -43,6 +43,79 @@ describe("SearchDashboard", () => {
     expect(screen.getByRole("button", { name: "This weekend" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next weekend" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All dates" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Search radius" })).toHaveValue("25");
+    expect(screen.getByRole("option", { name: "50 miles" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "100 miles" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "All distances" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+  });
+
+  it("keeps the displayed search aligned with submitted postcode and radius", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([fixture(1)]))
+      .mockResolvedValueOnce(jsonResponse([fixture(1)]));
+
+    render(<SearchDashboard />);
+    await waitFor(() => expect(screen.getByRole("main")).toHaveTextContent("within 25 miles of SE20 7RS"));
+
+    const postcode = screen.getByLabelText("Postcode");
+    await user.clear(postcode);
+    await user.type(postcode, "SW6 1HS");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Search radius" }), "50");
+
+    expect(screen.getByRole("main")).toHaveTextContent("within 25 miles of SE20 7RS");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    await waitFor(() => expect(screen.getByRole("main")).toHaveTextContent("within 50 miles of SW6 1HS"));
+    const submittedBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(submittedBody).toMatchObject({ postcode: "SW6 1HS", radiusMiles: 50, allowApproximateOrigin: false });
+  });
+
+  it("offers to expand an empty search radius", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse([fixture(1)]));
+
+    render(<SearchDashboard />);
+    await user.click(await screen.findByRole("button", { name: "Try within 50 miles" }));
+
+    await waitFor(() => expect(screen.getByRole("main")).toHaveTextContent("within 50 miles of SE20 7RS"));
+    const submittedBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(submittedBody.radiusMiles).toBe(50);
+  });
+
+  it("requires an explicit action before using an approximate postcode area", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: "We could not verify SE20 7RS. Search from an approximate SE20 area instead?",
+        code: "postcode_unresolved",
+        canUseApproximateOrigin: true
+      }), { status: 422, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(jsonResponse([], { originSource: "fallback" }));
+
+    render(<SearchDashboard />);
+    await user.click(await screen.findByRole("button", { name: "Search using approximate area" }));
+
+    await waitFor(() => expect(screen.getByRole("main")).toHaveTextContent("Distances use an approximate postcode-area origin for SE20 7RS."));
+    const fallbackBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(fallbackBody.allowApproximateOrigin).toBe(true);
+  });
+
+  it("explains when browser location permission is denied", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition: (_resolve: unknown, reject: (error: Error) => void) => reject(new Error("denied")) }
+    });
+
+    render(<SearchDashboard />);
+    await user.click(await screen.findByRole("button", { name: "Locate me" }));
+
+    expect(await screen.findByText("Could not determine your location. Enable location services or type a postcode.")).toBeInTheDocument();
   });
 
   it("shows the empty state when the search API returns no fixtures", async () => {
@@ -184,8 +257,8 @@ describe("SearchDashboard", () => {
   });
 });
 
-function jsonResponse(results: FixtureResult[]): Response {
-  return new Response(JSON.stringify({ results }), {
+function jsonResponse(results: FixtureResult[], meta: { originSource?: "known" | "api" | "fallback" } = {}): Response {
+  return new Response(JSON.stringify({ results, meta }), {
     status: 200,
     headers: { "Content-Type": "application/json" }
   });

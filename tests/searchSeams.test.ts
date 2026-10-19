@@ -154,10 +154,15 @@ describe("search service substitutable seams", () => {
     };
 
     const results = await searchFixtures(db, {
-      postcode: "ZZ99 9ZZ",
+      postcode: "B75 5AQ",
+      radiusMiles: null,
       dateFrom: "2026-05-10",
       dateTo: "2026-05-20"
-    }, { postcodeResolver: nullResolver });
+    }, {
+      postcodeResolver: nullResolver,
+      allowApproximateOrigin: true,
+      travelProviderOverrides: []
+    });
 
     expect(results.length).toBeGreaterThan(0);
     expect(results[0]?.title).toBe("Chelsea vs Arsenal");

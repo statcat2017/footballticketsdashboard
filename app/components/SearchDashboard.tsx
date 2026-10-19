@@ -5,7 +5,27 @@ import type { FixtureResult } from "@/lib/types";
 import { computeDateRange } from "@/lib/date";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
+type DateFilter = "this-weekend" | "next-weekend" | "all-upcoming";
+type SearchRadius = number | null;
 type CompetitionCategory = "premier-league" | "efl" | "non-league" | "womens" | "cup" | "friendly";
+
+interface DashboardSearchRequest {
+  postcode: string;
+  radiusMiles: SearchRadius;
+  dateFilter: DateFilter;
+  dateFrom: string;
+  dateTo: string;
+  allowApproximateOrigin?: boolean;
+}
+
+interface SubmittedSearch {
+  postcode: string;
+  radiusMiles: SearchRadius;
+  dateFilter: DateFilter;
+  dateFrom: string;
+  dateTo: string;
+  originSource: "known" | "api" | "fallback";
+}
 
 const moneyFormatter = new Intl.NumberFormat("en-GB", {
   style: "currency",
@@ -65,6 +85,13 @@ function formatDateRange(results: FixtureResult[]): string {
     .sort();
   if (dates.length === 0) return "";
   return `${dateRangeFormatter.format(new Date(dates[0]))} - ${dateRangeFormatter.format(new Date(dates[dates.length - 1]))}`;
+}
+
+function expandedRadius(radius: SearchRadius): SearchRadius | undefined {
+  if (radius === 25) return 50;
+  if (radius === 50) return 100;
+  if (radius === 100) return null;
+  return undefined;
 }
 
 function formatVerifiedAt(value: string | null): string {
@@ -128,14 +155,19 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const [postcode, setPostcode] = useState("SE20 7RS");
   const [state, setState] = useState<SearchState>("idle");
   const [error, setError] = useState("");
+  const [canUseApproximateOrigin, setCanUseApproximateOrigin] = useState(false);
+  const [postcodeLookupFailed, setPostcodeLookupFailed] = useState(false);
   const [results, setResults] = useState<FixtureResult[]>([]);
+  const [radiusMiles, setRadiusMiles] = useState<SearchRadius>(25);
+  const [submittedSearch, setSubmittedSearch] = useState<SubmittedSearch | null>(null);
   const [geoState, setGeoState] = useState<"idle" | "locating" | "failed">("idle");
   const [visibleCount, setVisibleCount] = useState(12);
   const [sortKey, setSortKey] = useState<"distance" | "kickoff" | "admission" | "travel">("distance");
-  const [dateFilter, setDateFilter] = useState<"this-weekend" | "next-weekend" | "all-upcoming">("this-weekend");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("this-weekend");
   const [compFilter, setCompFilter] = useState<CompetitionCategory | "all">("all");
   const [travelFilter, setTravelFilter] = useState<"all" | "under30" | "under60">("all");
   const abortRef = useRef<AbortController | null>(null);
+  const retrySearchRef = useRef<DashboardSearchRequest | null>(null);
 
   useEffect(() => {
     setVisibleCount(12);
@@ -206,32 +238,54 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const dateRange = useMemo(() => formatDateRange(sortedResults), [sortedResults]);
   const remainingCount = sortedResults.length - visibleCount;
 
-  const runSearch = useCallback(async (searchPostcode: string, options?: { dateFrom?: string; dateTo?: string }) => {
+  const runSearch = useCallback(async (search: DashboardSearchRequest) => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
+    retrySearchRef.current = search;
     setState("loading");
     setError("");
+    setCanUseApproximateOrigin(false);
+    setPostcodeLookupFailed(false);
 
     try {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          postcode: searchPostcode,
-          dateFrom: options?.dateFrom,
-          dateTo: options?.dateTo
+          postcode: search.postcode,
+          radiusMiles: search.radiusMiles ?? "all",
+          dateFrom: search.dateFrom,
+          dateTo: search.dateTo,
+          allowApproximateOrigin: search.allowApproximateOrigin ?? false
         }),
         signal: abortRef.current.signal
       });
-      const payload = await response.json();
+      const payload = await response.json() as {
+        results?: FixtureResult[];
+        error?: string;
+        code?: string;
+        canUseApproximateOrigin?: boolean;
+        meta?: { originSource?: SubmittedSearch["originSource"] };
+      };
 
       if (!response.ok) {
         setError(payload.error ?? "Search failed.");
+        setCanUseApproximateOrigin(payload.canUseApproximateOrigin ?? false);
+        setPostcodeLookupFailed(payload.code === "postcode_unresolved");
         setState("error");
         return;
       }
 
-      setResults(payload.results);
+      setResults(payload.results ?? []);
+      setSubmittedSearch({
+        postcode: search.postcode,
+        radiusMiles: search.radiusMiles,
+        dateFilter: search.dateFilter,
+        dateFrom: search.dateFrom,
+        dateTo: search.dateTo,
+        originSource: payload.meta?.originSource ?? "known"
+      });
+      setPostcodeLookupFailed(false);
       setVisibleCount(12);
       setState("ready");
     } catch (error) {
@@ -242,14 +296,24 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   }, []);
 
   useEffect(() => {
-    void runSearch(postcode, computeDateRange(dateFilter));
+    void runSearch({ postcode, radiusMiles, dateFilter, ...computeDateRange(dateFilter) });
     return () => abortRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSearch]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runSearch(postcode, computeDateRange(dateFilter));
+    await runSearch({ postcode, radiusMiles, dateFilter, ...computeDateRange(dateFilter) });
+  }
+
+  function submitDateFilter(nextDateFilter: DateFilter) {
+    setDateFilter(nextDateFilter);
+    void runSearch({
+      postcode,
+      radiusMiles,
+      dateFilter: nextDateFilter,
+      ...computeDateRange(nextDateFilter)
+    });
   }
 
   async function handleLocate() {
@@ -259,13 +323,15 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
       });
       const { latitude, longitude } = position.coords;
-      const res = await fetch(`https://api.postcodes.io/postcodes?latitude=${latitude}&longitude=${longitude}`);
+      const res = await fetch(`https://api.postcodes.io/postcodes?latitude=${latitude}&longitude=${longitude}`, {
+        signal: AbortSignal.timeout(5000)
+      });
       const data = await res.json();
       const pc: string | undefined = data.result?.[0]?.postcode;
       if (!pc) throw new Error("No postcode found");
       setPostcode(pc);
       setGeoState("idle");
-      await runSearch(pc, computeDateRange(dateFilter));
+      await runSearch({ postcode: pc, radiusMiles, dateFilter, ...computeDateRange(dateFilter) });
     } catch {
       setGeoState("failed");
       setError("Could not determine your location. Enable location services or type a postcode.");
@@ -303,22 +369,49 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
             required
           />
         </label>
+        <label className="radius-field">
+          <span>Within</span>
+          <select
+            aria-label="Search radius"
+            className="radius-select"
+            value={radiusMiles === null ? "all" : String(radiusMiles)}
+            onChange={(event) => setRadiusMiles(event.target.value === "all" ? null : Number(event.target.value))}
+          >
+            <option value="25">25 miles</option>
+            <option value="50">50 miles</option>
+            <option value="100">100 miles</option>
+            <option value="all">All distances</option>
+          </select>
+        </label>
+        <button className="search-submit" type="submit" disabled={state === "loading"}>
+          Search
+        </button>
         <button className="locate-button" type="button" onClick={handleLocate} disabled={state === "loading" || geoState === "locating"}>
           <LocateIcon />
           {geoState === "locating" ? "Locating..." : "Locate me"}
         </button>
         <div className="divider" aria-hidden="true" />
         <div className="filters" aria-label="Date filters">
-          <button className={`pill ${dateFilter === "this-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("this-weekend"); void runSearch(postcode, computeDateRange("this-weekend")); }}>This weekend</button>
-          <button className={`pill ${dateFilter === "next-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("next-weekend"); void runSearch(postcode, computeDateRange("next-weekend")); }}>Next weekend</button>
-          <button className={`pill ${dateFilter === "all-upcoming" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => { setDateFilter("all-upcoming"); void runSearch(postcode, computeDateRange("all-upcoming")); }}>All dates</button>
+          <button className={`pill ${dateFilter === "this-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => submitDateFilter("this-weekend")}>This weekend</button>
+          <button className={`pill ${dateFilter === "next-weekend" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => submitDateFilter("next-weekend")}>Next weekend</button>
+          <button className={`pill ${dateFilter === "all-upcoming" ? "active" : ""}`} type="button" disabled={state === "loading"} onClick={() => submitDateFilter("all-upcoming")}>All dates</button>
         </div>
       </form>
 
       <main className="results" aria-live="polite">
         {state === "ready" && (
           <div className="meta-row">
-            <div><strong>{resultCount} fixtures</strong> near {postcode}{dateRange ? ` · ${dateRange}` : ""}</div>
+            <div>
+              <strong>{resultCount} fixtures</strong> within {submittedSearch?.radiusMiles === null ? "all distances" : `${submittedSearch?.radiusMiles ?? 25} miles`}
+              {submittedSearch ? ` of ${submittedSearch.postcode}` : ""}{dateRange ? ` · ${dateRange}` : ""}
+              {submittedSearch && (
+                <p className="search-provenance" role="note">
+                  {submittedSearch.originSource === "fallback"
+                    ? `Distances use an approximate postcode-area origin for ${submittedSearch.postcode}.`
+                    : "Distances use your resolved postcode origin."} Travel times are estimated and cached by postcode district.
+                </p>
+              )}
+            </div>
             <div className="meta-controls">
               <select className="filter-select" aria-label="Competition filter" value={compFilter} onChange={(event) => setCompFilter(event.target.value as typeof compFilter)}>
                 <option value="all">All competitions</option>
@@ -352,9 +445,23 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
         )}
 
         {state === "error" && (
-          <div className="state-panel error-state">
+          <div className="state-panel error-state" role="alert">
             <strong>{error}</strong>
             <span>Try a UK postcode or one of the ground postcodes in the demo data.</span>
+            {postcodeLookupFailed && retrySearchRef.current && (
+              <div className="search-error-actions">
+                <button className="show-more" type="button" onClick={() => {
+                  const retry = retrySearchRef.current;
+                  if (retry) void runSearch({ ...retry, allowApproximateOrigin: false });
+                }}>Retry postcode lookup</button>
+                {canUseApproximateOrigin && (
+                  <button className="search-submit" type="button" onClick={() => {
+                    const retry = retrySearchRef.current;
+                    if (retry) void runSearch({ ...retry, allowApproximateOrigin: true });
+                  }}>Search using approximate area</button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -362,6 +469,25 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
           <div className="state-panel">
             <strong>No fixtures found for the selected filters.</strong>
             <span>Try expanding your filters or changing the date range.</span>
+            {results.length === 0 && submittedSearch && expandedRadius(submittedSearch.radiusMiles) !== undefined && (
+              <button className="search-submit empty-search-expand" type="button" onClick={() => {
+                const nextRadius = expandedRadius(submittedSearch.radiusMiles);
+                if (nextRadius === undefined) return;
+                setPostcode(submittedSearch.postcode);
+                setRadiusMiles(nextRadius);
+                void runSearch({
+                  postcode: submittedSearch.postcode,
+                  radiusMiles: nextRadius,
+                  dateFilter: submittedSearch.dateFilter,
+                  dateFrom: submittedSearch.dateFrom,
+                  dateTo: submittedSearch.dateTo
+                });
+              }}>
+                {expandedRadius(submittedSearch.radiusMiles) === null
+                  ? "Search all distances"
+                  : `Try within ${expandedRadius(submittedSearch.radiusMiles)} miles`}
+              </button>
+            )}
           </div>
         )}
 

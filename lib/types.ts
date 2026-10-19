@@ -2,7 +2,8 @@ export type CompetitionCode = string;
 
 export interface SearchRequest {
   postcode: string;
-  radiusMiles?: number;
+  /** Undefined uses the 25-mile default; null includes all distances. */
+  radiusMiles?: number | null;
   dateFrom?: string;
   dateTo?: string;
 }
