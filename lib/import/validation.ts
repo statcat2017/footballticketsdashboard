@@ -30,6 +30,7 @@ export interface RowValidationResult {
   venueResolvedId: number | null;
   normalizedDate?: string | null;
   normalizedTime?: string | null;
+  normalizedOffset?: string | null;
   normalizedStatus?: FixtureStatus | null;
   awayIsOneOff?: boolean;
   awayParticipantRaw?: string | null;
@@ -68,6 +69,10 @@ export function buildValidationUpdateStatements(result: RowValidationResult, row
   if (result.normalizedTime !== undefined) {
     setClauses.push("kickoff_time = ?");
     params.push(result.normalizedTime);
+  }
+  if (result.normalizedOffset !== undefined) {
+    setClauses.push("kickoff_offset = ?");
+    params.push(result.normalizedOffset);
   }
   if (result.normalizedStatus !== undefined) {
     setClauses.push("status = ?");
@@ -234,6 +239,11 @@ export function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string,
   if (row.venueResolvedId && row.venueRaw && before.venue_id !== null && row.venueResolvedId !== before.venue_id) return true;
   if (row.status && before.status && row.status !== before.status) return true;
   if (row.kickoffTime && before.kickoff_time && row.kickoffTime !== before.kickoff_time) return true;
+  const existingTimeBasis = before.kickoff_time_basis;
+  if (row.kickoffTime && (row.kickoffOffset || existingTimeBasis !== null && existingTimeBasis !== undefined)) {
+    const requestedTimeBasis = row.kickoffOffset ?? "Europe/London";
+    if (requestedTimeBasis !== existingTimeBasis) return true;
+  }
   return false;
 }
 

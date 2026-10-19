@@ -4,6 +4,7 @@ import { getBatch, getBatchRows } from "./importBatch.ts";
 import { buildAdminAuditLogWrite } from "../admin/audit.ts";
 import { getCurrentSeasonLabel, getAssumedKickoffTime } from "./shared";
 import { findImportFixtureMatch } from "./fixtureIdentity";
+import { resolveKickoffInstant } from "./kickoffTime.ts";
 
 export interface ApplyResult {
   inserted: number;
@@ -24,7 +25,12 @@ export function buildFixtureInsert(
   const timeValue = row.kickoffTime;
 
   const time = timeValue ?? (dateValue ? getAssumedKickoffTime(dateValue, kickoffAssumptionPolicy) : null);
-  const kickoffAt = dateValue && time ? `${dateValue}T${time}:00.000Z` : null;
+  const kickoff = dateValue && time ? resolveKickoffInstant(dateValue, time, row.kickoffOffset) : null;
+  if (kickoff && !kickoff.ok) {
+    throw new Error(`Cannot apply fixture ${row.id}: kickoff time is ${kickoff.reason}.`);
+  }
+  const kickoffAt = kickoff?.ok ? kickoff.kickoffAt : null;
+  const kickoffTimeBasis = kickoff?.ok ? kickoff.timeBasis : null;
   const statusValue = row.status ?? "scheduled";
   const competitionCode = row.competitionResolvedCode
     || (row.awayIsOneOff ? "FRIENDLY" : null);
@@ -37,12 +43,12 @@ export function buildFixtureInsert(
     sql: `INSERT INTO fixtures (
       source, source_id, competition_code,
       home_club_id, away_club_id, venue_id,
-      kickoff_at, fixture_date, kickoff_time, kickoff_time_status,
+      kickoff_at, fixture_date, kickoff_time, kickoff_time_basis, kickoff_time_status,
       season_label, status, is_demo_data, is_historical,
       home_one_off, away_one_off,
       home_one_off_name, away_one_off_name,
       confidence, source_url, imported_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(source, source_id) DO UPDATE SET
       competition_code = excluded.competition_code,
       home_club_id = excluded.home_club_id,
@@ -51,6 +57,7 @@ export function buildFixtureInsert(
       kickoff_at = excluded.kickoff_at,
       fixture_date = excluded.fixture_date,
       kickoff_time = excluded.kickoff_time,
+      kickoff_time_basis = excluded.kickoff_time_basis,
       kickoff_time_status = excluded.kickoff_time_status,
       season_label = excluded.season_label,
       status = excluded.status,
@@ -69,6 +76,7 @@ export function buildFixtureInsert(
       kickoffAt,
       dateValue,
       time,
+      kickoffTimeBasis,
       row.kickoffTime ? "confirmed" : (time ? "assumed" : "unknown"),
       seasonLabel,
       statusValue,
@@ -108,8 +116,12 @@ export function buildFixtureUpdate(row: ImportBatchRow, fixtureId: number): SqlW
     if (row.kickoffTime) {
       setClauses.push("kickoff_time = ?");
       params.push(row.kickoffTime);
+      const kickoff = resolveKickoffInstant(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+      if (!kickoff.ok) throw new Error(`Cannot update fixture ${fixtureId}: kickoff time is ${kickoff.reason}.`);
       setClauses.push("kickoff_at = ?");
-      params.push(`${row.kickoffDate}T${row.kickoffTime}:00.000Z`);
+      params.push(kickoff.kickoffAt);
+      setClauses.push("kickoff_time_basis = ?");
+      params.push(kickoff.timeBasis);
       setClauses.push("kickoff_time_status = ?");
       params.push("confirmed");
     }

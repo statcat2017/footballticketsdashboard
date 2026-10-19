@@ -193,6 +193,22 @@ describe("parseHtmlTableRows", () => {
     expect(evidence.original_cells).toEqual(["Team A", "Team B", "2026-05-20", "Premier League"]);
   });
 
+  it("preserves an explicit UTC offset from a combined kickoff date", () => {
+    const html = `<html><body>
+<table>
+  <tr><th>Home</th><th>Away</th><th>Date</th><th>Competition</th></tr>
+  <tr><td>Team A</td><td>Team B</td><td>2026-07-04T15:00:00+01:00</td><td>Premier League</td></tr>
+</table>
+</body></html>`;
+    const tables = extractTables(html);
+    const { rows } = parseHtmlTableRows(tables[0], "https://example.com/fixtures");
+    expect(rows[0]).toMatchObject({
+      kickoffDate: "2026-07-04",
+      kickoffTime: "15:00",
+      kickoffOffset: "+01:00"
+    });
+  });
+
   it("handles tables with no detected headers (positional fallback)", () => {
     const html = `<html><body>
 <table>

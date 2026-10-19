@@ -78,7 +78,7 @@ export async function findImportFixtureMatch(
   const fixture = fixtures[0];
 
   const before: Record<string, unknown> = {};
-  const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url", "ticket_url", "adult_price_pence", "concession_price_pence"];
+  const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_basis", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url", "ticket_url", "adult_price_pence", "concession_price_pence"];
   for (const f of fields) {
     if (f in fixture) before[f] = fixture[f];
   }
@@ -116,7 +116,7 @@ export async function findExistingFixtureDuplicateByParticipantsAndDate(
 
   const fixture = fixtures[0];
   const before: Record<string, unknown> = {};
-  const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url"];
+  const fields = ["competition_code", "venue_id", "fixture_date", "kickoff_time", "kickoff_time_basis", "kickoff_time_status", "status", "home_one_off", "away_one_off", "home_one_off_name", "away_one_off_name", "source_url"];
   for (const f of fields) {
     if (f in fixture) before[f] = fixture[f];
   }

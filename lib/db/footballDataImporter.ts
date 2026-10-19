@@ -2,6 +2,7 @@ import type { Database as SqliteDatabase } from "better-sqlite3";
 import { createSqliteAppDatabase, type AppDatabase } from "./adapter.ts";
 import { buildClubLookup, findClub, normalizeStatus, type ClubRow } from "./clubLookup.ts";
 import { z } from "zod";
+import { formatKickoffInLondon } from "../import/kickoffTime.ts";
 
 const footballDataMatchSchema = z.object({
   id: z.number(),
@@ -135,6 +136,7 @@ async function upsertMatches(
 
   for (const match of matches) {
     const competitionCode = match.competition.code;
+    const localKickoff = match.utcDate ? formatKickoffInLondon(match.utcDate) : null;
 
     if (!isCompetitionCode(competitionCode)) {
       skipped += 1;
@@ -152,15 +154,20 @@ async function upsertMatches(
     await appDb.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
-        kickoff_at, status, is_demo_data, is_historical, source_updated_at, imported_at
+        kickoff_at, fixture_date, kickoff_time, kickoff_time_status, kickoff_time_basis,
+        status, is_demo_data, is_historical, source_updated_at, imported_at
       )
-      VALUES ('football-data', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+      VALUES ('football-data', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
       ON CONFLICT(source, source_id) DO UPDATE SET
         competition_code = excluded.competition_code,
         home_club_id = excluded.home_club_id,
         away_club_id = excluded.away_club_id,
         venue_id = excluded.venue_id,
         kickoff_at = excluded.kickoff_at,
+        fixture_date = excluded.fixture_date,
+        kickoff_time = excluded.kickoff_time,
+        kickoff_time_status = excluded.kickoff_time_status,
+        kickoff_time_basis = excluded.kickoff_time_basis,
         status = excluded.status,
         is_demo_data = excluded.is_demo_data,
         is_historical = excluded.is_historical,
@@ -173,6 +180,10 @@ async function upsertMatches(
       awayClub.id,
       homeClub.venue_id,
       match.utcDate,
+      localKickoff?.date ?? null,
+      localKickoff?.time ?? null,
+      localKickoff ? "confirmed" : "unknown",
+      localKickoff ? "UTC" : null,
       normalizeStatus(match.status),
       match.lastUpdated ?? null,
       importedAt

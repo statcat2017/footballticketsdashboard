@@ -46,6 +46,7 @@ function mapRowRecord(row: Record<string, unknown>): ImportBatchRow {
     venueResolvedId: (row.venue_resolved_id as number) ?? null,
     kickoffDate: (row.kickoff_date as string) ?? null,
     kickoffTime: (row.kickoff_time as string) ?? null,
+    kickoffOffset: (row.kickoff_offset as string) ?? null,
     status: (row.status as ImportBatchRow["status"]) ?? null,
     ticketUrl: (row.ticket_url as string) ?? null,
     adultPricePence: (row.adult_price_pence as number) ?? null,
@@ -208,10 +209,10 @@ export async function addBatchRows(
     sql: `INSERT INTO import_batch_rows (
       batch_id, row_index, home_participant_raw, away_participant_raw,
       home_is_one_off, away_is_one_off, competition_raw, venue_raw,
-      kickoff_date, kickoff_time, status, ticket_url,
+      kickoff_date, kickoff_time, kickoff_offset, status, ticket_url,
       adult_price_pence, concession_price_pence, source_url,
       evidence_json, confidence
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       batchId,
       r.rowIndex,
@@ -223,6 +224,7 @@ export async function addBatchRows(
       r.row.venueRaw ?? null,
       r.row.kickoffDate ?? null,
       r.row.kickoffTime ?? null,
+      r.row.kickoffOffset ?? null,
       r.row.status ?? null,
       r.row.ticketUrl ?? null,
       r.row.adultPricePence ?? null,
@@ -264,6 +266,7 @@ export async function updateBatchRow(
     venueResolvedId: number | null;
     kickoffDate: string | null;
     kickoffTime: string | null;
+    kickoffOffset: string | null;
     status: ImportBatchRow["status"];
     matchResult: ImportBatchRow["matchResult"];
     warningsJson: string | null;
@@ -305,6 +308,10 @@ export async function updateBatchRow(
   if (updates.kickoffTime !== undefined) {
     fields.push("kickoff_time = ?");
     params.push(updates.kickoffTime);
+  }
+  if (updates.kickoffOffset !== undefined) {
+    fields.push("kickoff_offset = ?");
+    params.push(updates.kickoffOffset);
   }
   if (updates.status !== undefined) {
     fields.push("status = ?");

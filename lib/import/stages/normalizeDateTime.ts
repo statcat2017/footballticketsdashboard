@@ -2,6 +2,7 @@ import type { ValidationContext } from "../validationContext.ts";
 import { parseDateField, parseTimeField } from "../adapters/csv.ts";
 import { getAssumedKickoffTime, isWeekend } from "../shared.ts";
 import { makeIssue } from "../validation.ts";
+import { normalizeKickoffOffset, resolveKickoffInstant } from "../kickoffTime.ts";
 
 function isValidDateString(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -19,6 +20,7 @@ export function normalizeDateTime(ctx: ValidationContext): void {
   const { row } = ctx;
   let dateStr: string | null = row.kickoffDate;
   let kickoffTime: string | null = row.kickoffTime;
+  let kickoffOffset: string | null = row.kickoffOffset ?? null;
 
   if (dateStr) {
     const parsed = parseDateField(dateStr);
@@ -36,6 +38,7 @@ export function normalizeDateTime(ctx: ValidationContext): void {
         kickoffTime = parsed.time;
         ctx.normalizedTime = parsed.time;
       }
+      if (parsed.offset) kickoffOffset = parsed.offset;
     }
   } else {
     ctx.warnings.push(makeIssue("missing_date", "Missing fixture date.", { field: "date" }));
@@ -61,6 +64,36 @@ export function normalizeDateTime(ctx: ValidationContext): void {
         { severity: "warning" }
       ));
     }
+  }
+
+  if (kickoffOffset && !kickoffTime) {
+    ctx.warnings.push(makeIssue("invalid_time", "A source time offset requires a kickoff time.", { field: "time", rawValue: kickoffOffset }));
+    ctx.hasBlocker = true;
+  }
+
+  if (dateStr && kickoffTime && !ctx.hasBlocker) {
+    const normalizedOffset = kickoffOffset ? normalizeKickoffOffset(kickoffOffset) : undefined;
+    const resolution = kickoffOffset && !normalizedOffset
+      ? { ok: false as const, reason: "invalid" as const }
+      : resolveKickoffInstant(dateStr, kickoffTime, normalizedOffset);
+    if (!resolution.ok) {
+      const issueCode = resolution.reason === "ambiguous"
+        ? "ambiguous_kickoff_time"
+        : resolution.reason === "nonexistent"
+          ? "nonexistent_kickoff_time"
+          : "invalid_time";
+      const message = resolution.reason === "ambiguous"
+        ? `Kickoff ${dateStr} ${kickoffTime} occurs twice in Europe/London; supply the source UTC offset for review.`
+        : resolution.reason === "nonexistent"
+          ? `Kickoff ${dateStr} ${kickoffTime} does not exist in Europe/London because clocks move forward; correct it or supply an explicit UTC offset.`
+          : `Could not resolve kickoff ${dateStr} ${kickoffTime}.`;
+      ctx.warnings.push(makeIssue(issueCode, message, { field: "time", rawValue: `${dateStr} ${kickoffTime}` }));
+      ctx.hasBlocker = true;
+    } else {
+      ctx.normalizedOffset = normalizedOffset ?? null;
+    }
+  } else {
+    ctx.normalizedOffset = null;
   }
 
   if (row.status) {

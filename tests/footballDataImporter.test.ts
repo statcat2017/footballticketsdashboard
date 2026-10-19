@@ -72,7 +72,8 @@ describe("football-data importer", () => {
     );
 
     const rows = db.prepare(`
-      SELECT source_id, competition_code, status, is_demo_data, is_historical, source_updated_at, imported_at
+      SELECT source_id, competition_code, fixture_date, kickoff_time, kickoff_time_status,
+        kickoff_time_basis, status, is_demo_data, is_historical, source_updated_at, imported_at
       FROM fixtures
       WHERE source = 'football-data'
       ORDER BY source_id
@@ -82,6 +83,10 @@ describe("football-data importer", () => {
       {
         source_id: "1001",
         competition_code: "PL",
+        fixture_date: "2026-08-15",
+        kickoff_time: "15:00",
+        kickoff_time_status: "confirmed",
+        kickoff_time_basis: "UTC",
         status: "scheduled",
         is_demo_data: 0,
         is_historical: 0,
@@ -91,6 +96,10 @@ describe("football-data importer", () => {
       {
         source_id: "2001",
         competition_code: "ELC",
+        fixture_date: "2026-08-15",
+        kickoff_time: "15:00",
+        kickoff_time_status: "confirmed",
+        kickoff_time_basis: "UTC",
         status: "postponed",
         is_demo_data: 0,
         is_historical: 0,
@@ -121,14 +130,17 @@ describe("football-data importer", () => {
     });
 
     const updated = db.prepare(`
-      SELECT COUNT(*) as count, kickoff_at, status
+      SELECT COUNT(*) as count, kickoff_at, fixture_date, kickoff_time, kickoff_time_basis, status
       FROM fixtures
       WHERE source = 'football-data' AND source_id = '1001'
-    `).get() as { count: number; kickoff_at: string; status: string };
+    `).get() as { count: number; kickoff_at: string; fixture_date: string; kickoff_time: string; kickoff_time_basis: string; status: string };
 
     expect(updated).toEqual({
       count: 1,
       kickoff_at: "2026-08-15T15:00:00Z",
+      fixture_date: "2026-08-15",
+      kickoff_time: "16:00",
+      kickoff_time_basis: "UTC",
       status: "finished"
     });
   });

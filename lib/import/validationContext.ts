@@ -12,6 +12,7 @@ export interface ValidationContext {
   venueId: number | null;
   normalizedDate: string | null | undefined;
   normalizedTime: string | null | undefined;
+  normalizedOffset: string | null | undefined;
   normalizedStatus: FixtureStatus | null | undefined;
   resolvedAwayIsOneOff: boolean;
   warnings: ValidationWarning[];
@@ -39,6 +40,7 @@ export function createContext(
     venueId: null,
     normalizedDate: undefined,
     normalizedTime: undefined,
+    normalizedOffset: undefined,
     normalizedStatus: undefined,
     resolvedAwayIsOneOff: row.awayIsOneOff,
     warnings: [],
@@ -76,6 +78,7 @@ export function toResult(ctx: ValidationContext): RowValidationResult {
     venueResolvedId: ctx.venueId,
     normalizedDate: ctx.normalizedDate,
     normalizedTime: ctx.normalizedTime,
+    normalizedOffset: ctx.normalizedOffset,
     normalizedStatus: ctx.normalizedStatus,
     awayIsOneOff: ctx.resolvedAwayIsOneOff,
     awayParticipantRaw: ctx.row.awayParticipantRaw,
