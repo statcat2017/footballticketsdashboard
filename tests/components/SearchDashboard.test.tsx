@@ -97,15 +97,22 @@ describe("SearchDashboard", () => {
   });
 
   it("shows disabled featured CTA when no ticket URL is available", async () => {
+    const futureKickoff = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
     const fixtures = [
-      customFixture(1, { officialSiteUrl: null, genericTicketUrl: null })
+      customFixture(1, {
+        officialSiteUrl: null,
+        genericTicketUrl: null,
+        kickoffAt: futureKickoff,
+        fixtureDate: futureKickoff.slice(0, 10),
+        kickoffTimeStatus: "confirmed"
+      })
     ];
     fetchMock.mockResolvedValueOnce(jsonResponse(fixtures));
 
     render(<SearchDashboard />);
 
-    const disabled = await screen.findByText("Details unavailable");
-    expect(disabled).toBeInTheDocument();
+    const disabled = await screen.findAllByText("No club ticket link");
+    expect(disabled.length).toBeGreaterThan(0);
   });
 
   it("resets visibleCount when sort key changes", async () => {
@@ -205,6 +212,7 @@ function fixture(id: number): FixtureResult {
   return {
     id,
     title: `Team ${id} v Opponent ${id}`,
+    fixtureStatus: "scheduled",
     competitionCode: "TEST",
     competitionName: "Test League",
     kickoffAt: `2026-06-${String(id).padStart(2, "0")}T15:00:00.000Z`,
@@ -214,6 +222,7 @@ function fixture(id: number): FixtureResult {
     seasonLabel: "2025-26",
     venueName: `Ground ${id}`,
     venuePostcode: "SE20 7RS",
+    venueIsApproximate: false,
     homeClub: `Team ${id}`,
     awayClub: `Opponent ${id}`,
     homeOneOff: false,

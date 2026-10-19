@@ -17,6 +17,7 @@ import { defaultDateRange } from "../date.ts";
 
 interface FixtureRow {
   id: number;
+  status: "scheduled" | "postponed" | "cancelled" | "finished" | "unknown";
   competition_code: string;
   competition_name: string;
   kickoff_at: string | null;
@@ -35,6 +36,8 @@ interface FixtureRow {
   venue_id: number;
   venue_name: string;
   venue_postcode: string;
+  venue_is_approximate: 0 | 1;
+  venue_coordinate_precision: "exact" | "postcode" | "ground_approximate" | "unknown";
   latitude: number;
   longitude: number;
   sale_mode: "all_ticket" | "pay_on_gate" | null;
@@ -150,6 +153,7 @@ function queryFixtures(
   return db.all<FixtureRow>(`
     SELECT
       f.id,
+      f.status,
       f.competition_code,
       c.name as competition_name,
       f.kickoff_at,
@@ -168,6 +172,8 @@ function queryFixtures(
       v.id as venue_id,
       v.name as venue_name,
       v.postcode as venue_postcode,
+      v.is_approximate as venue_is_approximate,
+      v.coordinate_precision as venue_coordinate_precision,
       v.latitude,
       v.longitude,
       COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
@@ -194,7 +200,7 @@ function queryFixtures(
       (f.kickoff_at >= ? AND f.kickoff_at < date(?, '+1 day'))
       OR (f.kickoff_at IS NULL AND f.fixture_date BETWEEN ? AND ?)
     )
-      ${includeHistorical ? "AND f.is_historical = 1" : "AND f.is_historical = 0 AND f.status = 'scheduled'"}
+      ${includeHistorical ? "AND f.is_historical = 1" : "AND f.is_historical = 0 AND f.status != 'finished'"}
     ORDER BY COALESCE(f.kickoff_at, f.fixture_date) ASC
   `, [
     postcodeDistrictValue,
@@ -212,6 +218,7 @@ function queryAllHistoricalFixtures(
   return db.all<FixtureRow>(`
     SELECT
       f.id,
+      f.status,
       f.competition_code,
       c.name as competition_name,
       f.kickoff_at,
@@ -230,6 +237,8 @@ function queryAllHistoricalFixtures(
       v.id as venue_id,
       v.name as venue_name,
       v.postcode as venue_postcode,
+      v.is_approximate as venue_is_approximate,
+      v.coordinate_precision as venue_coordinate_precision,
       v.latitude,
       v.longitude,
       COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
@@ -264,25 +273,44 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     longitude: row.longitude
   });
   const distance = row.cached_distance_miles ?? calculatedDistance;
-  const warnings: string[] = [
-    "Admission prices are best-effort guide prices. Confirm with the club before travelling."
-  ];
+  const warnings: string[] = [];
+
+  if (row.is_demo_data) {
+    warnings.push("Demo fixture data; details may be illustrative.");
+  }
 
   if (row.is_historical) {
     warnings.push("Historical fixture shown because no live fixtures match the current window.");
   }
 
-  if (row.cached_distance_miles === null) {
+  if (row.kickoff_time_status === "assumed") {
+    warnings.push("Kick-off time is assumed; confirm with the club.");
+  } else if (row.kickoff_time_status === "unknown" || row.kickoff_time_status === null) {
+    warnings.push("Kick-off time is not confirmed.");
+  }
+
+  const venueIsApproximate = row.venue_is_approximate === 1
+    || row.venue_coordinate_precision !== "exact";
+  if (venueIsApproximate) {
+    warnings.push("Venue location may be approximate; confirm the ground before travelling.");
+  }
+
+  if (row.adult_price_pence === null && row.concession_price_pence === null) {
+    warnings.push("Admission price is not confirmed.");
+  }
+
+  if (row.cached_distance_miles === null || (row.driving_minutes === null && row.public_transport_minutes === null)) {
     warnings.push("Travel time unavailable for this postcode district; showing straight-line distance only.");
   }
 
-  if (row.home_one_off === 1 && row.generic_ticket_url === null) {
+  if ((row.home_one_off === 1 || row.away_one_off === 1) && row.generic_ticket_url === null) {
     warnings.push("One-off fixture: check the fixture source for ticket information.");
   }
 
   return {
     id: row.id,
     title: `${row.home_club} vs ${row.away_club}`,
+    fixtureStatus: row.status,
     competitionCode: row.competition_code,
     competitionName: row.competition_name,
     kickoffAt: row.kickoff_at,
@@ -294,6 +322,7 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     awayOneOff: row.away_one_off === 1,
     venueName: row.venue_name,
     venuePostcode: row.venue_postcode,
+    venueIsApproximate,
     homeClub: row.home_club,
     awayClub: row.away_club,
     officialSiteUrl: row.official_site_url,

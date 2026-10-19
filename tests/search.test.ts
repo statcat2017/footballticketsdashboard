@@ -24,6 +24,39 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 describe("fixture search", () => {
+  it("returns date-matching inactive fixture statuses and excludes finished fixtures", async () => {
+    const db = await createAppDatabase();
+    const fixtureDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const kickoffAt = `${fixtureDate}T19:00:00.000Z`;
+
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, fixture_date, status, is_demo_data, is_historical
+      )
+      VALUES
+        ('status-test', 'postponed', 'PL', 1, 2, 1, ?, ?, 'postponed', 0, 0),
+        ('status-test', 'cancelled', 'PL', 1, 2, 1, ?, ?, 'cancelled', 0, 0),
+        ('status-test', 'unknown', 'PL', 1, 2, 1, ?, ?, 'unknown', 0, 0),
+        ('status-test', 'finished', 'PL', 1, 2, 1, ?, ?, 'finished', 0, 0)
+    `, [kickoffAt, fixtureDate, kickoffAt, fixtureDate, kickoffAt, fixtureDate, kickoffAt, fixtureDate]);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: fixtureDate,
+      dateTo: fixtureDate
+    }, {
+      postcodeResolver: { resolve: async () => ({ latitude: 51.4817, longitude: -0.191 }) },
+      travelProviderOverrides: [{ estimate: async () => null }]
+    });
+
+    expect(results.map((result) => "fixtureStatus" in result ? result.fixtureStatus : null).sort()).toEqual([
+      "cancelled",
+      "postponed",
+      "unknown"
+    ]);
+  });
+
   it("falls back to unconstrained historical fixtures when date range has no live or historical matches", async () => {
     const db = await createAppDatabase();
 
