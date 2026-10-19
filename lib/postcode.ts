@@ -65,6 +65,9 @@ const postcodesIoResponseSchema = z.object({
 });
 
 const AREA_FALLBACK_COORDINATES = buildAreaFallbackCoordinates();
+export const POSTCODE_LOOKUP_TIMEOUT_MS = 5_000;
+
+const compactPostcodePattern = /^(?:GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})$/i;
 
 export interface ResolvedPostcodeOrigin {
   normalized: string;
@@ -73,10 +76,32 @@ export interface ResolvedPostcodeOrigin {
   source: "known" | "api" | "fallback";
 }
 
+export class PostcodeResolutionError extends Error {
+  readonly code = "postcode_unresolved";
+
+  constructor(message: string, readonly canUseApproximateOrigin: boolean) {
+    super(message);
+    this.name = "PostcodeResolutionError";
+  }
+}
+
+export function isPostcodeFormatValid(postcode: string): boolean {
+  return compactPostcodePattern.test(postcode.replace(/\s+/g, ""));
+}
+
+export function isValidUkCoordinate(coordinate: Coordinate): boolean {
+  return Number.isFinite(coordinate.latitude)
+    && Number.isFinite(coordinate.longitude)
+    && coordinate.latitude >= 49
+    && coordinate.latitude <= 61
+    && coordinate.longitude >= -11
+    && coordinate.longitude <= 3;
+}
+
 export function normalizePostcode(postcode: string): string {
   const compact = postcode.replace(/\s+/g, "").toUpperCase();
 
-  if (compact.length < 5 || compact.length > 7) {
+  if (!compactPostcodePattern.test(compact)) {
     throw new Error("Enter a valid UK postcode.");
   }
 
@@ -96,20 +121,19 @@ export function postcodeDistrict(postcode: string): string {
 }
 
 export function postcodeCoordinate(postcode: string): Coordinate {
-  const normalized = tryNormalizePostcode(postcode);
-
-  if (!normalized) {
-    return districtFallbackCoordinate("");
+  const normalized = normalizePostcode(postcode);
+  const coordinate = POSTCODE_COORDINATES[normalized] ?? districtFallbackCoordinate(postcodeDistrict(normalized));
+  if (!coordinate) {
+    throw new PostcodeResolutionError("No approximate location is available for that postcode district.", false);
   }
-
-  return POSTCODE_COORDINATES[normalized] ?? districtFallbackCoordinate(postcodeDistrict(normalized));
+  return coordinate;
 }
 
 export async function resolvePostcodeOrigin(
   postcode: string,
   fetchImpl: typeof fetch = fetch
 ): Promise<ResolvedPostcodeOrigin> {
-  const normalized = tryNormalizePostcode(postcode) ?? "";
+  const normalized = normalizePostcode(postcode);
   const district = postcodeDistrict(normalized);
   const known = POSTCODE_COORDINATES[normalized];
 
@@ -134,10 +158,18 @@ export async function resolvePostcodeOrigin(
     };
   }
 
+  const fallbackCoordinate = districtFallbackCoordinate(district);
+  if (!fallbackCoordinate) {
+    throw new PostcodeResolutionError(
+      "We could not locate that postcode or find an approximate postcode-area location. Check the postcode or try again.",
+      false
+    );
+  }
+
   return {
     normalized,
     district,
-    coordinate: districtFallbackCoordinate(district),
+    coordinate: fallbackCoordinate,
     source: "fallback"
   };
 }
@@ -145,38 +177,41 @@ export async function resolvePostcodeOrigin(
 export async function lookupPostcodeCoordinate(
   postcode: string,
   fetchImpl: typeof fetch,
-  postcodesIoBaseUrl = "https://api.postcodes.io"
+  postcodesIoBaseUrl = "https://api.postcodes.io",
+  timeoutMs = POSTCODE_LOOKUP_TIMEOUT_MS
 ): Promise<Coordinate | null> {
   const compact = postcode.replace(/\s+/g, "");
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<null>((resolve) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      resolve(null);
+    }, timeoutMs);
+  });
 
   try {
-    const response = await fetchImpl(`${postcodesIoBaseUrl}/postcodes/${compact}`);
+    const lookup = fetchImpl(`${postcodesIoBaseUrl}/postcodes/${compact}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const parsed = postcodesIoResponseSchema.parse(await response.json());
+        const result = parsed.result;
+        const coordinate = result ? { latitude: result.latitude, longitude: result.longitude } : null;
+        return coordinate && isValidUkCoordinate(coordinate) ? coordinate : null;
+      })
+      .catch(() => null);
 
-    if (!response.ok) {
-      return null;
-    }
-
-    const parsed = postcodesIoResponseSchema.parse(await response.json());
-    const result = parsed.result;
-
-    if (!result) {
-      return null;
-    }
-
-    return { latitude: result.latitude, longitude: result.longitude };
+    return await Promise.race([lookup, timedOut]);
   } catch {
     return null;
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
-export function districtFallbackCoordinate(district: string): Coordinate {
+export function districtFallbackCoordinate(district: string): Coordinate | null {
   const area = district.match(/^[A-Z]+/)?.[0];
-
-  if (area && AREA_FALLBACK_COORDINATES[area]) {
-    return AREA_FALLBACK_COORDINATES[area];
-  }
-
-  return { latitude: 51.5074, longitude: -0.1278 };
+  return area ? AREA_FALLBACK_COORDINATES[area] ?? null : null;
 }
 
 export class KnownPostcodeResolver implements PostcodeResolver {

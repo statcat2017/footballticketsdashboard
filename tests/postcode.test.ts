@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { normalizePostcode, tryNormalizePostcode, postcodeCoordinate, postcodeDistrict, resolvePostcodeOrigin } from "@/lib/postcode";
+import { normalizePostcode, tryNormalizePostcode, postcodeCoordinate, postcodeDistrict, resolvePostcodeOrigin, lookupPostcodeCoordinate, PostcodeResolutionError } from "@/lib/postcode";
 
 describe("postcode helpers", () => {
   it("normalizes UK postcodes", () => {
@@ -21,6 +21,10 @@ describe("postcode helpers", () => {
 
   it("throws for invalid input", () => {
     expect(() => normalizePostcode("abc")).toThrow("Enter a valid UK postcode.");
+  });
+
+  it("rejects strings that have the right length but not a UK postcode structure", () => {
+    expect(() => normalizePostcode("ABCD123")).toThrow("Enter a valid UK postcode.");
   });
 
   describe("tryNormalizePostcode", () => {
@@ -48,6 +52,10 @@ describe("postcode helpers", () => {
     });
   });
 
+  it("does not substitute London for an unsupported postcode area", () => {
+    expect(() => postcodeCoordinate("ZZ99 9ZZ")).toThrow(PostcodeResolutionError);
+  });
+
   it("uses postcodes.io coordinates when available", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       result: {
@@ -64,6 +72,35 @@ describe("postcode helpers", () => {
         longitude: -1.816
       },
       source: "api"
+    });
+  });
+
+  it("bounds a postcode lookup that never settles", async () => {
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }));
+
+    await expect(lookupPostcodeCoordinate("SW6 1HS", fetchImpl as typeof fetch, "https://example.test", 5))
+      .resolves.toBeNull();
+    expect(fetchImpl.mock.calls[0][1]?.signal).toBeDefined();
+  });
+
+  it("returns an approximate area origin only when no exact postcode lookup succeeds", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 404 }));
+
+    await expect(resolvePostcodeOrigin("B75 5AQ", fetchImpl as typeof fetch)).resolves.toMatchObject({
+      normalized: "B75 5AQ",
+      district: "B75",
+      source: "fallback"
+    });
+  });
+
+  it("does not invent a London origin when an unsupported area lookup fails", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 404 }));
+
+    await expect(resolvePostcodeOrigin("ZZ99 9ZZ", fetchImpl as typeof fetch)).rejects.toMatchObject({
+      name: "PostcodeResolutionError",
+      canUseApproximateOrigin: false
     });
   });
 });

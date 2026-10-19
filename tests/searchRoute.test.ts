@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ResolvedPostcodeOrigin } from "@/lib/postcode";
 
 const getDatabase = vi.fn();
 const searchFixtures = vi.fn();
+const resolveSearchOrigin = vi.fn();
 const defaultDateRange = vi.fn(() => ({
   dateFrom: "2026-05-11",
   dateTo: "2026-05-21"
@@ -17,7 +19,8 @@ vi.mock("@/lib/date", () => ({
 }));
 
 vi.mock("@/lib/search/service", () => ({
-  searchFixtures
+  searchFixtures,
+  resolveSearchOrigin
 }));
 
 vi.mock("@/lib/travel/backfill", () => ({
@@ -101,6 +104,7 @@ describe("search API route", () => {
     const db = { kind: "db" };
     getDatabase.mockResolvedValue(db);
     searchFixtures.mockRejectedValue(new Error("Enter a valid postcode district."));
+    resolveSearchOrigin.mockResolvedValue(knownOrigin("ZZ1 1ZZ"));
 
     const { POST } = await import("@/app/api/search/route");
 
@@ -157,7 +161,9 @@ describe("search API route", () => {
 
   it("applies the default date range and returns route metadata", async () => {
     const db = { kind: "db" };
+    const origin = knownOrigin("SW6 1HS");
     getDatabase.mockResolvedValue(db);
+    resolveSearchOrigin.mockResolvedValue(origin);
     searchFixtures.mockResolvedValue([
       {
         id: 1,
@@ -205,14 +211,18 @@ describe("search API route", () => {
       postcode: "SW6 1HS",
       radiusMiles: 25,
       dateFrom: "2026-05-11",
-      dateTo: "2026-05-21"
+      dateTo: "2026-05-21",
+      allowApproximateOrigin: false
     }, {
       travelProviders: {
         openRouteServiceApiKey: undefined,
         travelTimeAppId: undefined,
         travelTimeApiKey: undefined
-      }
+      },
+      resolvedOrigin: origin,
+      allowApproximateOrigin: false
     });
+    expect(resolveSearchOrigin).toHaveBeenCalledWith("SW6 1HS");
     expect(scheduleSearchTravelBackfill).toHaveBeenCalledWith(db, {
       postcode: "SW6 1HS",
       dateFrom: "2026-05-11",
@@ -239,13 +249,42 @@ describe("search API route", () => {
         dateFrom: "2026-05-11",
         dateTo: "2026-05-21",
         radiusMiles: 25,
+        originSource: "known",
+        approximateOrigin: false,
         usedHistoricalFallback: false
       }
     });
   });
 
+  it("requires a choice before searching from an approximate district origin", async () => {
+    const fallback: ResolvedPostcodeOrigin = {
+      normalized: "B75 5AQ",
+      district: "B75",
+      coordinate: { latitude: 52.497718, longitude: -1.9040670000000002 },
+      source: "fallback"
+    };
+    resolveSearchOrigin.mockResolvedValue(fallback);
+
+    const { POST } = await import("@/app/api/search/route");
+    const request = () => new Request("http://localhost/api/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postcode: "B75 5AQ" })
+    });
+
+    const response = await POST(request());
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "postcode_unresolved",
+      canUseApproximateOrigin: true
+    });
+    expect(searchFixtures).not.toHaveBeenCalled();
+    expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
+  });
+
   it("returns a 500 when the search service raises an input error", async () => {
     const db = { kind: "db" };
+    resolveSearchOrigin.mockResolvedValue(knownOrigin("ZZ1 1ZZ"));
     getDatabase.mockResolvedValue(db);
     searchFixtures.mockRejectedValue(new Error("Unknown postcode district."));
 
@@ -266,6 +305,7 @@ describe("search API route", () => {
 
   it("returns a 500 for unexpected backend failures", async () => {
     const db = { kind: "db" };
+    resolveSearchOrigin.mockResolvedValue(knownOrigin("SW6 1HS"));
     getDatabase.mockResolvedValue(db);
     searchFixtures.mockRejectedValue(new Error("Database offline"));
 
@@ -284,3 +324,12 @@ describe("search API route", () => {
     expect(scheduleSearchTravelBackfill).not.toHaveBeenCalled();
   });
 });
+
+function knownOrigin(postcode: string): ResolvedPostcodeOrigin {
+  return {
+    normalized: postcode,
+    district: postcode.split(" ")[0],
+    coordinate: { latitude: 51.4817, longitude: -0.191 },
+    source: "known"
+  };
+}

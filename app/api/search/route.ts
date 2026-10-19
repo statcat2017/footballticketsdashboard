@@ -3,11 +3,11 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db/client";
 import { getTravelProviderRuntimeConfig } from "@/lib/runtime-env";
-import { searchFixtures } from "@/lib/search/service";
+import { isPostcodeFormatValid, PostcodeResolutionError } from "@/lib/postcode";
+import { resolveSearchOrigin, searchFixtures } from "@/lib/search/service";
 import { defaultDateRange } from "@/lib/date";
 import { scheduleSearchTravelBackfill } from "@/lib/travel/backfill";
 
-const postcodePattern = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 function isValidIsoDate(value: string): boolean {
@@ -20,11 +20,16 @@ function isValidIsoDate(value: string): boolean {
 }
 
 const searchSchema = z.object({
-  postcode: z.string().trim().regex(postcodePattern, "Enter a valid UK postcode."),
+  postcode: z.string().trim().refine(isPostcodeFormatValid, "Enter a valid UK postcode."),
   radiusMiles: z.preprocess(
-    (v) => (v === null || v === undefined || v === "" ? undefined : Number(v)),
-    z.number().positive().max(500).optional()
+    (value) => {
+      if (value === undefined || value === "") return undefined;
+      if (value === "all" || value === null) return null;
+      return Number(value);
+    },
+    z.union([z.literal(25), z.literal(50), z.literal(100), z.null()]).optional()
   ),
+  allowApproximateOrigin: z.boolean().optional().default(false),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional()
 }).superRefine((value, context) => {
@@ -67,11 +72,13 @@ function isClientSearchError(error: unknown): error is Error {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
+  const bodyRecord = body && typeof body === "object" ? body as Record<string, unknown> : {};
   const defaults = defaultDateRange();
   const parsed = searchSchema.safeParse({
-    ...body,
-    dateFrom: body?.dateFrom ?? defaults.dateFrom,
-    dateTo: body?.dateTo ?? defaults.dateTo
+    ...bodyRecord,
+    radiusMiles: bodyRecord.radiusMiles === undefined ? 25 : bodyRecord.radiusMiles,
+    dateFrom: bodyRecord.dateFrom ?? defaults.dateFrom,
+    dateTo: bodyRecord.dateTo ?? defaults.dateTo
   });
 
   if (!parsed.success) {
@@ -82,9 +89,21 @@ export async function POST(request: Request) {
   }
 
   try {
+    const resolvedOrigin = await resolveSearchOrigin(parsed.data.postcode);
+    if (resolvedOrigin.source === "fallback" && !parsed.data.allowApproximateOrigin) {
+      throw new PostcodeResolutionError(
+        `We could not verify ${resolvedOrigin.normalized}. Search from an approximate postcode-area origin instead?`,
+        true
+      );
+    }
+
     const db = await getDatabase();
     const travelProviders = await getTravelProviderRuntimeConfig();
-    const results = await searchFixtures(db, parsed.data, { travelProviders });
+    const results = await searchFixtures(db, parsed.data, {
+      travelProviders,
+      resolvedOrigin,
+      allowApproximateOrigin: parsed.data.allowApproximateOrigin
+    });
     scheduleSearchTravelBackfill(db, {
       postcode: parsed.data.postcode,
       dateFrom: parsed.data.dateFrom ?? defaults.dateFrom,
@@ -96,11 +115,21 @@ export async function POST(request: Request) {
       meta: {
         dateFrom: parsed.data.dateFrom,
         dateTo: parsed.data.dateTo,
-        radiusMiles: parsed.data.radiusMiles ?? null,
+        radiusMiles: parsed.data.radiusMiles === undefined ? 25 : parsed.data.radiusMiles,
+        originSource: resolvedOrigin.source,
+        approximateOrigin: resolvedOrigin.source === "fallback",
         usedHistoricalFallback: results.some((result) => result.isHistorical)
       }
     });
   } catch (error) {
+    if (error instanceof PostcodeResolutionError) {
+      return NextResponse.json({
+        error: error.message,
+        code: error.code,
+        canUseApproximateOrigin: error.canUseApproximateOrigin
+      }, { status: 422 });
+    }
+
     if (isClientSearchError(error)) {
       return NextResponse.json(
         { error: error.message },

@@ -1,6 +1,6 @@
 import type { AppDatabase, SqlWrite } from "../db/adapter.ts";
 import { distanceMiles } from "../distance.ts";
-import { postcodeCoordinate, postcodeDistrict, type Coordinate } from "../postcode.ts";
+import { postcodeCoordinate, postcodeDistrict, PostcodeResolutionError, type Coordinate } from "../postcode.ts";
 import { lookupTravelEstimate, type TravelProvidersConfig } from "./providers.ts";
 import { defaultDateRange } from "../date.ts";
 
@@ -169,8 +169,14 @@ export async function fillTravelCacheForPostcode(
   const dateFrom = options.dateFrom ?? defaults.dateFrom;
   const dateTo = options.dateTo ?? defaults.dateTo;
   const postcodeDistrictValue = postcodeDistrict(postcode);
-  const origin = postcodeCoordinate(postcode);
   const venues = await listMissingTravelCacheVenues(db, postcodeDistrictValue, dateFrom, dateTo);
+  let origin: Coordinate;
+  try {
+    origin = postcodeCoordinate(postcode);
+  } catch (error) {
+    if (error instanceof PostcodeResolutionError) return noOriginFillResult(postcodeDistrictValue, venues.length);
+    throw error;
+  }
 
   let rowsInserted = 0;
   let providerBackfilled = 0;
@@ -235,8 +241,14 @@ export async function fillTravelCacheForDistrict(
   postcodeDistrictValue: string,
   options: TravelFillOptions = {}
 ): Promise<TravelFillResult> {
-  const origin = postcodeCoordinate(`${postcodeDistrictValue} 1AA`);
   const venues = await listAllMissingTravelCacheVenues(db, postcodeDistrictValue);
+  let origin: Coordinate;
+  try {
+    origin = postcodeCoordinate(`${postcodeDistrictValue} 1AA`);
+  } catch (error) {
+    if (error instanceof PostcodeResolutionError) return noOriginFillResult(postcodeDistrictValue, venues.length);
+    throw error;
+  }
 
   let rowsInserted = 0;
   let providerBackfilled = 0;
@@ -293,6 +305,16 @@ export async function fillTravelCacheForDistrict(
     rowsInserted,
     providerBackfilled,
     distanceOnlySkipped
+  };
+}
+
+function noOriginFillResult(postcodeDistrictValue: string, venuesConsidered: number): TravelFillResult {
+  return {
+    postcodeDistrict: postcodeDistrictValue,
+    venuesConsidered,
+    rowsInserted: 0,
+    providerBackfilled: 0,
+    distanceOnlySkipped: venuesConsidered
   };
 }
 
