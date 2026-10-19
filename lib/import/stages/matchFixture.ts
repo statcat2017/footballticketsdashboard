@@ -13,6 +13,7 @@ export async function matchFixture(db: AppDatabase, ctx: ValidationContext): Pro
     venueResolvedId: ctx.venueId,
     kickoffDate: ctx.normalizedDate ?? ctx.row.kickoffDate,
     kickoffTime: ctx.normalizedTime ?? ctx.row.kickoffTime,
+    kickoffOffset: ctx.normalizedOffset ?? ctx.row.kickoffOffset,
     awayIsOneOff: ctx.resolvedAwayIsOneOff,
   } as ImportBatchRow;
 

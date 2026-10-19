@@ -11,6 +11,7 @@ import { validateMetadata } from "./stages/validateMetadata.ts";
 import { matchFixture } from "./stages/matchFixture.ts";
 import { detectDuplicates } from "./stages/detectDuplicates.ts";
 import { createValidationCache, type ValidationCache } from "./validationCache.ts";
+import { getLondonKickoffDate, getLondonKickoffParts } from "./kickoffTime.ts";
 
 export interface ValidationWarning {
   field?: string;
@@ -197,20 +198,27 @@ export async function findDuplicateInSameBatch(
   row: ImportBatchRow,
 ): Promise<number | null> {
   if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
-  const result = await db.get<{ id: number }>(
-    `SELECT id FROM import_batch_rows
+  const targetKickoff = getLondonKickoffParts(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+  const targetDate = targetKickoff?.date ?? row.kickoffDate;
+  const targetTime = targetKickoff?.time ?? row.kickoffTime;
+  const candidates = await db.all<{ id: number; kickoff_date: string; kickoff_time: string | null; kickoff_offset: string | null }>(
+    `SELECT id, kickoff_date, kickoff_time, kickoff_offset FROM import_batch_rows
      WHERE batch_id = ? AND id < ? AND final_action IS NULL
      AND home_participant_raw = ? AND away_participant_raw = ?
-     AND kickoff_date = ?
+     AND kickoff_date BETWEEN date(?,'-1 day') AND date(?,'+1 day')
      AND (competition_raw = ? OR (competition_raw IS NULL AND ? IS NULL))
-     AND (kickoff_time = ? OR (kickoff_time IS NULL AND ? IS NULL))
      AND (venue_raw = ? OR (venue_raw IS NULL AND ? IS NULL))`,
-    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate,
+    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw,
+     targetDate, targetDate,
      row.competitionRaw, row.competitionRaw,
-     row.kickoffTime, row.kickoffTime,
      row.venueRaw, row.venueRaw]
   );
-  return result?.id ?? null;
+  const match = candidates.find((candidate) => {
+    const candidateKickoff = getLondonKickoffParts(candidate.kickoff_date, candidate.kickoff_time, candidate.kickoff_offset);
+    return (candidateKickoff?.date ?? candidate.kickoff_date) === targetDate
+      && (candidateKickoff?.time ?? candidate.kickoff_time) === targetTime;
+  });
+  return match?.id ?? null;
 }
 
 /**
@@ -223,22 +231,29 @@ export async function findRelaxedDuplicateInSameBatch(
   row: ImportBatchRow,
 ): Promise<number | null> {
   if (!row.homeParticipantRaw || !row.awayParticipantRaw || !row.kickoffDate) return null;
-  const result = await db.get<{ id: number }>(
-    `SELECT id FROM import_batch_rows
+  const targetDate = getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+  const candidates = await db.all<{ id: number; kickoff_date: string; kickoff_time: string | null; kickoff_offset: string | null }>(
+    `SELECT id, kickoff_date, kickoff_time, kickoff_offset FROM import_batch_rows
      WHERE batch_id = ? AND id < ? AND final_action IS NULL
      AND home_participant_raw = ? AND away_participant_raw = ?
-     AND kickoff_date = ?`,
-    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw, row.kickoffDate]
+     AND kickoff_date BETWEEN date(?,'-1 day') AND date(?,'+1 day')`,
+    [row.batchId, row.id, row.homeParticipantRaw, row.awayParticipantRaw, targetDate, targetDate]
   );
-  return result?.id ?? null;
+  const match = candidates.find((candidate) =>
+    getLondonKickoffDate(candidate.kickoff_date, candidate.kickoff_time, candidate.kickoff_offset) === targetDate
+  );
+  return match?.id ?? null;
 }
 
 export function hasMeaningfulChanges(row: ImportBatchRow, before: Record<string, unknown>): boolean {
-  if (row.kickoffDate && before.fixture_date && row.kickoffDate !== before.fixture_date) return true;
+  const localKickoff = getLondonKickoffParts(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+  const fixtureDate = localKickoff?.date ?? row.kickoffDate;
+  const kickoffTime = localKickoff?.time ?? row.kickoffTime;
+  if (fixtureDate && before.fixture_date && fixtureDate !== before.fixture_date) return true;
   if (row.competitionResolvedCode && before.competition_code && row.competitionResolvedCode !== before.competition_code) return true;
   if (row.venueResolvedId && row.venueRaw && before.venue_id !== null && row.venueResolvedId !== before.venue_id) return true;
   if (row.status && before.status && row.status !== before.status) return true;
-  if (row.kickoffTime && before.kickoff_time && row.kickoffTime !== before.kickoff_time) return true;
+  if (kickoffTime && before.kickoff_time && kickoffTime !== before.kickoff_time) return true;
   const existingTimeBasis = before.kickoff_time_basis;
   if (row.kickoffTime && (row.kickoffOffset || existingTimeBasis !== null && existingTimeBasis !== undefined)) {
     const requestedTimeBasis = row.kickoffOffset ?? "Europe/London";
@@ -257,17 +272,23 @@ export async function findDuplicateBatchRow(
   const isNormal = !row.homeIsOneOff && !row.awayIsOneOff && row.homeParticipantResolvedId && row.awayParticipantResolvedId;
   if (!isNormal) return null;
 
-  const result = await db.get<{ id: number; batch_id: number }>(
-    `SELECT r.id, r.batch_id FROM import_batch_rows r
+  const fixtureDate = getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+  if (!fixtureDate) return null;
+
+  const candidates = await db.all<{ id: number; batch_id: number; kickoff_date: string; kickoff_time: string | null; kickoff_offset: string | null }>(
+    `SELECT r.id, r.batch_id, r.kickoff_date, r.kickoff_time, r.kickoff_offset FROM import_batch_rows r
      JOIN import_batches b ON b.id = r.batch_id
      WHERE r.id != ? AND r.batch_id != ? AND r.final_action IS NULL
      AND r.home_participant_resolved_id = ?
      AND r.away_participant_resolved_id = ?
      AND r.competition_resolved_code = ?
-     AND r.kickoff_date = ?
+     AND r.kickoff_date BETWEEN date(?,'-1 day') AND date(?,'+1 day')
      AND r.match_result NOT IN ('skip', 'blocked', 'duplicate_same_batch')
      AND b.approval_status IN ('pending', 'preview')`,
-    [excludeRowId, row.batchId, row.homeParticipantResolvedId, row.awayParticipantResolvedId, row.competitionResolvedCode, row.kickoffDate]
+    [excludeRowId, row.batchId, row.homeParticipantResolvedId, row.awayParticipantResolvedId, row.competitionResolvedCode, fixtureDate, fixtureDate]
+  );
+  const result = candidates.find((candidate) =>
+    getLondonKickoffDate(candidate.kickoff_date, candidate.kickoff_time, candidate.kickoff_offset) === fixtureDate
   );
   if (!result) return null;
   return { batchId: result.batch_id, rowId: result.id };

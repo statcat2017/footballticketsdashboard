@@ -75,6 +75,24 @@ export function formatKickoffInLondon(instant: string): LondonKickoffParts | nul
   };
 }
 
+export function getLondonKickoffParts(
+  date: string | null | undefined,
+  time: string | null | undefined,
+  sourceOffset?: string | null,
+): LondonKickoffParts | null {
+  if (!date || !time) return null;
+  const resolution = resolveKickoffInstant(date, time, sourceOffset);
+  return resolution.ok ? formatKickoffInLondon(resolution.kickoffAt) : null;
+}
+
+export function getLondonKickoffDate(
+  date: string | null | undefined,
+  time: string | null | undefined,
+  sourceOffset?: string | null,
+): string | null {
+  return getLondonKickoffParts(date, time, sourceOffset)?.date ?? date ?? null;
+}
+
 function parseLocalDateTime(date: string, time: string): {
   year: number;
   month: number;

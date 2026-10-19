@@ -1,5 +1,6 @@
 import type { AppDatabase } from "../db/adapter";
 import type { ImportBatchRow } from "./types";
+import { getLondonKickoffDate } from "./kickoffTime.ts";
 
 export type FixtureMatchResult =
   | { kind: "match"; id: number; before: Record<string, unknown> }
@@ -64,10 +65,11 @@ export async function findImportFixtureMatch(
     LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
     WHERE ${pc.conditions.join(" AND ")} AND competition_code = ? AND season_label = ?`;
   const params: (string | number | null)[] = [...pc.params, row.competitionResolvedCode, seasonLabel];
+  const fixtureDate = getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
 
-  if (row.homeParticipantResolvedId && row.awayParticipantResolvedId && row.kickoffDate) {
+  if (row.homeParticipantResolvedId && row.awayParticipantResolvedId && fixtureDate) {
     sql += ` AND fixture_date = ?`;
-    params.push(row.kickoffDate);
+    params.push(fixtureDate);
   }
 
   const fixtures = await db.all<Record<string, unknown>>(sql, params);
@@ -100,7 +102,8 @@ export async function findExistingFixtureDuplicateByParticipantsAndDate(
   db: AppDatabase,
   row: ImportBatchRow,
 ): Promise<FixtureMatchResult> {
-  if (!row.kickoffDate) return { kind: "none" };
+  const fixtureDate = getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+  if (!fixtureDate) return { kind: "none" };
 
   const pc = buildParticipantConditions(row);
   if (!pc) return { kind: "none" };
@@ -108,7 +111,7 @@ export async function findExistingFixtureDuplicateByParticipantsAndDate(
   const fixtures = await db.all<Record<string, unknown>>(
     `SELECT f.* FROM fixtures f
      WHERE ${pc.conditions.join(" AND ")} AND f.fixture_date = ?`,
-    [...pc.params, row.kickoffDate]
+    [...pc.params, fixtureDate]
   );
 
   if (fixtures.length === 0) return { kind: "none" };
@@ -142,6 +145,7 @@ export async function findImportFixtureCandidateMatches(
 
   const where = [`f.competition_code = ?`, `f.season_label = ?`];
   const params: (string | number | null)[] = [row.competitionResolvedCode, seasonLabel];
+  const fixtureDate = getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
   let identityFieldCount = 0;
 
   if (row.homeIsOneOff && row.homeParticipantRaw) {
@@ -164,9 +168,9 @@ export async function findImportFixtureCandidateMatches(
     identityFieldCount++;
   }
 
-  if (row.kickoffDate) {
+  if (fixtureDate) {
     where.push(`f.fixture_date = ?`);
-    params.push(row.kickoffDate);
+    params.push(fixtureDate);
     identityFieldCount++;
   }
 
@@ -207,7 +211,7 @@ export async function findImportFixtureCandidateMatchesForRows(
     else if (row.homeParticipantResolvedId) identityFieldCount++;
     if (row.awayIsOneOff && row.awayParticipantRaw) identityFieldCount++;
     else if (row.awayParticipantResolvedId) identityFieldCount++;
-    if (row.kickoffDate) identityFieldCount++;
+    if (getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset)) identityFieldCount++;
     return identityFieldCount > 0;
   });
 
@@ -219,6 +223,7 @@ export async function findImportFixtureCandidateMatchesForRows(
   for (const row of eligible) {
     const parts = ["f.competition_code = ?", "f.season_label = ?"];
     params.push(row.competitionResolvedCode, seasonLabel);
+    const fixtureDate = getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
 
     if (row.homeIsOneOff && row.homeParticipantRaw) {
       parts.push("f.home_one_off_name = ?");
@@ -236,9 +241,9 @@ export async function findImportFixtureCandidateMatchesForRows(
       params.push(row.awayParticipantResolvedId);
     }
 
-    if (row.kickoffDate) {
+    if (fixtureDate) {
       parts.push("f.fixture_date = ?");
-      params.push(row.kickoffDate);
+      params.push(fixtureDate);
     }
 
     whereParts.push(`(${parts.join(" AND ")})`);
@@ -290,7 +295,8 @@ export async function findImportFixtureCandidateMatchesForRows(
         continue;
       }
 
-      if (row.kickoffDate && f.fixtureDate !== row.kickoffDate) continue;
+      const fixtureDate = getLondonKickoffDate(row.kickoffDate, row.kickoffTime, row.kickoffOffset);
+      if (fixtureDate && f.fixtureDate !== fixtureDate) continue;
 
       rowMatches.push({
         id: f.id as number,
