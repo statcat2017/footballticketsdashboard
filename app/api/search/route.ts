@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getDatabase } from "@/lib/db/client";
-import { getTravelProviderRuntimeConfig } from "@/lib/runtime-env";
+import { getPriceConfirmationPolicy, getTravelProviderRuntimeConfig } from "@/lib/runtime-env";
 import { searchFixtures } from "@/lib/search/service";
 import { defaultDateRange } from "@/lib/date";
 import { scheduleSearchTravelBackfill } from "@/lib/travel/backfill";
@@ -84,7 +84,10 @@ export async function POST(request: Request) {
   try {
     const db = await getDatabase();
     const travelProviders = await getTravelProviderRuntimeConfig();
-    const results = await searchFixtures(db, parsed.data, { travelProviders });
+    const results = await searchFixtures(db, parsed.data, {
+      travelProviders,
+      priceConfirmationPolicy: getPriceConfirmationPolicy()
+    });
     scheduleSearchTravelBackfill(db, {
       postcode: parsed.data.postcode,
       dateFrom: parsed.data.dateFrom ?? defaults.dateFrom,

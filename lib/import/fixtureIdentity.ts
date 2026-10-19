@@ -62,7 +62,7 @@ export async function findImportFixtureMatch(
   let sql = `SELECT fixtures.*, ftpo.source_url AS ticket_url, ftpo.adult_price_pence, ftpo.concession_price_pence
     FROM fixtures
     LEFT JOIN fixture_ticket_price_overrides ftpo ON ftpo.fixture_id = fixtures.id
-    WHERE ${pc.conditions.join(" AND ")} AND competition_code = ? AND season_label = ?`;
+    WHERE ${pc.conditions.join(" AND ")} AND fixtures.competition_code = ? AND fixtures.season_label = ?`;
   const params: (string | number | null)[] = [...pc.params, row.competitionResolvedCode, seasonLabel];
 
   if (row.homeParticipantResolvedId && row.awayParticipantResolvedId && row.kickoffDate) {

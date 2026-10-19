@@ -42,6 +42,27 @@ describe("travel provider integrations", () => {
     )).resolves.toBe(36);
   });
 
+  it("allows the TfL endpoint to be replaced for isolated browser and HTTP tests", async () => {
+    const previousBaseUrl = process.env.TFL_API_BASE_URL;
+    process.env.TFL_API_BASE_URL = "http://127.0.0.1:3218/tfl/";
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ journeys: [] }), { status: 200 }));
+
+    try {
+      await expect(lookupTflPublicTransportMinutes(
+        { latitude: 51.48, longitude: -0.19 },
+        { latitude: 51.55, longitude: -0.11 },
+        fetchImpl as typeof fetch
+      )).resolves.toBeNull();
+      expect(fetchImpl).toHaveBeenCalledWith(
+        "http://127.0.0.1:3218/tfl/Journey/JourneyResults/51.48,-0.19/to/51.55,-0.11",
+        expect.any(Object)
+      );
+    } finally {
+      if (previousBaseUrl === undefined) delete process.env.TFL_API_BASE_URL;
+      else process.env.TFL_API_BASE_URL = previousBaseUrl;
+    }
+  });
+
   it("returns TfL results when no driving provider is configured", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       journeys: [

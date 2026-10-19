@@ -487,8 +487,62 @@ select {
   font-size: 12px;
 }
 
-.card-trust {
-  margin-top: 6px;
+.price-evidence {
+  min-width: 0;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.featured-price-evidence {
+  max-width: 640px;
+  margin-top: 8px;
+}
+
+.price-evidence-value {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.price-evidence-item + .price-evidence-item {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--grey-200);
+}
+
+.price-evidence-details {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  margin-top: 3px;
+  color: var(--grey-500);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.price-source-link {
+  color: var(--green-dark);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.price-confirmation {
+  margin: 5px 0 0;
+  padding: 5px 7px;
+  border: 1px solid #efd28d;
+  border-radius: 5px;
+  color: #754800;
+  background: var(--amber-soft);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.price-source-link:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 .travel-chips {
@@ -804,11 +858,6 @@ select {
   gap: 10px;
   flex-wrap: wrap;
   margin: 2px 0;
-}
-
-.fixture-card-price {
-  color: var(--grey-500);
-  font-size: 13px;
 }
 
 .fixture-card-action {

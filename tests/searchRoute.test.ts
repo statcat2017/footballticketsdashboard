@@ -177,8 +177,11 @@ describe("search API route", () => {
           concessionPricePence: 2000,
           sourceUrl: "https://www.chelseafc.com/en/tickets",
           verifiedAt: "2026-05-10",
-          confidence: "seed",
-          isOverride: false
+          confidence: "imported",
+          isOverride: false,
+          overrideNote: null,
+          seasonLabel: null,
+          confirmation: { required: false, maxAgeDays: 90, reasons: [] }
         },
         travel: {
           distanceMiles: 0.4,
@@ -211,7 +214,8 @@ describe("search API route", () => {
         openRouteServiceApiKey: undefined,
         travelTimeAppId: undefined,
         travelTimeApiKey: undefined
-      }
+      },
+      priceConfirmationPolicy: { maxAgeDays: 90 }
     });
     expect(scheduleSearchTravelBackfill).toHaveBeenCalledWith(db, {
       postcode: "SW6 1HS",

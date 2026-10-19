@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import type { QueryParam } from "@/lib/db/adapter";
-import { createAppDatabase } from "@/lib/db/client";
+import { createAppDatabase, createDatabase } from "@/lib/db/client";
+import { createSqliteAppDatabase } from "@/lib/db/adapter";
 import type { PostcodeResolver } from "@/lib/postcode";
 import { searchFixtures } from "@/lib/search/service";
 
@@ -169,6 +173,176 @@ describe("fixture search", () => {
       isOverride: true,
       overrideNote: "Non League Day offer"
     });
+  });
+
+  it("does not borrow default price evidence for an undated partial fixture override", async () => {
+    const db = await createAppDatabase();
+    await db.run(`
+      INSERT OR IGNORE INTO fixture_seasons (label, starts_on, ends_on, is_current)
+      VALUES ('2026-27', '2026-07-01', '2027-06-30', 1)
+    `);
+    await db.run("UPDATE club_ticket_prices SET season_label = '2025-26' WHERE club_id = 1");
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label,
+        status, is_demo_data, is_historical
+      ) VALUES (
+        'test', 'partial-undated-override', 'PL', 1, 2, 1,
+        '2026-10-24T15:00:00.000Z', '2026-10-24', '15:00', 'confirmed', '2026-27',
+        'scheduled', 0, 0
+      )
+    `);
+
+    const fixture = await db.get<{ id: number }>(`
+      SELECT id FROM fixtures WHERE source = 'test' AND source_id = 'partial-undated-override'
+    `);
+    await db.run(`
+      INSERT INTO fixture_ticket_price_overrides (
+        fixture_id, sale_mode, adult_price_pence, concession_price_pence,
+        source_url, verified_at, note, confidence, season_label
+      ) VALUES (?, 'pay_on_gate', 1250, NULL,
+        NULL, NULL, 'Partial override', 'verified', NULL)
+    `, [fixture?.id ?? 0]);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-10-24",
+      dateTo: "2026-10-25"
+    });
+    const result = results.find((row) => row.id === fixture?.id);
+
+    expect(result?.price).toMatchObject({
+      adultPricePence: 1250,
+      concessionPricePence: 2000,
+      sourceUrl: null,
+      verifiedAt: null,
+      confidence: "verified",
+      isOverride: true,
+      seasonLabel: null,
+      confirmation: {
+        required: true,
+        maxAgeDays: 90,
+        reasons: ["missing_checked_date"]
+      }
+    });
+  });
+
+  it("keeps adult override evidence separate from stale club-level concession evidence", async () => {
+    const db = await createAppDatabase();
+    await db.run(`
+      INSERT OR IGNORE INTO fixture_seasons (label, starts_on, ends_on, is_current)
+      VALUES ('2026-27', '2026-07-01', '2027-06-30', 1)
+    `);
+    await db.run("UPDATE club_ticket_prices SET source_url = ?, verified_at = ?, confidence = ?, season_label = ? WHERE club_id = 1", [
+      "https://club.example.test/old-prices", "2025-01-10", "verified", "2025-26"
+    ]);
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label,
+        status, is_demo_data, is_historical
+      ) VALUES (
+        'test', 'split-price-evidence', 'PL', 1, 2, 1,
+        '2026-10-24T15:00:00.000Z', '2026-10-24', '15:00', 'confirmed', '2026-27',
+        'scheduled', 0, 0
+      )
+    `);
+    const fixture = await db.get<{ id: number }>(
+      "SELECT id FROM fixtures WHERE source = 'test' AND source_id = 'split-price-evidence'"
+    );
+    await db.run(`
+      INSERT INTO fixture_ticket_price_overrides (
+        fixture_id, sale_mode, adult_price_pence, concession_price_pence,
+        source_url, verified_at, note, confidence, season_label
+      ) VALUES (?, 'pay_on_gate', 1250, NULL,
+        'https://club.example.test/current-fixture-price', '2026-10-18', 'Adult price update', 'verified', '2026-27')
+    `, [fixture?.id ?? 0]);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-10-24",
+      dateTo: "2026-10-24"
+    }, {
+      postcodeResolver: { resolve: async () => ({ latitude: 51.4817, longitude: -0.191 }) },
+      travelProviderOverrides: []
+    });
+    const result = results.find((row) => row.id === fixture?.id);
+
+    expect(result?.price.adultEvidence).toMatchObject({
+      sourceUrl: "https://club.example.test/current-fixture-price",
+      verifiedAt: "2026-10-18",
+      confidence: "verified",
+      seasonLabel: "2026-27",
+      isOverride: true,
+      confirmation: { required: false, reasons: [] }
+    });
+    expect(result?.price.concessionEvidence).toMatchObject({
+      sourceUrl: "https://club.example.test/old-prices",
+      verifiedAt: "2025-01-10",
+      confidence: "verified",
+      seasonLabel: "2025-26",
+      isOverride: false,
+      confirmation: {
+        required: true,
+        reasons: expect.arrayContaining(["older_than_threshold", "different_season"])
+      }
+    });
+  });
+
+  it("preserves fixture price evidence across a persistent-file reopen", async () => {
+    const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-price-reopen-"));
+    const filename = path.join(dirname, "prices.sqlite");
+    let sqlite = await createDatabase(filename);
+
+    try {
+      const db = createSqliteAppDatabase(sqlite);
+      await db.run(`
+        INSERT INTO fixtures (
+          source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+          kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label,
+          status, is_demo_data, is_historical
+        ) VALUES ('price-reopen', 'fixture-1', 'PL', 1, 2, 1,
+          '2099-06-01T15:00:00.000Z', '2099-06-01', '15:00', 'confirmed', '2025-26',
+          'scheduled', 0, 0)
+      `);
+      const fixture = await db.get<{ id: number }>(
+        "SELECT id FROM fixtures WHERE source = 'price-reopen' AND source_id = 'fixture-1'"
+      );
+      const checkedAt = new Date().toISOString().slice(0, 10);
+      await db.run(`
+        INSERT INTO fixture_ticket_price_overrides (
+          fixture_id, sale_mode, adult_price_pence, concession_price_pence,
+          source_url, verified_at, note, confidence, season_label
+        ) VALUES (?, 'pay_on_gate', 1250, NULL,
+          'https://prices.example.test/reopened-fixture', ?, 'Reopen test', 'verified', '2025-26')
+      `, [fixture?.id ?? 0, checkedAt]);
+
+      sqlite.close();
+      sqlite = await createDatabase(filename);
+      const reopenedDb = createSqliteAppDatabase(sqlite);
+      const results = await searchFixtures(reopenedDb, {
+        postcode: "SW6 1HS",
+        dateFrom: "2099-06-01",
+        dateTo: "2099-06-02"
+      });
+      const result = results.find((row) => row.title === "Chelsea vs Arsenal");
+
+      expect(result?.price).toMatchObject({
+        adultPricePence: 1250,
+        concessionPricePence: 2000,
+        sourceUrl: "https://prices.example.test/reopened-fixture",
+        verifiedAt: checkedAt,
+        confidence: "verified",
+        isOverride: true,
+        seasonLabel: "2025-26",
+        confirmation: { required: false, maxAgeDays: 90, reasons: [] }
+      });
+      expect(result?.genericTicketUrl).toBe("https://www.chelseafc.com/en/tickets");
+    } finally {
+      sqlite.close();
+      fs.rmSync(dirname, { recursive: true, force: true });
+    }
   });
 
   it("uses exact postcode coordinates and live driving lookup on first search when cache is missing", async () => {

@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS club_ticket_prices (
   concession_price_pence INTEGER,
   source_url TEXT,
   verified_at TEXT,
-  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown'))
+  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown')),
+  season_label TEXT
 );
 
 CREATE TABLE IF NOT EXISTS fixture_ticket_price_overrides (
@@ -159,7 +160,8 @@ CREATE TABLE IF NOT EXISTS fixture_ticket_price_overrides (
   source_url TEXT,
   verified_at TEXT,
   note TEXT,
-  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown'))
+  confidence TEXT NOT NULL CHECK (confidence IN ('verified', 'imported', 'inferred', 'approximate', 'unknown')),
+  season_label TEXT
 );
 
 CREATE TABLE IF NOT EXISTS travel_cache (

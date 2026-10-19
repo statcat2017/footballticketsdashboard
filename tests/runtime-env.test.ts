@@ -53,3 +53,26 @@ describe("getTravelProviderRuntimeConfig", () => {
     });
   });
 });
+
+describe("getPriceConfirmationPolicy", () => {
+  afterEach(() => {
+    delete process.env.PRICE_CONFIRMATION_MAX_AGE_DAYS;
+  });
+
+  it("defaults to the documented 90-day confirmation policy", async () => {
+    const { getPriceConfirmationPolicy } = await import("@/lib/runtime-env");
+    expect(getPriceConfirmationPolicy()).toEqual({ maxAgeDays: 90 });
+  });
+
+  it("accepts a configured integer age threshold", async () => {
+    process.env.PRICE_CONFIRMATION_MAX_AGE_DAYS = "45";
+    const { getPriceConfirmationPolicy } = await import("@/lib/runtime-env");
+    expect(getPriceConfirmationPolicy()).toEqual({ maxAgeDays: 45 });
+  });
+
+  it("uses the default policy for invalid configuration", async () => {
+    process.env.PRICE_CONFIRMATION_MAX_AGE_DAYS = "many";
+    const { getPriceConfirmationPolicy } = await import("@/lib/runtime-env");
+    expect(getPriceConfirmationPolicy()).toEqual({ maxAgeDays: 90 });
+  });
+});

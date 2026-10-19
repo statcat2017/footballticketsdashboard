@@ -7,6 +7,19 @@ export interface SearchRequest {
   dateTo?: string;
 }
 
+export interface PriceEvidenceSummary {
+  sourceUrl: string | null;
+  verifiedAt: string | null;
+  confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown";
+  seasonLabel: string | null;
+  isOverride: boolean;
+  confirmation: {
+    required: boolean;
+    maxAgeDays: number;
+    reasons: Array<"missing_checked_date" | "older_than_threshold" | "different_season">;
+  };
+}
+
 export interface PriceSummary {
   saleMode: "all_ticket" | "pay_on_gate" | null;
   adultPricePence: number | null;
@@ -16,6 +29,14 @@ export interface PriceSummary {
   confidence: "verified" | "imported" | "inferred" | "approximate" | "unknown";
   isOverride: boolean;
   overrideNote: string | null;
+  seasonLabel: string | null;
+  adultEvidence: PriceEvidenceSummary | null;
+  concessionEvidence: PriceEvidenceSummary | null;
+  confirmation: {
+    required: boolean;
+    maxAgeDays: number;
+    reasons: Array<"missing_checked_date" | "older_than_threshold" | "different_season">;
+  };
 }
 
 export interface TravelSummary {
