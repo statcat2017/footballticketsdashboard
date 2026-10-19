@@ -23,7 +23,12 @@ export interface TravelSummary {
   drivingMinutes: number | null;
   publicTransportMinutes: number | null;
   publicTransportUrl: string | null;
-  source: "cache" | "live" | "distance_only";
+  source: "cache" | "distance_only";
+  postcodeDistrict: string;
+  isDistrictApproximate: boolean;
+  isPartial: boolean;
+  isStale: boolean;
+  calculatedAt: string | null;
 }
 
 export interface FixtureResult {

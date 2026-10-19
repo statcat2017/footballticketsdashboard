@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { QueryParam } from "@/lib/db/adapter";
 import { createAppDatabase } from "@/lib/db/client";
 import type { PostcodeResolver } from "@/lib/postcode";
 import { searchFixtures } from "@/lib/search/service";
@@ -171,281 +170,116 @@ describe("fixture search", () => {
     });
   });
 
-  it("uses exact postcode coordinates and live driving lookup on first search when cache is missing", async () => {
+  it("returns straight-line distance and a public transport link when cache is missing without calling providers", async () => {
     const db = await createAppDatabase();
-    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
-
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestUrl(input);
-
-      if (url.includes("openrouteservice")) {
-        return new Response(JSON.stringify({
-          routes: [{ summary: { duration: 900 } }]
-        }), { status: 200 });
-      }
-
-      if (url.includes("api.tfl.gov.uk")) {
-        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
-      }
-
-      throw new Error(`Unexpected fetch URL: ${url}`);
-    }));
-
-    await db.run(`
-      INSERT INTO fixtures (
-        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
-        kickoff_at, status, is_demo_data, is_historical
-      )
-      VALUES ('test', 'chelsea-b9', 'PL', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
-    `);
-
-    const results = await searchFixtures(db, {
-      postcode: "B9 4RL",
-      dateFrom: "2026-05-10",
-      dateTo: "2026-05-20"
-    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
-
-    expect(results[0]?.travel.drivingMinutes).toBe(15);
-    expect(results[0]?.travel.source).toBe("live");
-    expect(results[0]?.travel.publicTransportMinutes).toBeNull();
-    expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
-    expect(results[0]?.travel.publicTransportUrl).toContain("dir_action=navigate");
-
-    const cached = await db.get<{ provider: string; driving_minutes: number }>(`
-      SELECT provider, driving_minutes
-      FROM travel_cache
-      WHERE postcode_district = 'B9' AND venue_id = 1
-    `);
-
-    expect(cached?.provider).toBe("openrouteservice");
-    expect(cached?.driving_minutes).toBe(15);
-  });
-});
-
-describe("travel enrichment resilience", () => {
-  it("limits concurrent provider calls to 4", async () => {
-    const db = await createAppDatabase();
-    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
-
-    let inFlight = 0;
-    let maxInFlight = 0;
-    let orsCalls = 0;
-    let tflCalls = 0;
-
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestUrl(input);
-
-      if (url.includes("openrouteservice")) {
-        orsCalls += 1;
-        inFlight += 1;
-        maxInFlight = Math.max(maxInFlight, inFlight);
-        await new Promise((r) => setTimeout(r, 10));
-        inFlight -= 1;
-        return new Response(JSON.stringify({
-          routes: [{ summary: { duration: 600 } }]
-        }), { status: 200 });
-      }
-
-      if (url.includes("api.tfl.gov.uk")) {
-        tflCalls += 1;
-        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
-      }
-
-      throw new Error(`Unexpected fetch URL: ${url}`);
-    }));
-
-    for (const vid of [1, 2, 3, 4, 5, 6]) {
-      await db.run(`
-        INSERT INTO fixtures (
-          source, source_id, competition_code, home_club_id, away_club_id, venue_id,
-          kickoff_at, status, is_demo_data, is_historical
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, ["test", `conc-${vid}`, "PL", vid, 1, vid, "2026-05-15T19:00:00.000Z", "scheduled", 0, 0]);
-    }
-
-    await searchFixtures(db, {
-      postcode: "B9 4RL",
-      dateFrom: "2026-05-10",
-      dateTo: "2026-05-20"
-    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
-
-    expect(maxInFlight).toBeLessThanOrEqual(4);
-    expect(orsCalls).toBe(6);
-    expect(tflCalls).toBe(6);
-  });
-
-  it("pre-filters by radius before making provider calls", async () => {
-    const db = await createAppDatabase();
-    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
-
-    let orsCalls = 0;
-    let tflCalls = 0;
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestUrl(input);
-
-      if (url.includes("openrouteservice")) {
-        orsCalls += 1;
-        return new Response(JSON.stringify({
-          routes: [{ summary: { duration: 600 } }]
-        }), { status: 200 });
-      }
-
-      if (url.includes("api.tfl.gov.uk")) {
-        tflCalls += 1;
-        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
-      }
-
-      throw new Error(`Unexpected fetch URL: ${url}`);
-    });
-
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.reject(new Error("search must not call travel providers")));
     vi.stubGlobal("fetch", fetchMock);
 
-    // Venue 6 (St Andrew's, B9) is ~0 miles from B9 4RL — in radius
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
         kickoff_at, status, is_demo_data, is_historical
       )
-      VALUES ('test', 'radius-in', 'ELC', 6, 4, 6, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
-    `);
-
-    // Venue 1 (Stamford Bridge, SW6) is ~100 miles from B9 — out of radius
-    await db.run(`
-      INSERT INTO fixtures (
-        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
-        kickoff_at, status, is_demo_data, is_historical
-      )
-      VALUES ('test', 'radius-out', 'PL', 1, 2, 1, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
+      VALUES ('test', 'distance-only', 'ELC', 6, 4, 6, '2030-05-12T19:00:00.000Z', 'scheduled', 0, 0)
     `);
 
     const results = await searchFixtures(db, {
       postcode: "B9 4RL",
-      dateFrom: "2026-05-10",
-      dateTo: "2026-05-20",
-      radiusMiles: 10
-    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
-
-    expect(results).toHaveLength(1);
-    expect(results[0]?.title).toBe("Birmingham City vs Queens Park Rangers");
-    expect(orsCalls).toBe(1);
-    expect(tflCalls).toBe(1);
-  });
-
-  it("returns live results when cache write fails", async () => {
-    const db = await createAppDatabase();
-    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
-
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestUrl(input);
-
-      if (url.includes("openrouteservice")) {
-        return new Response(JSON.stringify({
-          routes: [{ summary: { duration: 900 } }]
-        }), { status: 200 });
-      }
-
-      if (url.includes("api.tfl.gov.uk")) {
-        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
-      }
-
-      throw new Error(`Unexpected fetch URL: ${url}`);
-    }));
-
-    const originalRun = db.run.bind(db);
-    vi.spyOn(db, "run").mockImplementation((sql: string, params?: QueryParam[]) => {
-      if (sql.includes("INSERT INTO travel_cache")) {
-        return Promise.reject(new Error("DB write failed"));
-      }
-      return originalRun(sql, params);
+      dateFrom: "2030-05-10",
+      dateTo: "2030-05-20"
     });
 
-    await db.run(`
-      INSERT INTO fixtures (
-        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
-        kickoff_at, status, is_demo_data, is_historical
-      )
-      VALUES ('test', 'cache-fail', 'PL', 1, 2, 1, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
-    `);
-
-    const results = await searchFixtures(db, {
-      postcode: "B9 4RL",
-      dateFrom: "2026-05-10",
-      dateTo: "2026-05-20"
-    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
-
-    expect(results[0]?.travel.drivingMinutes).toBe(15);
-    expect(results[0]?.travel.source).toBe("live");
+    expect(results[0]?.travel).toMatchObject({
+      source: "distance_only",
+      drivingMinutes: null,
+      publicTransportMinutes: null,
+      isPartial: false,
+      isStale: false,
+      isDistrictApproximate: false,
+      postcodeDistrict: "B9"
+    });
     expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
-    expect(results[0]?.travel.publicTransportUrl).toContain("dir_action=navigate");
+    expect(results[0]?.warnings).toContain("Travel time unavailable for this postcode district; showing straight-line distance only.");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("preserves existing cached travel values when refreshing a partial row", async () => {
+  it("returns cached travel values without changing partial cache rows", async () => {
     const db = await createAppDatabase();
-    process.env.OPENROUTESERVICE_API_KEY = "ors-key";
-
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestUrl(input);
-
-      if (url.includes("openrouteservice")) {
-        return new Response(JSON.stringify({
-          routes: [{ summary: { duration: 900 } }]
-        }), { status: 200 });
-      }
-
-      if (url.includes("api.tfl.gov.uk")) {
-        return new Response(JSON.stringify({ message: "No journey found for your inputs." }), { status: 404 });
-      }
-
-      throw new Error(`Unexpected fetch URL: ${url}`);
-    }));
-
+    const calculatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,
         kickoff_at, status, is_demo_data, is_historical
       )
-      VALUES ('test', 'partial-cache', 'PL', 1, 2, 1, '2026-05-15T19:00:00.000Z', 'scheduled', 0, 0)
+      VALUES ('test', 'partial-cache', 'PL', 1, 2, 1, '2030-05-12T19:00:00.000Z', 'scheduled', 0, 0)
     `);
-
     await db.run(`
       INSERT INTO travel_cache (
         postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at
-      )
-      VALUES ('SW6', 1, 4.2, NULL, 45, 'tfl', '2026-05-14T10:00:00.000Z')
+      ) VALUES ('SW6', 1, 4.2, NULL, 45, 'tfl', ?)
       ON CONFLICT(postcode_district, venue_id) DO UPDATE SET
         distance_miles = excluded.distance_miles,
         driving_minutes = excluded.driving_minutes,
         public_transport_minutes = excluded.public_transport_minutes,
         provider = excluded.provider,
         calculated_at = excluded.calculated_at
-    `);
+    `, [calculatedAt]);
 
     const results = await searchFixtures(db, {
       postcode: "SW6 1HS",
-      dateFrom: "2026-05-10",
-      dateTo: "2026-05-20"
-    }, { travelProviders: { openRouteServiceApiKey: "ors-key" } });
-
-    expect(results[0]?.travel.drivingMinutes).toBe(15);
-    expect(results[0]?.travel.publicTransportMinutes).toBe(45);
-    expect(results[0]?.travel.publicTransportUrl).toContain("google.com/maps");
-
-    const cached = await db.get<{
-      provider: string;
-      driving_minutes: number | null;
-      public_transport_minutes: number | null;
-    }>(`
-      SELECT provider, driving_minutes, public_transport_minutes
-      FROM travel_cache
-      WHERE postcode_district = 'SW6' AND venue_id = 1
-    `);
-
-    expect(cached).toEqual({
-      provider: "tfl+openrouteservice",
-      driving_minutes: 15,
-      public_transport_minutes: 45
+      dateFrom: "2030-05-10",
+      dateTo: "2030-05-20"
     });
+
+    expect(results[0]?.travel).toMatchObject({
+      source: "cache",
+      distanceMiles: 4.2,
+      drivingMinutes: null,
+      publicTransportMinutes: 45,
+      publicTransportUrl: expect.stringContaining("google.com/maps"),
+      postcodeDistrict: "SW6",
+      isDistrictApproximate: true,
+      isPartial: true,
+      isStale: false,
+      calculatedAt
+    });
+
+    const cached = await db.get<{ driving_minutes: number | null; public_transport_minutes: number | null; calculated_at: string }>(`
+      SELECT driving_minutes, public_transport_minutes, calculated_at
+      FROM travel_cache WHERE postcode_district = 'SW6' AND venue_id = 1
+    `);
+    expect(cached).toEqual({ driving_minutes: null, public_transport_minutes: 45, calculated_at: calculatedAt });
+  });
+
+  it("marks cached travel older than 30 days as stale", async () => {
+    const db = await createAppDatabase();
+    const calculatedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES ('test', 'stale-cache', 'PL', 1, 2, 1, '2030-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+    await db.run(`
+      INSERT INTO travel_cache (
+        postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at
+      ) VALUES ('SW6', 1, 4.2, 15, 45, 'seed', ?)
+      ON CONFLICT(postcode_district, venue_id) DO UPDATE SET
+        distance_miles = excluded.distance_miles,
+        driving_minutes = excluded.driving_minutes,
+        public_transport_minutes = excluded.public_transport_minutes,
+        provider = excluded.provider,
+        calculated_at = excluded.calculated_at
+    `, [calculatedAt]);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2030-05-10",
+      dateTo: "2030-05-20"
+    });
+
+    expect(results[0]?.travel.isStale).toBe(true);
+    expect(results[0]?.warnings).toContain("Travel estimate may be out of date.");
   });
 });

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getDatabase } from "@/lib/db/client";
-import { getTravelProviderRuntimeConfig } from "@/lib/runtime-env";
 import { searchFixtures } from "@/lib/search/service";
 import { defaultDateRange } from "@/lib/date";
 import { scheduleSearchTravelBackfill } from "@/lib/travel/backfill";
@@ -83,13 +82,14 @@ export async function POST(request: Request) {
 
   try {
     const db = await getDatabase();
-    const travelProviders = await getTravelProviderRuntimeConfig();
-    const results = await searchFixtures(db, parsed.data, { travelProviders });
-    scheduleSearchTravelBackfill(db, {
+    const results = await searchFixtures(db, parsed.data);
+    void scheduleSearchTravelBackfill(db, {
       postcode: parsed.data.postcode,
       dateFrom: parsed.data.dateFrom ?? defaults.dateFrom,
       dateTo: parsed.data.dateTo ?? defaults.dateTo
-    }, travelProviders);
+    }).catch((error) => {
+      console.error("travel cache refresh could not be scheduled", error);
+    });
 
     return NextResponse.json({
       results,

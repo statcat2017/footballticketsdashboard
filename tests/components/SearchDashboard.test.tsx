@@ -182,6 +182,31 @@ describe("SearchDashboard", () => {
     const checked = await screen.findAllByText(/Checked/);
     expect(checked.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("labels approximate, partial, and stale travel while keeping the public transport link", async () => {
+    const publicTransportUrl = "https://www.google.com/maps/dir/?api=1&travelmode=transit";
+    fetchMock.mockResolvedValueOnce(jsonResponse([
+      customFixture(1, {
+        travel: {
+          source: "cache",
+          postcodeDistrict: "SW6",
+          isDistrictApproximate: true,
+          isPartial: true,
+          isStale: true,
+          calculatedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString(),
+          publicTransportMinutes: 45,
+          publicTransportUrl
+        }
+      })
+    ]));
+
+    render(<SearchDashboard />);
+
+    expect(await screen.findAllByText(/Approximate from SW6 postcode district/)).not.toHaveLength(0);
+    expect(screen.getAllByText(/Some travel modes unavailable/)).not.toHaveLength(0);
+    expect(screen.getAllByText(/May be out of date · last updated/)).not.toHaveLength(0);
+    expect(screen.getAllByRole("link", { name: /Transit 45 min/ }).some((link) => link.getAttribute("href") === publicTransportUrl)).toBe(true);
+  });
 });
 
 function jsonResponse(results: FixtureResult[]): Response {
@@ -191,7 +216,7 @@ function jsonResponse(results: FixtureResult[]): Response {
   });
 }
 
-function customFixture(id: number, overrides: Partial<FixtureResult> & { travel?: Partial<FixtureResult["travel"]>; price?: Partial<FixtureResult["price"]> }): FixtureResult {
+function customFixture(id: number, overrides: Partial<Omit<FixtureResult, "travel" | "price">> & { travel?: Partial<FixtureResult["travel"]>; price?: Partial<FixtureResult["price"]> }): FixtureResult {
   const base = fixture(id);
   return {
     ...base,
@@ -235,7 +260,12 @@ function fixture(id: number): FixtureResult {
       drivingMinutes: 20 + id,
       publicTransportMinutes: 30 + id,
       publicTransportUrl: null,
-      source: "cache"
+      source: "cache",
+      postcodeDistrict: "SE20",
+      isDistrictApproximate: false,
+      isPartial: false,
+      isStale: false,
+      calculatedAt: null
     },
     isDemoData: false,
     isHistorical: false,

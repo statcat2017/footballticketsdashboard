@@ -82,6 +82,35 @@ function travelMinutes(value: number | null): string {
   return value === null ? "TBC" : `${value} min`;
 }
 
+function travelUpdatedDate(value: string | null): string {
+  if (!value || !Number.isFinite(Date.parse(value))) return "unknown date";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Europe/London"
+  }).format(new Date(value));
+}
+
+function TravelProvenance({ travel }: { travel: FixtureResult["travel"] }) {
+  const notes: string[] = [];
+
+  if (travel.source === "distance_only") {
+    notes.push("Straight-line distance only");
+  }
+  if (travel.isDistrictApproximate) {
+    notes.push(`Approximate from ${travel.postcodeDistrict} postcode district`);
+  }
+  if (travel.isPartial) {
+    notes.push("Some travel modes unavailable");
+  }
+  if (travel.isStale) {
+    notes.push(`May be out of date · last updated ${travelUpdatedDate(travel.calculatedAt)}`);
+  }
+
+  return notes.length > 0 ? <p className="travel-status">{notes.join(" · ")}</p> : null;
+}
+
 function competitionCategory(name: string): CompetitionCategory {
   const lower = name.toLowerCase();
   if (lower.includes("women") || lower.includes("wsl") || lower.includes("fa wsl")) return "womens";
@@ -382,6 +411,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 )}
                 <span className="featured-distance">{featuredFixture.travel.distanceMiles.toFixed(1)} miles away</span>
               </p>
+              <TravelProvenance travel={featuredFixture.travel} />
               {featuredFixture.price.verifiedAt && (
                 <p className="trust-line">Last checked {formatVerifiedAt(featuredFixture.price.verifiedAt)}{featuredFixture.price.sourceUrl ? ` · Source link available` : ""}</p>
               )}
@@ -439,22 +469,25 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                             <div className="secondary trust-line">Checked {formatVerifiedAt(result.price.verifiedAt)}</div>
                           )}
                         </div>
-                        <div className="travel-chips">
-                          <span className="chip">
-                            <CarIcon />
-                            Drive {travelMinutes(result.travel.drivingMinutes)}
-                          </span>
-                          {result.travel.publicTransportUrl ? (
-                            <a className="chip chip-link" href={result.travel.publicTransportUrl} target="_blank" rel="noreferrer">
-                              <TrainIcon />
-                              Transit {travelMinutes(result.travel.publicTransportMinutes)}
-                            </a>
-                          ) : (
+                        <div className="travel-details">
+                          <div className="travel-chips">
                             <span className="chip">
-                              <TrainIcon />
-                              Transit {travelMinutes(result.travel.publicTransportMinutes)}
+                              <CarIcon />
+                              Drive {travelMinutes(result.travel.drivingMinutes)}
                             </span>
-                          )}
+                            {result.travel.publicTransportUrl ? (
+                              <a className="chip chip-link" href={result.travel.publicTransportUrl} target="_blank" rel="noreferrer">
+                                <TrainIcon />
+                                Transit {travelMinutes(result.travel.publicTransportMinutes)}
+                              </a>
+                            ) : (
+                              <span className="chip">
+                                <TrainIcon />
+                                Transit {travelMinutes(result.travel.publicTransportMinutes)}
+                              </span>
+                            )}
+                          </div>
+                          <TravelProvenance travel={result.travel} />
                         </div>
                         <div className="row-action">
                           {result.genericTicketUrl ? (
@@ -511,6 +544,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                             <span className="chip"><TrainIcon /> Transit {travelMinutes(result.travel.publicTransportMinutes)}</span>
                           )}
                         </div>
+                        <TravelProvenance travel={result.travel} />
                         <div className="fixture-card-footer">
                           <span className="badge check-club">Check club for availability</span>
                           <span className="fixture-card-price">{formatPriceLine(result)}</span>

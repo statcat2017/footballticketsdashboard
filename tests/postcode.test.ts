@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { normalizePostcode, tryNormalizePostcode, postcodeCoordinate, postcodeDistrict, resolvePostcodeOrigin } from "@/lib/postcode";
+import { lookupPostcodeCoordinate, normalizePostcode, tryNormalizePostcode, postcodeCoordinate, postcodeDistrict, resolvePostcodeOrigin } from "@/lib/postcode";
 
 describe("postcode helpers", () => {
   it("normalizes UK postcodes", () => {
@@ -65,5 +65,27 @@ describe("postcode helpers", () => {
       },
       source: "api"
     });
+  });
+
+  it("bounds a postcode lookup that never settles and aborts the request", async () => {
+    let signal: AbortSignal | null | undefined;
+    const fetchImpl = vi.fn<typeof fetch>((_input, init) => {
+      signal = init?.signal;
+      return new Promise<Response>(() => {});
+    });
+    const startedAt = Date.now();
+
+    await expect(lookupPostcodeCoordinate("B75 5AQ", fetchImpl, "https://postcodes.example", 10)).resolves.toBeNull();
+
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("bounds a postcode response whose body never finishes", async () => {
+    const response = new Response(null, { status: 200 });
+    vi.spyOn(response, "json").mockImplementation(() => new Promise(() => {}));
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(response));
+
+    await expect(lookupPostcodeCoordinate("B75 5AQ", fetchImpl, "https://postcodes.example", 10)).resolves.toBeNull();
   });
 });
