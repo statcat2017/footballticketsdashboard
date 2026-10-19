@@ -43,8 +43,9 @@ test("search displays exact admission prices with evidence and preserves price p
     sourceUrl: "https://prices.example.test/chelsea/e2e-live",
     confidence: "verified",
     isOverride: true,
-    seasonLabel: "2025-26",
-    confirmation: { required: true, maxAgeDays: 90, reasons: ["different_season"] }
+    verifiedAt: null,
+    seasonLabel: null,
+    confirmation: { required: true, maxAgeDays: 90, reasons: ["missing_checked_date"] }
   });
   expect(overrideFixture?.genericTicketUrl).toBe("https://www.chelseafc.com/en/tickets");
   expect(defaultFixture?.price).toMatchObject({
@@ -82,7 +83,9 @@ test("search displays exact admission prices with evidence and preserves price p
     "https://prices.example.test/chelsea/e2e-live"
   );
   await expect(page.locator(".featured-price-evidence")).toContainText("Verified confidence");
-  await expect(page.locator(".featured-price-evidence")).toContainText("Checked");
+  await expect(page.locator(".featured-price-evidence")).toContainText("No checked date recorded");
+  await expect(page.locator(".featured-price-evidence")).toContainText("Price season not recorded");
+  await expect(page.locator(".featured-price-evidence .price-confirmation")).toContainText("No valid checked date is recorded");
 
   const overrideRow = page.locator(".fixture-row").filter({ hasText: "Chelsea vs Arsenal" });
   await expect(overrideRow).toContainText("£12.50");

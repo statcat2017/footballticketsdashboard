@@ -52,8 +52,8 @@ export function seedE2eFixtures(db: SqliteDatabase): void {
     INSERT INTO fixture_ticket_price_overrides (
       fixture_id, sale_mode, adult_price_pence, concession_price_pence,
       source_url, verified_at, note, confidence, season_label
-    ) VALUES (?, 'pay_on_gate', 1250, NULL, 'https://prices.example.test/chelsea/e2e-live', ?, 'Test partial fixture price', 'verified', '2025-26')
-  `).run(fixtureId.id, new Date().toISOString().slice(0, 10));
+    ) VALUES (?, 'pay_on_gate', 1250, NULL, 'https://prices.example.test/chelsea/e2e-live', NULL, 'Test partial fixture price', 'verified', NULL)
+  `).run(fixtureId.id);
 
   const insertOneOff = db.prepare(`
     INSERT INTO fixtures (

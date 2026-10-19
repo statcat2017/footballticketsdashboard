@@ -177,10 +177,14 @@ function queryFixtures(
       COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
       COALESCE(fpo.adult_price_pence, ctp.adult_price_pence) as adult_price_pence,
       COALESCE(fpo.concession_price_pence, ctp.concession_price_pence) as concession_price_pence,
-      COALESCE(fpo.source_url, ctp.source_url) as source_url,
-      COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
-      COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
-      COALESCE(fpo.season_label, ctp.season_label) as price_season_label,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.source_url ELSE ctp.source_url END as source_url,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.verified_at ELSE ctp.verified_at END as verified_at,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.confidence ELSE ctp.confidence END as price_confidence,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.season_label ELSE ctp.season_label END as price_season_label,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,
@@ -240,10 +244,14 @@ function queryAllHistoricalFixtures(
       COALESCE(fpo.sale_mode, ctp.sale_mode) as sale_mode,
       COALESCE(fpo.adult_price_pence, ctp.adult_price_pence) as adult_price_pence,
       COALESCE(fpo.concession_price_pence, ctp.concession_price_pence) as concession_price_pence,
-      COALESCE(fpo.source_url, ctp.source_url) as source_url,
-      COALESCE(fpo.verified_at, ctp.verified_at) as verified_at,
-      COALESCE(fpo.confidence, ctp.confidence) as price_confidence,
-      COALESCE(fpo.season_label, ctp.season_label) as price_season_label,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.source_url ELSE ctp.source_url END as source_url,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.verified_at ELSE ctp.verified_at END as verified_at,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.confidence ELSE ctp.confidence END as price_confidence,
+      CASE WHEN fpo.adult_price_pence IS NOT NULL OR fpo.concession_price_pence IS NOT NULL
+        THEN fpo.season_label ELSE ctp.season_label END as price_season_label,
       CASE WHEN fpo.fixture_id IS NULL THEN 0 ELSE 1 END as has_price_override,
       fpo.note as price_override_note,
       tc.distance_miles as cached_distance_miles,

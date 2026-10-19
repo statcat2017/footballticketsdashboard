@@ -120,7 +120,7 @@ function PriceEvidence({ result, className = "" }: { result: FixtureResult; clas
       <div className="price-evidence-details">
         <span>{confidenceLabel(result.price.confidence)}</span>
         <span>{result.price.verifiedAt ? `Checked ${formatVerifiedAt(result.price.verifiedAt)}` : "No checked date recorded"}</span>
-        {result.price.seasonLabel && <span>Price season {result.price.seasonLabel}</span>}
+        <span>{result.price.seasonLabel ? `Price season ${result.price.seasonLabel}` : "Price season not recorded"}</span>
         {result.price.isOverride && <span>Includes fixture-specific pricing</span>}
         {sourceUrl ? (
           <a className="price-source-link" href={sourceUrl} target="_blank" rel="noreferrer">Price source</a>

@@ -175,6 +175,59 @@ describe("fixture search", () => {
     });
   });
 
+  it("does not borrow default price evidence for an undated partial fixture override", async () => {
+    const db = await createAppDatabase();
+    await db.run(`
+      INSERT OR IGNORE INTO fixture_seasons (label, starts_on, ends_on, is_current)
+      VALUES ('2026-27', '2026-07-01', '2027-06-30', 1)
+    `);
+    await db.run("UPDATE club_ticket_prices SET season_label = '2025-26' WHERE club_id = 1");
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label,
+        status, is_demo_data, is_historical
+      ) VALUES (
+        'test', 'partial-undated-override', 'PL', 1, 2, 1,
+        '2026-10-24T15:00:00.000Z', '2026-10-24', '15:00', 'confirmed', '2026-27',
+        'scheduled', 0, 0
+      )
+    `);
+
+    const fixture = await db.get<{ id: number }>(`
+      SELECT id FROM fixtures WHERE source = 'test' AND source_id = 'partial-undated-override'
+    `);
+    await db.run(`
+      INSERT INTO fixture_ticket_price_overrides (
+        fixture_id, sale_mode, adult_price_pence, concession_price_pence,
+        source_url, verified_at, note, confidence, season_label
+      ) VALUES (?, 'pay_on_gate', 1250, NULL,
+        NULL, NULL, 'Partial override', 'verified', NULL)
+    `, [fixture?.id ?? 0]);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-10-24",
+      dateTo: "2026-10-25"
+    });
+    const result = results.find((row) => row.id === fixture?.id);
+
+    expect(result?.price).toMatchObject({
+      adultPricePence: 1250,
+      concessionPricePence: 2000,
+      sourceUrl: null,
+      verifiedAt: null,
+      confidence: "verified",
+      isOverride: true,
+      seasonLabel: null,
+      confirmation: {
+        required: true,
+        maxAgeDays: 90,
+        reasons: ["missing_checked_date"]
+      }
+    });
+  });
+
   it("preserves fixture price evidence across a persistent-file reopen", async () => {
     const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-price-reopen-"));
     const filename = path.join(dirname, "prices.sqlite");
