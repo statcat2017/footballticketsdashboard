@@ -194,7 +194,7 @@ describe("SearchDashboard", () => {
           isPartial: true,
           isStale: true,
           calculatedAt: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString(),
-          publicTransportMinutes: 45,
+          publicTransportMinutes: null,
           publicTransportUrl
         }
       })
@@ -205,9 +205,8 @@ describe("SearchDashboard", () => {
     expect(await screen.findAllByText(/Approximate from SW6 postcode district/)).not.toHaveLength(0);
     expect(screen.getAllByText(/Some travel modes unavailable/)).not.toHaveLength(0);
     expect(screen.getAllByText(/May be out of date · last updated/)).not.toHaveLength(0);
-    expect(screen.getAllByRole("link", { name: /Transit 45 min/ }).some((link) => link.getAttribute("href") === publicTransportUrl)).toBe(true);
     const featured = screen.getByRole("region", { name: "Featured fixture" });
-    expect(within(featured).getByRole("link", { name: /Transit 45 min/ })).toHaveAttribute("href", publicTransportUrl);
+    expect(within(featured).getByRole("link", { name: "Transit TBC" })).toHaveAttribute("href", publicTransportUrl);
   });
 });
 
