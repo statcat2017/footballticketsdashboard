@@ -406,9 +406,13 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               </p>
               <p className="featured-travel">
                 <span className="chip"><CarIcon /> Drive {travelMinutes(featuredFixture.travel.drivingMinutes)}</span>
-                {featuredFixture.travel.publicTransportMinutes !== null && (
+                {featuredFixture.travel.publicTransportUrl ? (
+                  <a className="chip chip-link" href={featuredFixture.travel.publicTransportUrl} target="_blank" rel="noreferrer">
+                    <TrainIcon /> Transit {travelMinutes(featuredFixture.travel.publicTransportMinutes)}
+                  </a>
+                ) : featuredFixture.travel.publicTransportMinutes !== null ? (
                   <span className="chip"><TrainIcon /> Transit {travelMinutes(featuredFixture.travel.publicTransportMinutes)}</span>
-                )}
+                ) : null}
                 <span className="featured-distance">{featuredFixture.travel.distanceMiles.toFixed(1)} miles away</span>
               </p>
               <TravelProvenance travel={featuredFixture.travel} />

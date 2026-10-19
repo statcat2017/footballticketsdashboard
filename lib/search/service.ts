@@ -12,7 +12,8 @@ import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
 import type { FixtureResult, SearchRequest } from "../types.ts";
 import { defaultDateRange } from "../date.ts";
 
-const STALE_TRAVEL_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+// Keep the displayed freshness window aligned with the persistent refresh policy in #232.
+const STALE_TRAVEL_AFTER_MS = 90 * 24 * 60 * 60 * 1000;
 
 interface FixtureRow {
   id: number;

@@ -251,9 +251,9 @@ describe("fixture search", () => {
     expect(cached).toEqual({ driving_minutes: null, public_transport_minutes: 45, calculated_at: calculatedAt });
   });
 
-  it("marks cached travel older than 30 days as stale", async () => {
+  it("marks cached travel older than 90 days as stale", async () => {
     const db = await createAppDatabase();
-    const calculatedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    const calculatedAt = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
     await db.run(`
       INSERT INTO fixtures (
         source, source_id, competition_code, home_club_id, away_club_id, venue_id,

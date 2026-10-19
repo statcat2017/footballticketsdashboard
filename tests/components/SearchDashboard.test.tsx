@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchDashboard } from "@/app/components/SearchDashboard";
@@ -193,7 +193,7 @@ describe("SearchDashboard", () => {
           isDistrictApproximate: true,
           isPartial: true,
           isStale: true,
-          calculatedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString(),
+          calculatedAt: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString(),
           publicTransportMinutes: 45,
           publicTransportUrl
         }
@@ -206,6 +206,8 @@ describe("SearchDashboard", () => {
     expect(screen.getAllByText(/Some travel modes unavailable/)).not.toHaveLength(0);
     expect(screen.getAllByText(/May be out of date · last updated/)).not.toHaveLength(0);
     expect(screen.getAllByRole("link", { name: /Transit 45 min/ }).some((link) => link.getAttribute("href") === publicTransportUrl)).toBe(true);
+    const featured = screen.getByRole("region", { name: "Featured fixture" });
+    expect(within(featured).getByRole("link", { name: /Transit 45 min/ })).toHaveAttribute("href", publicTransportUrl);
   });
 });
 
