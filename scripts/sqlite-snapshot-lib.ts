@@ -67,8 +67,10 @@ function assertNewIsolatedPath(filename: string, sourcePath: string): string {
   if (destinationPath === configuredPath || destinationPath === defaultPath) {
     throw new Error("Refusing to write to the configured application database path.");
   }
-  if (fs.existsSync(destinationPath)) {
-    throw new Error(`Destination already exists; refusing to overwrite it: ${destinationPath}`);
+  const destinationFiles = [destinationPath, `${destinationPath}-wal`, `${destinationPath}-shm`];
+  const existingDestinationFile = destinationFiles.find((candidate) => fs.existsSync(candidate));
+  if (existingDestinationFile) {
+    throw new Error(`Destination already exists; refusing to overwrite it: ${existingDestinationFile}`);
   }
   if (!fs.statSync(path.dirname(destinationPath)).isDirectory()) {
     throw new Error(`Destination parent is not a directory: ${path.dirname(destinationPath)}`);
@@ -165,15 +167,19 @@ function assertConsistent(inventory: SqliteInventory): void {
   }
 }
 
-function reserveDestination(filename: string): void {
+function reserveDestination(filename: string): { dev: number; ino: number } {
   const descriptor = fs.openSync(filename, "wx", 0o600);
   fs.closeSync(descriptor);
+  const { dev, ino } = fs.statSync(filename);
+  return { dev, ino };
 }
 
-function removeDestinationFiles(filename: string): void {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    const candidate = `${filename}${suffix}`;
-    if (fs.existsSync(candidate)) fs.rmSync(candidate);
+function removeReservedDestination(filename: string, identity: { dev: number; ino: number }): void {
+  try {
+    const current = fs.statSync(filename);
+    if (current.dev === identity.dev && current.ino === identity.ino) fs.rmSync(filename);
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
   }
 }
 
@@ -181,17 +187,16 @@ async function writeConsistentCopy(sourceFilename: string, destinationFilename: 
   const sourcePath = existingDatabasePath(sourceFilename);
   const destinationPath = assertNewIsolatedPath(destinationFilename, sourcePath);
   const source = new Database(sourcePath, { readonly: true, fileMustExist: true });
-  let destinationReserved = false;
+  let destinationIdentity: { dev: number; ino: number } | null = null;
 
   try {
-    reserveDestination(destinationPath);
-    destinationReserved = true;
+    destinationIdentity = reserveDestination(destinationPath);
     await source.backup(destinationPath);
     const inventory = inspectSqliteDatabase(destinationPath);
     assertConsistent(inventory);
     return inventory;
   } catch (error) {
-    if (destinationReserved) removeDestinationFiles(destinationPath);
+    if (destinationIdentity) removeReservedDestination(destinationPath, destinationIdentity);
     throw error;
   } finally {
     source.close();

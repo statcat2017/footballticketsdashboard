@@ -38,6 +38,7 @@ describe("SQLite snapshot recovery", () => {
       `).run("snapshot-test", "wal-row", "PL", 1, 2, 1, "2030-05-12T19:00:00.000Z", "scheduled", 0, 0, "2025-26");
 
       const backupInventory = await createConsistentSqliteBackup(sourcePath, backupPath);
+      expect(fs.statSync(backupPath).mode & 0o777).toBe(0o600);
       expect(backupInventory.integrityCheck).toEqual(["ok"]);
       expect(backupInventory.foreignKeyViolationCount).toBe(0);
       expect(backupInventory.schemaVersion.migrationCount).toBeGreaterThan(0);
@@ -46,6 +47,7 @@ describe("SQLite snapshot recovery", () => {
       expect(backupInventory.tableCounts.division_assignments).not.toBeUndefined();
 
       const stagingInventory = await restoreSqliteSnapshot(backupPath, stagingPath);
+      expect(fs.statSync(stagingPath).mode & 0o777).toBe(0o600);
       expect(stagingInventory.integrityCheck).toEqual(["ok"]);
       expect(stagingInventory.foreignKeyViolationCount).toBe(0);
       expect(stagingInventory.fixtureCounts).toEqual(backupInventory.fixtureCounts);
@@ -87,6 +89,29 @@ describe("SQLite snapshot recovery", () => {
     } finally {
       if (originalConfiguredPath === undefined) delete process.env.SQLITE_DB_PATH;
       else process.env.SQLITE_DB_PATH = originalConfiguredPath;
+      source.close();
+    }
+  });
+
+  it("preserves pre-existing SQLite sidecar files when rejecting a destination", async () => {
+    const directory = temporaryDirectory();
+    const sourcePath = path.join(directory, "source.sqlite");
+    const backupPath = path.join(directory, "existing-sidecars.sqlite");
+    const walPath = `${backupPath}-wal`;
+    const shmPath = `${backupPath}-shm`;
+    const source = await setupDatabase(sourcePath);
+
+    try {
+      fs.writeFileSync(walPath, "wal sentinel");
+      fs.writeFileSync(shmPath, "shm sentinel");
+
+      await expect(createConsistentSqliteBackup(sourcePath, backupPath))
+        .rejects.toThrow("Destination already exists");
+
+      expect(fs.readFileSync(walPath, "utf8")).toBe("wal sentinel");
+      expect(fs.readFileSync(shmPath, "utf8")).toBe("shm sentinel");
+      expect(fs.existsSync(backupPath)).toBe(false);
+    } finally {
       source.close();
     }
   });
