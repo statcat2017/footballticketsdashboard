@@ -23,11 +23,11 @@ describe("competition public category migration", () => {
     `);
 
     const schemaMigration = fs.readFileSync(
-      path.join(process.cwd(), "lib/db/migrations/030-competition-public-category.sql"),
+      path.join(process.cwd(), "lib/db/migrations/032-competition-public-category.sql"),
       "utf8"
     );
     const backfillMigration = fs.readFileSync(
-      path.join(process.cwd(), "lib/db/migrations/031-backfill-competition-public-category.sql"),
+      path.join(process.cwd(), "lib/db/migrations/033-backfill-competition-public-category.sql"),
       "utf8"
     );
     db.exec(schemaMigration);
@@ -45,11 +45,11 @@ describe("competition public category migration", () => {
     ]);
 
     const backfillRollback = fs.readFileSync(
-      path.join(process.cwd(), "lib/db/migrations/031-backfill-competition-public-category.down.sql"),
+      path.join(process.cwd(), "lib/db/migrations/033-backfill-competition-public-category.down.sql"),
       "utf8"
     );
     const schemaRollback = fs.readFileSync(
-      path.join(process.cwd(), "lib/db/migrations/030-competition-public-category.down.sql"),
+      path.join(process.cwd(), "lib/db/migrations/032-competition-public-category.down.sql"),
       "utf8"
     );
     db.exec(backfillRollback);
