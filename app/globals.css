@@ -172,6 +172,38 @@ select {
   cursor: wait;
 }
 
+.demo-banner {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid #e6c981;
+  border-left: 4px solid var(--amber);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--amber-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.demo-banner strong {
+  font-weight: 750;
+}
+
+.demo-label {
+  display: inline-flex;
+  width: fit-content;
+  margin: 3px 0;
+  padding: 3px 8px;
+  border: 1px solid #e6c981;
+  border-radius: 999px;
+  color: #684600;
+  background: var(--amber-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
 .results {
   min-height: calc(100vh - 114px);
   padding: 24px 28px 32px;
@@ -700,6 +732,33 @@ select {
 }
 
 @media (max-width: 900px) {
+  .search-bar {
+    height: auto;
+    min-height: 62px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .postcode-field {
+    width: auto;
+    flex: 1 1 200px;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .filters {
+    width: 100%;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+
+  .pill {
+    min-height: 44px;
+  }
+
   .division-detail-layout {
     grid-template-columns: 1fr;
   }

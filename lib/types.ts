@@ -5,6 +5,7 @@ export interface SearchRequest {
   radiusMiles?: number;
   dateFrom?: string;
   dateTo?: string;
+  demoMode?: boolean;
 }
 
 export interface PriceSummary {

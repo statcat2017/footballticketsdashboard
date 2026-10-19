@@ -1,6 +1,24 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
 
 export function seedE2eFixtures(db: SqliteDatabase): void {
+  const insertTravelCache = db.prepare(`
+    INSERT INTO travel_cache (
+      postcode_district, venue_id, distance_miles, driving_minutes,
+      public_transport_minutes, provider, calculated_at
+    ) VALUES (?, ?, 1, 10, 12, 'e2e-mock', '2026-10-19T00:00:00.000Z')
+    ON CONFLICT(postcode_district, venue_id) DO UPDATE SET
+      distance_miles = excluded.distance_miles,
+      driving_minutes = excluded.driving_minutes,
+      public_transport_minutes = excluded.public_transport_minutes,
+      provider = excluded.provider,
+      calculated_at = excluded.calculated_at
+  `);
+  for (const district of ["SE20", "SW6"]) {
+    for (const venueId of [1, 2, 3, 4, 6]) {
+      insertTravelCache.run(district, venueId);
+    }
+  }
+
   const insertFixture = db.prepare(`
     INSERT INTO fixtures (
       source, source_id, competition_code, home_club_id, away_club_id,

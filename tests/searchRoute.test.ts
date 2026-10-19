@@ -6,6 +6,10 @@ const defaultDateRange = vi.fn(() => ({
   dateFrom: "2026-05-11",
   dateTo: "2026-05-21"
 }));
+const DEMO_SAMPLE_DATE_RANGE = {
+  dateFrom: "2025-04-26",
+  dateTo: "2025-05-25"
+};
 const scheduleSearchTravelBackfill = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
@@ -13,7 +17,8 @@ vi.mock("@/lib/db/client", () => ({
 }));
 
 vi.mock("@/lib/date", () => ({
-  defaultDateRange
+  defaultDateRange,
+  DEMO_SAMPLE_DATE_RANGE
 }));
 
 vi.mock("@/lib/search/service", () => ({
@@ -239,6 +244,37 @@ describe("search API route", () => {
         dateFrom: "2026-05-11",
         dateTo: "2026-05-21",
         radiusMiles: 25,
+        postcode: "SW6 1HS",
+        demoMode: false,
+        usedHistoricalFallback: false
+      }
+    });
+  });
+
+  it("defaults explicit demo mode to the sample period and returns the submitted context", async () => {
+    const db = { kind: "db" };
+    getDatabase.mockResolvedValue(db);
+    searchFixtures.mockResolvedValue([]);
+
+    const { POST } = await import("@/app/api/search/route");
+    const response = await POST(new Request("http://localhost/api/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postcode: "SW6 1HS", demoMode: true })
+    }));
+
+    expect(searchFixtures).toHaveBeenCalledWith(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2025-04-26",
+      dateTo: "2025-05-25",
+      demoMode: true
+    }, expect.any(Object));
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        dateFrom: "2025-04-26",
+        dateTo: "2025-05-25",
+        postcode: "SW6 1HS",
+        demoMode: true,
         usedHistoricalFallback: false
       }
     });

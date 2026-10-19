@@ -1,11 +1,11 @@
-export function defaultDateRange(now = new Date(), daysAhead = 14): { dateFrom: string; dateTo: string } {
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
-  const from = fmt.format(now);
+export const DEMO_SAMPLE_DATE_RANGE = {
+  dateFrom: "2025-04-26",
+  dateTo: "2025-05-25"
+} as const;
 
-  const endDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-  const to = fmt.format(endDate);
-
-  return { dateFrom: from, dateTo: to };
+export function defaultDateRange(now = new Date(), daysAhead = 13): { dateFrom: string; dateTo: string } {
+  const dateFrom = londonDateString(now);
+  return { dateFrom, dateTo: addCalendarDays(dateFrom, daysAhead) };
 }
 
 export function inferAssumedKickoff(fixtureDate: string): { time: string; status: "assumed" } {
@@ -22,36 +22,56 @@ export function parseKickoffFromDateTime(dateStr: string | null, timeStr: string
   return timeStr ? `${dateStr}T${timeStr}:00.000Z` : null;
 }
 
-function toDateString(date: Date): string {
-  return date.toISOString().slice(0, 10);
+function londonDateString(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
-export function computeDateRange(filter: string): { dateFrom: string; dateTo: string } {
-  const today = new Date();
-  const day = today.getDay();
+function addCalendarDays(date: string, days: number): string {
+  const result = new Date(`${date}T00:00:00.000Z`);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
+}
 
-  const friday = new Date(today);
-  if (day >= 2 && day <= 4) {
-    friday.setDate(today.getDate() + (5 - day));
-  } else {
-    friday.setDate(today.getDate() - ((day + 2) % 7));
+function londonWeekday(date: string): number {
+  return new Date(`${date}T00:00:00.000Z`).getUTCDay();
+}
+
+export function computeDateRange(filter: string, now = new Date()): { dateFrom: string; dateTo: string } {
+  const today = londonDateString(now);
+  const weekday = londonWeekday(today);
+
+  if (filter === "next-14-days") {
+    return defaultDateRange(now, 13);
   }
 
+  if (filter === "all-upcoming") {
+    return defaultDateRange(now, 365);
+  }
+
+  const daysFromTodayToFriday = (5 - weekday + 7) % 7;
+  const friday = weekday === 0
+    ? addCalendarDays(today, -2)
+    : weekday === 6
+      ? addCalendarDays(today, -1)
+      : addCalendarDays(today, daysFromTodayToFriday);
+
   if (filter === "this-weekend") {
-    const start = today > friday ? today : friday;
-    const monday = new Date(friday);
-    monday.setDate(friday.getDate() + 3);
-    return { dateFrom: toDateString(start), dateTo: toDateString(monday) };
+    const isWeekend = weekday === 5 || weekday === 6 || weekday === 0;
+    const dateFrom = isWeekend ? today : friday;
+    return { dateFrom, dateTo: addCalendarDays(friday, 2) };
   }
 
   if (filter === "next-weekend") {
-    const nextFriday = new Date(friday);
-    nextFriday.setDate(friday.getDate() + 7);
-    const nextMonday = new Date(nextFriday);
-    nextMonday.setDate(nextFriday.getDate() + 3);
-    return { dateFrom: toDateString(nextFriday), dateTo: toDateString(nextMonday) };
+    const nextFriday = addCalendarDays(friday, 7);
+    return { dateFrom: nextFriday, dateTo: addCalendarDays(nextFriday, 2) };
   }
 
-  // Show upcoming fixtures up to 365 days out (current season window)
-  return defaultDateRange(today, 365);
+  return defaultDateRange(now, 365);
 }

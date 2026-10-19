@@ -40,9 +40,49 @@ describe("SearchDashboard", () => {
     expect(screen.getByRole("form", { name: "Fixture search" })).toBeInTheDocument();
     expect(screen.getByLabelText("Postcode")).toHaveValue("SE20 7RS");
     expect(screen.getByRole("button", { name: "Locate me" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next 14 days" })).toHaveClass("active");
     expect(screen.getByRole("button", { name: "This weekend" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next weekend" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All dates" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show demo fixtures" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("shows historical samples only after an explicit demo search and labels their real dates", async () => {
+    const user = userEvent.setup();
+    const sample = customFixture(1, {
+      title: "Sample home vs Sample away",
+      fixtureDate: "2025-05-18",
+      kickoffAt: "2025-05-18T15:00:00.000Z",
+      isDemoData: true,
+      isHistorical: true,
+      genericTicketUrl: "https://example.com/tickets"
+    });
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse([sample], {
+        postcode: "SE20 7RS",
+        dateFrom: "2025-04-26",
+        dateTo: "2025-05-25",
+        demoMode: true
+      }));
+
+    render(<SearchDashboard />);
+    expect(await screen.findByText("No fixtures found for the selected filters.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show demo fixtures" }));
+
+    expect(await screen.findByText("Historical demo fixtures")).toBeInTheDocument();
+    expect(screen.getAllByText(/Demo sample · .*18 May 2025/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Sample period: Sat, 26 Apr 2025 - Sun, 25 May 2025/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Get tickets" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/search", expect.objectContaining({
+      body: JSON.stringify({
+        postcode: "SE20 7RS",
+        dateFrom: "2025-04-26",
+        dateTo: "2025-05-25",
+        demoMode: true
+      })
+    }));
   });
 
   it("shows the empty state when the search API returns no fixtures", async () => {
@@ -184,8 +224,8 @@ describe("SearchDashboard", () => {
   });
 });
 
-function jsonResponse(results: FixtureResult[]): Response {
-  return new Response(JSON.stringify({ results }), {
+function jsonResponse(results: FixtureResult[], meta?: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ results, meta }), {
     status: 200,
     headers: { "Content-Type": "application/json" }
   });
