@@ -10,7 +10,7 @@ export default defineConfig({
     baseURL: "http://localhost:3000",
     trace: "on-first-retry"
   },
-  webServer: {
+  webServer: process.env.E2E_STANDALONE === "1" ? undefined : {
     command: "npm run dev -- --hostname 127.0.0.1",
     url: "http://localhost:3000",
     reuseExistingServer: true,

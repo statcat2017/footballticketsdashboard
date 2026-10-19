@@ -2,6 +2,8 @@
 
 The app is deployed to a VPS as a Next.js standalone Node.js application.
 
+Use the exact Node.js version in `.nvmrc` on the VPS. The deploy workflow checks the host version before uploading the bundle, then verifies that the deployed `better-sqlite3` native binding loads before it runs migrations or restarts the service. Upgrade the host runtime before merging a release that changes `.nvmrc`.
+
 ## Build
 
 GitHub Actions runs:
@@ -16,6 +18,8 @@ The deployment bundle is prepared from `.next/standalone`, `.next/static`, datab
 ## Runtime
 
 The app runs under systemd as `nearmefc`.
+
+The required runtime is the Node.js release pinned in `.nvmrc` (currently 24.22.0).
 
 Environment variables are loaded from:
 

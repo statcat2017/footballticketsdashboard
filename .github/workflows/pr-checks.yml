@@ -16,11 +16,14 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependencies
+        run: npm run audit:dependencies
 
       - name: Type check
         run: npm run typecheck
@@ -28,5 +31,22 @@ jobs:
       - name: Tests
         run: npm run test:ci
 
+      - name: SQLite and CSV importer smoke
+        env:
+          SQLITE_DB_PATH: ${{ runner.temp }}/nearmefc-runtime-smoke.sqlite
+        run: |
+          npm run db:setup
+          npm run import:clubs -- data/clubs.csv
+          node scripts/runtime-smoke.mjs
+
       - name: Build
         run: npm run build
+
+      - name: Prepare standalone assets
+        run: npm run standalone:prepare
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Standalone HTTP and Server Action smoke
+        run: npm run test:e2e:standalone

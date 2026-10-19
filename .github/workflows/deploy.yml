@@ -11,13 +11,46 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Keep deployment gated on recovery prerequisites
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for issue in 212 213; do
+            state="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq .state)"
+            if [ "$state" != "closed" ]; then
+              echo "::error::Deployment requires issue #$issue to be closed (current state: $state)."
+              exit 1
+            fi
+          done
+
+      - name: Read supported Node.js version
+        id: node-version
+        run: echo "version=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify VPS Node.js before upload
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: appuser
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            expected="v${{ steps.node-version.outputs.version }}"
+            actual="$(/usr/bin/node --version)"
+            if [ "$actual" != "$expected" ]; then
+              echo "VPS Node.js mismatch: expected $expected, found $actual"
+              exit 1
+            fi
 
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
@@ -28,12 +61,12 @@ jobs:
 
       - name: Prepare standalone bundle
         run: |
+          npm run standalone:prepare
           rm -rf deploy
           mkdir -p deploy
           cp -r .next/standalone/. deploy/
-          mkdir -p deploy/.next
           mkdir -p deploy/lib/db
-          cp -r .next/static deploy/.next/static
+          cp .nvmrc deploy/.nvmrc
           cp -r lib/db/migrations deploy/lib/db/migrations
           cp lib/db/migrate.ts deploy/lib/db/migrate.ts
           cp -r ./scripts deploy/scripts
@@ -49,6 +82,22 @@ jobs:
           EXCLUDE: "data/*.sqlite, data/*.sqlite-shm, data/*.sqlite-wal"
           ARGS: "-rlgoDzvc -i"
 
+      - name: Verify deployed Node.js and native SQLite before migration
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: appuser
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            expected="v$(cat .nvmrc)"
+            actual="$(/usr/bin/node --version)"
+            if [ "$actual" != "$expected" ]; then
+              echo "Deployed runtime mismatch: expected $expected, found $actual"
+              exit 1
+            fi
+            /usr/bin/node -e 'const Database = require("better-sqlite3"); const db = new Database(":memory:"); db.prepare("SELECT 1").get(); db.close();'
+
       - name: Restart app
         uses: appleboy/ssh-action@v1
         with:
@@ -60,7 +109,7 @@ jobs:
             set -a
             . /etc/nearmefc.env
             set +a
-            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-migrate-prod.ts
+            /usr/bin/node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-migrate-prod.ts
             sudo systemctl restart nearmefc
 
       - name: Health check

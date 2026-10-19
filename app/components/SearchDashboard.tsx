@@ -137,10 +137,6 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const [travelFilter, setTravelFilter] = useState<"all" | "under30" | "under60">("all");
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    setVisibleCount(12);
-  }, [compFilter, travelFilter, sortKey]);
-
   const filteredResults = useMemo(() => {
     let filtered = [...results];
     if (compFilter !== "all") {
@@ -242,6 +238,8 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   }, []);
 
   useEffect(() => {
+    // The initial fetch is an external synchronization; its async response updates result state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void runSearch(postcode, computeDateRange(dateFilter));
     return () => abortRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,7 +318,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
           <div className="meta-row">
             <div><strong>{resultCount} fixtures</strong> near {postcode}{dateRange ? ` · ${dateRange}` : ""}</div>
             <div className="meta-controls">
-              <select className="filter-select" aria-label="Competition filter" value={compFilter} onChange={(event) => setCompFilter(event.target.value as typeof compFilter)}>
+              <select className="filter-select" aria-label="Competition filter" value={compFilter} onChange={(event) => { setCompFilter(event.target.value as typeof compFilter); setVisibleCount(12); }}>
                 <option value="all">All competitions</option>
                 <option value="premier-league">Premier League</option>
                 <option value="efl">EFL</option>
@@ -329,12 +327,12 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 <option value="cup">Cup</option>
                 <option value="friendly">Friendly</option>
               </select>
-              <select className="filter-select" aria-label="Travel time filter" value={travelFilter} onChange={(event) => setTravelFilter(event.target.value as typeof travelFilter)}>
+              <select className="filter-select" aria-label="Travel time filter" value={travelFilter} onChange={(event) => { setTravelFilter(event.target.value as typeof travelFilter); setVisibleCount(12); }}>
                 <option value="all">Any travel time</option>
                 <option value="under30">Under 30 min</option>
                 <option value="under60">Under 60 min</option>
               </select>
-              <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => setSortKey(event.target.value as typeof sortKey)}>
+              <select className="sort-select" aria-label="Sort fixtures" value={sortKey} onChange={(event) => { setSortKey(event.target.value as typeof sortKey); setVisibleCount(12); }}>
                 <option value="distance">Sort by distance</option>
                 <option value="travel">Sort by travel time</option>
                 <option value="kickoff">Sort by kick-off</option>
