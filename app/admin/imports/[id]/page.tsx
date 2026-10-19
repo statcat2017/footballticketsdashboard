@@ -139,8 +139,8 @@ async function FixtureCardSection({
 
   const clubs = await db.all<{ id: number; name: string }>(`SELECT id, name FROM clubs ORDER BY name`);
   const venues = await db.all<{ id: number; name: string; postcode: string }>(`SELECT id, name, postcode FROM venues ORDER BY name`);
-  const competitions = await db.all<{ code: string; name: string; kind: string }>(
-    `SELECT code, name, kind FROM competitions ORDER BY name`
+  const competitions = await db.all<{ code: string; name: string; kind: string; public_category: string }>(
+    `SELECT code, name, kind, public_category FROM competitions ORDER BY name`
   );
   const clubById = new Map(clubs.map(c => [c.id, c]));
   const venueById = new Map(venues.map(v => [v.id, v]));
@@ -438,7 +438,7 @@ function FixtureCard({ row, batchId, mode, clubById, venueById, venueByName, com
   compByCode: Map<string, { code: string; name: string; kind: string }>;
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
-  competitions: { code: string; name: string; kind: string }[];
+  competitions: { code: string; name: string; kind: string; public_category: string }[];
   warnings: WarningIssue[];
   possibleMatches: FixtureCandidateMatch[];
   acknowledgedKeys: Set<string>;
@@ -832,7 +832,7 @@ function IssueRepair({ issue, rowId, batchId, homeResolvedId, competitionResolve
   competitionResolvedCode: string | null;
   clubs: { id: number; name: string }[];
   venues: { id: number; name: string; postcode: string }[];
-  competitions?: { code: string; name: string; kind: string }[];
+  competitions?: { code: string; name: string; kind: string; public_category: string }[];
 }) {
   switch (issue.code) {
     case "unknown_competition":

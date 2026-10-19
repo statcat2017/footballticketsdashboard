@@ -6,6 +6,7 @@ import { getDatabase } from "@/lib/db/client";
 import type { AppDatabase } from "@/lib/db/adapter";
 import { getAdminSessionFromCookies } from "@/lib/admin/auth";
 import { buildAdminAuditLogWrite } from "@/lib/admin/audit";
+import { isPublicCompetitionCategory } from "@/lib/admin/competitionCategories";
 import { addAlias, normalizeName } from "@/lib/db/clubMapping";
 import { createAdminVenue, assignAdminVenue, isValidDate, nextJuly1st } from "@/lib/admin/venues";
 import {
@@ -183,7 +184,11 @@ export async function createCompetition(
     if (!code || !name) return { error: "Competition code and name are required." };
 
     const kind = readString(form.get("kind"));
-    if (!kind || !["league", "cup"].includes(kind)) return { error: "Kind must be league or cup." };
+    if (!kind || !["league", "cup", "friendly"].includes(kind)) return { error: "Kind must be league, cup, or friendly." };
+
+    const publicCategory = readString(form.get("publicCategory"));
+    const categories = ["premier-league", "efl", "non-league", "womens", "cup", "friendly", "uncategorized"];
+    if (!publicCategory || !categories.includes(publicCategory)) return { error: "Choose a valid public competition category." };
 
     let tier: number;
     if (kind === "league") {
@@ -201,15 +206,15 @@ export async function createCompetition(
 
     await db.writeBatch([
       {
-        sql: `INSERT INTO competitions (code, name, tier, kind) VALUES (?, ?, ?, ?)`,
-        params: [code, name, tier, kind],
+        sql: `INSERT INTO competitions (code, name, tier, kind, public_category) VALUES (?, ?, ?, ?, ?)`,
+        params: [code, name, tier, kind, publicCategory],
       },
       buildAdminAuditLogWrite({
         action: "create",
         entityType: "competition",
         entityId: code,
         actor,
-        after: { code, name, tier, kind, import_batch_id: batchId },
+        after: { code, name, tier, kind, public_category: publicCategory, import_batch_id: batchId },
       }),
     ]);
 
@@ -222,6 +227,81 @@ export async function createCompetition(
     const message = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
     return { error: message };
   }
+}
+
+async function updateCompetitionCategoryForAdmin(
+  batchId: number | null,
+  _prev: ActionState | null,
+  form: FormData,
+): Promise<ActionState> {
+  try {
+    const actor = await requireActor();
+    const db = await getDatabase();
+    const code = readString(form.get("competitionCode"));
+    const publicCategory = readString(form.get("publicCategory"));
+
+    if (!code) return { error: "Choose an existing competition." };
+    if (!publicCategory || !isPublicCompetitionCategory(publicCategory)) {
+      return { error: "Choose a valid public competition category." };
+    }
+
+    const existing = await db.get<{
+      code: string;
+      name: string;
+      public_category: string;
+    }>(
+      `SELECT code, name, public_category FROM competitions WHERE code = ?`, [code]
+    );
+    if (!existing) return { error: `Competition "${code}" was not found.` };
+
+    if (existing.public_category === publicCategory) {
+      return { success: `Competition "${existing.name}" already uses ${publicCategory}.` };
+    }
+
+    const after: Record<string, unknown> = {
+      code,
+      name: existing.name,
+      public_category: publicCategory,
+    };
+    if (batchId !== null) after.import_batch_id = batchId;
+
+    await db.writeBatch([
+      {
+        sql: `UPDATE competitions SET public_category = ? WHERE code = ?`,
+        params: [publicCategory, code],
+      },
+      buildAdminAuditLogWrite({
+        action: "update",
+        entityType: "competition",
+        entityId: code,
+        actor,
+        before: { code, name: existing.name, public_category: existing.public_category },
+        after,
+      }),
+    ]);
+
+    revalidatePath("/admin/competitions");
+    if (batchId !== null) await revalidatePage(batchId);
+    return { success: `Competition "${existing.name}" category updated.` };
+  } catch (error) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
+    return { error: message };
+  }
+}
+
+export async function updateCompetitionCategory(
+  batchId: number,
+  prev: ActionState | null,
+  form: FormData,
+): Promise<ActionState> {
+  return updateCompetitionCategoryForAdmin(batchId, prev, form);
+}
+
+export async function updateCompetitionCategoryFromAdmin(
+  prev: ActionState | null,
+  form: FormData,
+): Promise<ActionState> {
+  return updateCompetitionCategoryForAdmin(null, prev, form);
 }
 
 export async function createClub(

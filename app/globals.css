@@ -481,6 +481,12 @@ select {
   border: 1px solid var(--grey-300);
 }
 
+.comp-uncategorized {
+  color: var(--grey-700);
+  background: var(--grey-100);
+  border: 1px dashed var(--grey-300);
+}
+
 .trust-line {
   margin: 0;
   color: var(--grey-500);

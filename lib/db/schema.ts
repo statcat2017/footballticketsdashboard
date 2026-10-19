@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS competitions (
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 10),
-  kind TEXT NOT NULL DEFAULT 'league' CHECK (kind IN ('league', 'cup', 'friendly'))
+  kind TEXT NOT NULL DEFAULT 'league' CHECK (kind IN ('league', 'cup', 'friendly')),
+  public_category TEXT NOT NULL DEFAULT 'uncategorized' CHECK (public_category IN ('premier-league', 'efl', 'non-league', 'womens', 'cup', 'friendly', 'uncategorized'))
 );
 
 CREATE TABLE IF NOT EXISTS fixture_seasons (

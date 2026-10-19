@@ -136,9 +136,13 @@ describe("SearchDashboard", () => {
 
   it("shows competition badges for different competition types", async () => {
     const fixtures = [
-      customFixture(1, { competitionName: "Premier League", competitionCode: "PL" }),
-      customFixture(2, { competitionName: "EFL Championship", competitionCode: "EFLC" }),
-      customFixture(3, { competitionName: "Non-League Friendlies", competitionCode: "NLF" }),
+      customFixture(1, { competitionName: "Premier League", competitionCategory: "premier-league", competitionCode: "PL" }),
+      customFixture(2, { competitionName: "EFL Championship", competitionCategory: "efl", competitionCode: "EFLC" }),
+      customFixture(3, { competitionName: "Northern Premier League Premier Division", competitionCategory: "non-league", competitionCode: "NPLP" }),
+      customFixture(4, { competitionName: "Women's Premier League", competitionCategory: "womens", competitionCode: "WSL" }),
+      customFixture(5, { competitionName: "FA Cup", competitionCategory: "cup", competitionCode: "FAC" }),
+      customFixture(6, { competitionName: "Non-League Friendlies", competitionCategory: "friendly", competitionCode: "FRIENDLY" }),
+      customFixture(7, { competitionName: "Unmapped Competition", competitionCategory: "uncategorized", competitionCode: "UNKNOWN" }),
     ];
     fetchMock.mockResolvedValueOnce(jsonResponse(fixtures));
 
@@ -148,13 +152,31 @@ describe("SearchDashboard", () => {
     expect(pl.length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("EFL").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Non-league").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Women's").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Cup").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Friendly").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Uncategorised").length).toBeGreaterThanOrEqual(1);
   });
 
   it("filters by competition category", async () => {
     const user = userEvent.setup();
     const fixtures = [
-      customFixture(1, { competitionName: "Premier League", competitionCode: "PL" }),
-      customFixture(2, { competitionName: "Non-League Friendlies", competitionCode: "NLF" }),
+      customFixture(1, {
+        competitionName: "Northern Premier League Premier Division",
+        competitionCategory: "non-league"
+      }),
+      customFixture(2, {
+        competitionName: "Premier League",
+        competitionCategory: "efl"
+      }),
+      customFixture(3, {
+        competitionName: "Women's Premier League Cup",
+        competitionCategory: "womens"
+      }),
+      customFixture(4, {
+        competitionName: "Mystery Competition",
+        competitionCategory: "uncategorized"
+      }),
     ];
     fetchMock.mockResolvedValueOnce(jsonResponse(fixtures));
 
@@ -162,13 +184,23 @@ describe("SearchDashboard", () => {
 
     expect((await screen.findAllByText("Team 1 v Opponent 1")).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Team 2 v Opponent 2").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Team 3 v Opponent 3").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Team 4 v Opponent 4").length).toBeGreaterThanOrEqual(1);
 
     const compSelect = screen.getByRole("combobox", { name: "Competition filter" });
-    await user.selectOptions(compSelect, "premier-league");
+    await user.selectOptions(compSelect, "non-league");
 
     await waitFor(() => {
       expect(screen.queryAllByText("Team 2 v Opponent 2").length).toBe(0);
+      expect(screen.queryAllByText("Team 3 v Opponent 3").length).toBe(0);
+      expect(screen.queryAllByText("Team 4 v Opponent 4").length).toBe(0);
+      expect(screen.getAllByText("Team 1 v Opponent 1").length).toBeGreaterThanOrEqual(1);
     });
+
+    expect(screen.getAllByText("Non-league").length).toBeGreaterThanOrEqual(1);
+    await user.selectOptions(compSelect, "uncategorized");
+    expect(await screen.findAllByText("Team 4 v Opponent 4")).toBeDefined();
+    expect(screen.getAllByText("Uncategorised").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows trust line when verifiedAt is present", async () => {
@@ -207,6 +239,7 @@ function fixture(id: number): FixtureResult {
     title: `Team ${id} v Opponent ${id}`,
     competitionCode: "TEST",
     competitionName: "Test League",
+    competitionCategory: "uncategorized",
     kickoffAt: `2026-06-${String(id).padStart(2, "0")}T15:00:00.000Z`,
     fixtureDate: `2026-06-${String(id).padStart(2, "0")}`,
     kickoffTime: "15:00",

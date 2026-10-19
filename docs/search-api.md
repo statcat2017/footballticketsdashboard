@@ -32,6 +32,7 @@ If `dateFrom` or `dateTo` are omitted, the API applies the default search window
       "title": "Chelsea vs Arsenal",
       "competitionCode": "PL",
       "competitionName": "Premier League",
+      "competitionCategory": "premier-league",
       "kickoffAt": "2026-05-12T19:00:00.000Z",
       "venueName": "Stamford Bridge",
       "venuePostcode": "SW6 1HS",
@@ -72,6 +73,7 @@ If `dateFrom` or `dateTo` are omitted, the API applies the default search window
 
 Notes:
 
+- `competitionCategory` comes from the curated competition record and is one of `premier-league`, `efl`, `non-league`, `womens`, `cup`, `friendly`, or `uncategorized`.
 - `price.saleMode` is `all_ticket`, `pay_on_gate`, or `null` when the club should be checked directly.
 - `price.isOverride` is `true` when fixture-specific pricing overrides the club default.
 - `travel.source` is `cache` when postcode-district travel data exists, otherwise `distance_only`.

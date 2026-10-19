@@ -1,4 +1,12 @@
 export type CompetitionCode = string;
+export type CompetitionCategory =
+  | "premier-league"
+  | "efl"
+  | "non-league"
+  | "womens"
+  | "cup"
+  | "friendly"
+  | "uncategorized";
 
 export interface SearchRequest {
   postcode: string;
@@ -31,6 +39,7 @@ export interface FixtureResult {
   title: string;
   competitionCode: string;
   competitionName: string;
+  competitionCategory: CompetitionCategory;
   kickoffAt: string | null;
   fixtureDate: string | null;
   kickoffTime: string | null;

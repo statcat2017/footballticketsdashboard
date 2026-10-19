@@ -95,8 +95,8 @@ export async function seedAppDatabase(db: AppDatabase): Promise<void> {
 
   for (const c of SEED_DATA.competitions) {
     add(
-      "INSERT INTO competitions (code, name, tier, kind) VALUES (?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier, kind = excluded.kind",
-      [c.code, c.name, c.tier, c.kind ?? "league"]
+      "INSERT INTO competitions (code, name, tier, kind, public_category) VALUES (?, ?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier, kind = excluded.kind, public_category = excluded.public_category",
+      [c.code, c.name, c.tier, c.kind ?? "league", c.publicCategory]
     );
   }
 

@@ -1,12 +1,10 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FixtureResult } from "@/lib/types";
+import type { CompetitionCategory, FixtureResult } from "@/lib/types";
 import { computeDateRange } from "@/lib/date";
 
 type SearchState = "idle" | "loading" | "ready" | "error";
-type CompetitionCategory = "premier-league" | "efl" | "non-league" | "womens" | "cup" | "friendly";
-
 const moneyFormatter = new Intl.NumberFormat("en-GB", {
   style: "currency",
   currency: "GBP",
@@ -82,17 +80,6 @@ function travelMinutes(value: number | null): string {
   return value === null ? "TBC" : `${value} min`;
 }
 
-function competitionCategory(name: string): CompetitionCategory {
-  const lower = name.toLowerCase();
-  if (lower.includes("women") || lower.includes("wsl") || lower.includes("fa wsl")) return "womens";
-  if (lower.includes("premier")) return "premier-league";
-  if (lower.includes("fa cup") || lower.includes("efl cup") || lower.includes("carabao") || lower.includes("league cup")) return "cup";
-  if (lower.includes("championship") || lower.includes("league one") || lower.includes("league two") || lower.includes("efl")) return "efl";
-  if (lower.includes("non-league")) return "non-league";
-  if (lower.includes("friendly")) return "friendly";
-  return "non-league";
-}
-
 function competitionBadgeLabel(category: CompetitionCategory): string {
   switch (category) {
     case "premier-league": return "Premier League";
@@ -101,6 +88,7 @@ function competitionBadgeLabel(category: CompetitionCategory): string {
     case "womens": return "Women's";
     case "cup": return "Cup";
     case "friendly": return "Friendly";
+    case "uncategorized": return "Uncategorised";
   }
 }
 
@@ -118,8 +106,7 @@ function featuredReason(result: FixtureResult, allResults: FixtureResult[]): str
     .sort((a, b) => (a.travel.drivingMinutes ?? Infinity) - (b.travel.drivingMinutes ?? Infinity))[0];
   if (result.id === fastest?.id) return "Shortest journey";
 
-  const category = competitionCategory(result.competitionName);
-  if (category === "premier-league") return "Top-flight match";
+  if (result.competitionCategory === "premier-league") return "Top-flight match";
 
   return "Recommended";
 }
@@ -144,7 +131,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
   const filteredResults = useMemo(() => {
     let filtered = [...results];
     if (compFilter !== "all") {
-      filtered = filtered.filter((r) => competitionCategory(r.competitionName) === compFilter);
+      filtered = filtered.filter((r) => r.competitionCategory === compFilter);
     }
     if (travelFilter === "under30") {
       filtered = filtered.filter((r) => r.travel.drivingMinutes !== null && r.travel.drivingMinutes <= 30);
@@ -328,6 +315,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 <option value="womens">Women&apos;s</option>
                 <option value="cup">Cup</option>
                 <option value="friendly">Friendly</option>
+                <option value="uncategorized">Uncategorised</option>
               </select>
               <select className="filter-select" aria-label="Travel time filter" value={travelFilter} onChange={(event) => setTravelFilter(event.target.value as typeof travelFilter)}>
                 <option value="all">Any travel time</option>
@@ -372,7 +360,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
               <span className="featured-reason">{featuredReason(featuredFixture, sortedResults)}</span>
               <h1>{featuredFixture.title}</h1>
               <p className="featured-meta">
-                <CompetitionBadge category={competitionCategory(featuredFixture.competitionName)} />
+                <CompetitionBadge category={featuredFixture.competitionCategory} />
                 {" "}{featuredFixture.venueName}{featuredFixture.venuePostcode ? `, ${featuredFixture.venuePostcode}` : ""} · {formatKickoffDate(featuredFixture.kickoffAt)}
               </p>
               <p className="featured-travel">
@@ -417,7 +405,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 <div className="date-group" key={idx}>
                   {group.label && <div className="date-group-header">{group.label}</div>}
                   {group.items.map((result) => {
-                    const compCat = competitionCategory(result.competitionName);
+                    const compCat = result.competitionCategory;
 
                     return (
                       <article className="grid-row fixture-row" key={result.id}>
@@ -490,7 +478,7 @@ export function SearchDashboard({ showAdminLink = false }: { showAdminLink?: boo
                 <div className="date-group" key={idx}>
                   {group.label && <div className="date-group-header">{group.label}</div>}
                   {group.items.map((result) => {
-                    const compCat = competitionCategory(result.competitionName);
+                    const compCat = result.competitionCategory;
 
                     return (
                       <article className="fixture-card" key={result.id}>

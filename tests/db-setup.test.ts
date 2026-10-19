@@ -63,6 +63,12 @@ describe("database setup", () => {
       FROM pyramid_edges
     `).get() as { total: number; fixedCount: number; allocationDepCount: number };
 
+    const competitionCategories = second.prepare(`
+      SELECT code, public_category FROM competitions
+      WHERE code IN ('ELC', 'FRIENDLY', 'NPLP', 'PL')
+      ORDER BY code
+    `).all() as Array<{ code: string; public_category: string }>;
+
     second.close();
 
     expect(fs.existsSync(filename)).toBe(true);
@@ -83,6 +89,12 @@ describe("database setup", () => {
     expect(edgeAllocationTypes.fixedCount).toBeGreaterThan(0);
     expect(edgeAllocationTypes.allocationDepCount).toBeGreaterThan(0);
     expect(edgeAllocationTypes.fixedCount + edgeAllocationTypes.allocationDepCount).toBe(129);
+    expect(competitionCategories).toEqual([
+      { code: "ELC", public_category: "efl" },
+      { code: "FRIENDLY", public_category: "friendly" },
+      { code: "NPLP", public_category: "non-league" },
+      { code: "PL", public_category: "premier-league" },
+    ]);
   });
 
   it("migration 008 backfills existing rows with correct display_order and allocation_type", () => {
