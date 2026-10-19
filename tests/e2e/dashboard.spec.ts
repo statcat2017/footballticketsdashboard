@@ -7,8 +7,8 @@ test("search shows fixture demo results", async ({ page }) => {
   await expect(page.getByLabel("Postcode")).toBeVisible();
 
   await page.getByLabel("Postcode").fill("SW6 1HS");
-  await page.getByRole("button", { name: "All upcoming" }).click();
+  await page.getByRole("button", { name: "All dates" }).click();
 
-  await expect(page.locator(".fixtures")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Fixture list" }).first()).toBeVisible();
   await expect(page.locator(".fixture-row").first()).toBeVisible();
 });

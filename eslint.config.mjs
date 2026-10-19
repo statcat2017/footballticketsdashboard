@@ -1,30 +1,23 @@
-import { FlatCompat } from "@eslint/eslintrc";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
-const compat = new FlatCompat({
-  baseDirectory: dirname(fileURLToPath(import.meta.url))
-});
-
-const eslintConfig = [
-  {
-    ignores: [
-      ".next/**",
-      ".open-next/**",
-      ".wrangler/**",
-      "node_modules/**",
-      "out/**",
-      "dist/**",
-      "coverage/**",
-      "next-env.d.ts"
-    ]
-  },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+export default defineConfig([
+  ...nextVitals,
+  ...nextTypescript,
+  globalIgnores([
+    ".next/**",
+    ".open-next/**",
+    ".wrangler/**",
+    "node_modules/**",
+    "out/**",
+    "dist/**",
+    "coverage/**",
+    "next-env.d.ts"
+  ]),
   {
     rules: {
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }]
     }
   }
-];
-
-export default eslintConfig;
+]);
