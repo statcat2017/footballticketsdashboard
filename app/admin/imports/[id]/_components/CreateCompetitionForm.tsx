@@ -43,6 +43,18 @@ export function CreateCompetitionForm({ batchId, rawValue, code }: {
           <select name="kind" defaultValue="cup" style={inputStyle}>
             <option value="cup">Cup</option>
             <option value="league">League</option>
+            <option value="friendly">Friendly</option>
+          </select>
+        </label>
+        <label style={labelStyle}>Public category
+          <select name="publicCategory" defaultValue="uncategorized" style={inputStyle}>
+            <option value="premier-league">Premier League</option>
+            <option value="efl">EFL</option>
+            <option value="non-league">Non-league</option>
+            <option value="womens">Women&apos;s</option>
+            <option value="cup">Cup</option>
+            <option value="friendly">Friendly</option>
+            <option value="uncategorized">Uncategorised</option>
           </select>
         </label>
         <label style={labelStyle}>Tier <span style={{ fontWeight: 400, color: "#6f7e7a" }}>(only used for league)</span>

@@ -4,11 +4,11 @@ Run `npm run db:setup` to create or update `data/nearmefc.sqlite`, apply the sch
 
 To reset local data, delete `data/nearmefc.sqlite` and run `npm run db:setup` again. The SQLite file and WAL/SHM sidecars are ignored by git.
 
-## Current Tables (22 total, migrations 001–027)
+## Current Tables (22 total, migrations 001–031)
 
 ### Core Data
 
-- **`competitions`** — League/cup definitions with tier (1–10) and kind (league/cup/friendly).
+- **`competitions`** — League/cup definitions with tier, kind, and curated public category; uncertain legacy records stay uncategorized.
 - **`venues`** — Ground locations with postcode, coordinates, precision metadata, and verification timestamps.
 - **`clubs`** — Club records with football-data.org ID, aliases, venue reference, ticket/ground source URLs, and coordinate metadata.
 - **`fixtures`** — Match records with source tracking, one-off participant support, date/time split, confidence enum, and provenance fields.

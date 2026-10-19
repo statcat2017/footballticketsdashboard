@@ -1,5 +1,7 @@
+import type { CompetitionCategory } from "../types.ts";
+
 export interface SeedData {
-  competitions: Array<{ code: string; name: string; tier: number; kind?: string }>;
+  competitions: Array<{ code: string; name: string; tier: number; kind?: string; publicCategory: CompetitionCategory }>;
   venues: Array<{ id: number; name: string; postcode: string; latitude: number; longitude: number; is_approximate: number }>;
   clubs: Array<{ id: number; name: string; football_data_team_id: number; aliases: string; short_name: string; venue_id: number; official_site_url: string; generic_ticket_url: string; price_source_url: string; verified_at: string }>;
   club_ticket_prices: Array<{ club_id: number; sale_mode: string; adult_price_pence: number; concession_price_pence: number; source_url: string; verified_at: string; confidence: string }>;
@@ -27,36 +29,36 @@ export interface SeedData {
 
 export const SEED_DATA: SeedData = {
   competitions: [
-    { code: "PL", name: "Premier League", tier: 1 },
-    { code: "ELC", name: "Championship", tier: 2 },
-    { code: "NPLP", name: "Northern Premier League Premier Division", tier: 7 },
-    { code: "ILP", name: "Isthmian League Premier Division", tier: 7 },
-    { code: "SLPC", name: "Southern League Premier Division Central", tier: 7 },
-    { code: "SLPS", name: "Southern League Premier Division South", tier: 7 },
-    { code: "NPL1E", name: "NPL Division One East", tier: 8 },
-    { code: "NPL1M", name: "NPL Division One Midlands", tier: 8 },
-    { code: "NPL1W", name: "NPL Division One West", tier: 8 },
-    { code: "IL1N", name: "Isthmian League Division One North", tier: 8 },
-    { code: "IL1SC", name: "Isthmian League Division One South Central", tier: 8 },
-    { code: "IL1SE", name: "Isthmian League Division One South East", tier: 8 },
-    { code: "SL1C", name: "Southern League Division One Central", tier: 8 },
-    { code: "SL1S", name: "Southern League Division One South", tier: 8 },
-    { code: "FRIENDLY", name: "Non-League Friendlies", tier: 10, kind: "friendly" },
-    { code: "CC_PN", name: "Combined Counties League Premier Division North", tier: 9 },
-    { code: "CC_PS", name: "Combined Counties League Premier Division South", tier: 9 },
-    { code: "EC_PREM", name: "Eastern Counties League Premier Division", tier: 9 },
-    { code: "ESL", name: "Essex Senior League", tier: 9 },
-    { code: "HEL_PREM", name: "Hellenic League Premier Division", tier: 9 },
-    { code: "MFL_PREM", name: "Midland League Premier Division", tier: 9 },
-    { code: "NCE_PREM", name: "Northern Counties East League Premier Division", tier: 9 },
-    { code: "NL_D1", name: "Northern League Division One", tier: 9 },
-    { code: "SCE_PREM", name: "Southern Counties East League Premier Division", tier: 9 },
-    { code: "SSM_PREM", name: "Spartan South Midlands League Premier Division", tier: 9 },
-    { code: "SCO_PREM", name: "Southern Combination League Premier Division", tier: 9 },
-    { code: "UCL_PN", name: "United Counties League Premier Division North", tier: 9 },
-    { code: "UCL_PS", name: "United Counties League Premier Division South", tier: 9 },
-    { code: "WES_PREM", name: "Wessex League Premier Division", tier: 9 },
-    { code: "WESL_PREM", name: "Western League Premier Division", tier: 9 }
+    { code: "PL", name: "Premier League", tier: 1, publicCategory: "premier-league" },
+    { code: "ELC", name: "Championship", tier: 2, publicCategory: "efl" },
+    { code: "NPLP", name: "Northern Premier League Premier Division", tier: 7, publicCategory: "non-league" },
+    { code: "ILP", name: "Isthmian League Premier Division", tier: 7, publicCategory: "non-league" },
+    { code: "SLPC", name: "Southern League Premier Division Central", tier: 7, publicCategory: "non-league" },
+    { code: "SLPS", name: "Southern League Premier Division South", tier: 7, publicCategory: "non-league" },
+    { code: "NPL1E", name: "NPL Division One East", tier: 8, publicCategory: "non-league" },
+    { code: "NPL1M", name: "NPL Division One Midlands", tier: 8, publicCategory: "non-league" },
+    { code: "NPL1W", name: "NPL Division One West", tier: 8, publicCategory: "non-league" },
+    { code: "IL1N", name: "Isthmian League Division One North", tier: 8, publicCategory: "non-league" },
+    { code: "IL1SC", name: "Isthmian League Division One South Central", tier: 8, publicCategory: "non-league" },
+    { code: "IL1SE", name: "Isthmian League Division One South East", tier: 8, publicCategory: "non-league" },
+    { code: "SL1C", name: "Southern League Division One Central", tier: 8, publicCategory: "non-league" },
+    { code: "SL1S", name: "Southern League Division One South", tier: 8, publicCategory: "non-league" },
+    { code: "FRIENDLY", name: "Non-League Friendlies", tier: 10, kind: "friendly", publicCategory: "friendly" },
+    { code: "CC_PN", name: "Combined Counties League Premier Division North", tier: 9, publicCategory: "non-league" },
+    { code: "CC_PS", name: "Combined Counties League Premier Division South", tier: 9, publicCategory: "non-league" },
+    { code: "EC_PREM", name: "Eastern Counties League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "ESL", name: "Essex Senior League", tier: 9, publicCategory: "non-league" },
+    { code: "HEL_PREM", name: "Hellenic League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "MFL_PREM", name: "Midland League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "NCE_PREM", name: "Northern Counties East League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "NL_D1", name: "Northern League Division One", tier: 9, publicCategory: "non-league" },
+    { code: "SCE_PREM", name: "Southern Counties East League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "SSM_PREM", name: "Spartan South Midlands League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "SCO_PREM", name: "Southern Combination League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "UCL_PN", name: "United Counties League Premier Division North", tier: 9, publicCategory: "non-league" },
+    { code: "UCL_PS", name: "United Counties League Premier Division South", tier: 9, publicCategory: "non-league" },
+    { code: "WES_PREM", name: "Wessex League Premier Division", tier: 9, publicCategory: "non-league" },
+    { code: "WESL_PREM", name: "Western League Premier Division", tier: 9, publicCategory: "non-league" }
   ],
   venues: [
     { id: 1, name: "Stamford Bridge", postcode: "SW6 1HS", latitude: 51.4817, longitude: -0.191, is_approximate: 0 },

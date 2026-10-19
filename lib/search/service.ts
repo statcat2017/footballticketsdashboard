@@ -11,7 +11,7 @@ import {
 import { buildTravelCacheEntry, upsertTravelCacheRow } from "../travel/cache.ts";
 import type { TravelProvider } from "../travel/providers.ts";
 import { buildGoogleMapsTransitDirectionsUrl } from "../travel/google-maps.ts";
-import type { FixtureResult, SearchRequest } from "../types.ts";
+import type { CompetitionCategory, FixtureResult, SearchRequest } from "../types.ts";
 import type { TravelProviderRuntimeConfig } from "../runtime-env.ts";
 import { defaultDateRange } from "../date.ts";
 
@@ -19,6 +19,7 @@ interface FixtureRow {
   id: number;
   competition_code: string;
   competition_name: string;
+  competition_category: CompetitionCategory;
   kickoff_at: string | null;
   fixture_date: string | null;
   kickoff_time: string | null;
@@ -152,6 +153,7 @@ function queryFixtures(
       f.id,
       f.competition_code,
       c.name as competition_name,
+      c.public_category as competition_category,
       f.kickoff_at,
       f.is_demo_data,
       f.is_historical,
@@ -214,6 +216,7 @@ function queryAllHistoricalFixtures(
       f.id,
       f.competition_code,
       c.name as competition_name,
+      c.public_category as competition_category,
       f.kickoff_at,
       f.is_demo_data,
       f.is_historical,
@@ -285,6 +288,7 @@ function toResult(row: FixtureRow, userLocation: { latitude: number; longitude: 
     title: `${row.home_club} vs ${row.away_club}`,
     competitionCode: row.competition_code,
     competitionName: row.competition_name,
+    competitionCategory: row.competition_category,
     kickoffAt: row.kickoff_at,
     fixtureDate: row.fixture_date,
     kickoffTime: row.kickoff_time,

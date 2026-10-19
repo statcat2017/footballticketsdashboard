@@ -183,7 +183,11 @@ export async function createCompetition(
     if (!code || !name) return { error: "Competition code and name are required." };
 
     const kind = readString(form.get("kind"));
-    if (!kind || !["league", "cup"].includes(kind)) return { error: "Kind must be league or cup." };
+    if (!kind || !["league", "cup", "friendly"].includes(kind)) return { error: "Kind must be league, cup, or friendly." };
+
+    const publicCategory = readString(form.get("publicCategory"));
+    const categories = ["premier-league", "efl", "non-league", "womens", "cup", "friendly", "uncategorized"];
+    if (!publicCategory || !categories.includes(publicCategory)) return { error: "Choose a valid public competition category." };
 
     let tier: number;
     if (kind === "league") {
@@ -201,15 +205,15 @@ export async function createCompetition(
 
     await db.writeBatch([
       {
-        sql: `INSERT INTO competitions (code, name, tier, kind) VALUES (?, ?, ?, ?)`,
-        params: [code, name, tier, kind],
+        sql: `INSERT INTO competitions (code, name, tier, kind, public_category) VALUES (?, ?, ?, ?, ?)`,
+        params: [code, name, tier, kind, publicCategory],
       },
       buildAdminAuditLogWrite({
         action: "create",
         entityType: "competition",
         entityId: code,
         actor,
-        after: { code, name, tier, kind, import_batch_id: batchId },
+        after: { code, name, tier, kind, public_category: publicCategory, import_batch_id: batchId },
       }),
     ]);
 

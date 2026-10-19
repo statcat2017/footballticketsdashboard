@@ -24,6 +24,53 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 describe("fixture search", () => {
+  it("returns canonical competition categories from SQLite search records", async () => {
+    const db = await createAppDatabase();
+    const resolver: PostcodeResolver = {
+      resolve: async () => ({ latitude: 51.4817, longitude: -0.191 })
+    };
+
+    await db.run(`
+      INSERT INTO competitions (code, name, tier, kind, public_category)
+      VALUES
+        ('TESTCUP', 'Example Cup', 4, 'cup', 'cup'),
+        ('TESTWOM', 'Women Premier League Cup', 1, 'cup', 'womens'),
+        ('TESTUNK', 'Premier League Reserves', 5, 'league', 'uncategorized')
+    `);
+    await db.run(`
+      INSERT INTO fixtures (
+        source, source_id, competition_code, home_club_id, away_club_id, venue_id,
+        kickoff_at, status, is_demo_data, is_historical
+      )
+      VALUES
+        ('test', 'category-pl', 'PL', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0),
+        ('test', 'category-efl', 'ELC', 6, 4, 6, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0),
+        ('test', 'category-nonleague', 'NPLP', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0),
+        ('test', 'category-friendly', 'FRIENDLY', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0),
+        ('test', 'category-cup', 'TESTCUP', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0),
+        ('test', 'category-womens', 'TESTWOM', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0),
+        ('test', 'category-unknown', 'TESTUNK', 1, 2, 1, '2026-05-12T19:00:00.000Z', 'scheduled', 0, 0)
+    `);
+
+    const results = await searchFixtures(db, {
+      postcode: "SW6 1HS",
+      dateFrom: "2026-05-10",
+      dateTo: "2026-05-15"
+    }, { postcodeResolver: resolver, travelProviderOverrides: [] });
+
+    expect(results.map((result) => [result.competitionCode, result.competitionCategory])).toEqual(
+      expect.arrayContaining([
+        ["PL", "premier-league"],
+        ["ELC", "efl"],
+        ["NPLP", "non-league"],
+        ["FRIENDLY", "friendly"],
+        ["TESTCUP", "cup"],
+        ["TESTWOM", "womens"],
+        ["TESTUNK", "uncategorized"]
+      ])
+    );
+  });
+
   it("falls back to unconstrained historical fixtures when date range has no live or historical matches", async () => {
     const db = await createAppDatabase();
 

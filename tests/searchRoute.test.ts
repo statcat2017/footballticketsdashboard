@@ -164,6 +164,7 @@ describe("search API route", () => {
         title: "Chelsea vs Arsenal",
         competitionCode: "PL",
         competitionName: "Premier League",
+        competitionCategory: "premier-league",
         kickoffAt: "2026-05-12T19:00:00.000Z",
         venueName: "Stamford Bridge",
         venuePostcode: "SW6 1HS",
