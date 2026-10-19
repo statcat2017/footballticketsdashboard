@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
-import { setupDatabase } from "@/lib/db/setup";
+import { openDatabase, setupDatabase } from "@/lib/db/setup";
 import { SEED_DATA } from "@/lib/db/seed-data";
 import {
   MEN_PYRAMID_CLUBS,
@@ -19,6 +19,88 @@ const totalClubs = (() => {
 })();
 
 describe("database setup", () => {
+  it("preserves operational edits when initialization is repeated", async () => {
+    const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-db-preserve-"));
+    const filename = path.join(dirname, "nearmefc.sqlite");
+    const first = await setupDatabase(filename);
+    const club = SEED_DATA.clubs[0];
+    const venue = SEED_DATA.venues.find((row) => row.id === club.venue_id)!;
+    const fixture = SEED_DATA.fixtures[0];
+    const fixtureId = first.prepare("SELECT id FROM fixtures WHERE source = ? AND source_id = ?").get(fixture.source, fixture.source_id) as { id: number };
+    const divisionAssignment = first.prepare("SELECT club_id, division_id FROM division_assignments WHERE club_id = ?").get(club.id) as { club_id: number; division_id: number };
+    const venueAssignment = first.prepare("SELECT id FROM club_venue_assignments ORDER BY id LIMIT 1").get() as { id: number };
+
+    first.prepare("UPDATE venues SET name = ? WHERE id = ?").run("Operator venue name", venue.id);
+    first.prepare("UPDATE clubs SET name = ?, short_name = ? WHERE id = ?").run("Operator club name", "Edited", club.id);
+    first.prepare("UPDATE club_ticket_prices SET adult_price_pence = ?, source_url = ? WHERE club_id = ?").run(4321, "https://example.com/price", club.id);
+    first.prepare("INSERT INTO fixture_ticket_price_overrides (fixture_id, adult_price_pence, source_url, confidence) VALUES (?, ?, ?, 'verified')").run(fixtureId.id, 7654, "https://example.com/fixture-price");
+    first.prepare("UPDATE fixtures SET fixture_date = ?, kickoff_time = ?, kickoff_at = ? WHERE source = ? AND source_id = ?").run(
+      "2030-05-12", "15:30", "2030-05-12T14:30:00.000Z", fixture.source, fixture.source_id
+    );
+    first.prepare("UPDATE fixture_seasons SET ends_on = ?, is_current = 0 WHERE id = 1").run("2030-06-30");
+    first.prepare("UPDATE competitions SET name = ? WHERE code = ?").run("Operator competition name", SEED_DATA.competitions[0].code);
+    first.prepare("UPDATE division_competition_mappings SET competition_code = 'PL' WHERE division_id = 8").run();
+    first.prepare("UPDATE division_assignments SET division_id = ?, admin_updated_at = '2030-01-01T00:00:00.000Z' WHERE club_id = ?").run(divisionAssignment.division_id === 1 ? 2 : 1, divisionAssignment.club_id);
+    first.prepare("UPDATE club_venue_assignments SET effective_to = '2030-01-01' WHERE id = ?").run(venueAssignment.id);
+    first.prepare("UPDATE pyramid_divisions SET name = ? WHERE id = 1").run("Operator division name");
+    first.prepare("UPDATE pyramid_seasons SET season_label = ? WHERE id = 1").run("Operator pyramid season");
+    first.prepare("UPDATE travel_cache SET driving_minutes = 77 WHERE rowid = (SELECT MIN(rowid) FROM travel_cache)").run();
+    first.prepare("INSERT INTO admin_audit_log (actor, action, entity_type, entity_id) VALUES ('operator', 'update', 'club', ?)").run(String(club.id));
+    first.close();
+
+    const readOperationalState = (db: ReturnType<typeof openDatabase>) => ({
+      venue: db.prepare("SELECT name FROM venues WHERE id = ?").get(venue.id),
+      club: db.prepare("SELECT name, short_name FROM clubs WHERE id = ?").get(club.id),
+      clubPrice: db.prepare("SELECT adult_price_pence, source_url FROM club_ticket_prices WHERE club_id = ?").get(club.id),
+      fixturePrice: db.prepare("SELECT adult_price_pence, source_url FROM fixture_ticket_price_overrides WHERE fixture_id = ?").get(fixtureId.id),
+      fixture: db.prepare("SELECT fixture_date, kickoff_time, kickoff_at FROM fixtures WHERE source = ? AND source_id = ?").get(fixture.source, fixture.source_id),
+      fixtureSeason: db.prepare("SELECT ends_on, is_current FROM fixture_seasons WHERE id = 1").get(),
+      competition: db.prepare("SELECT name FROM competitions WHERE code = ?").get(SEED_DATA.competitions[0].code),
+      mapping: db.prepare("SELECT competition_code FROM division_competition_mappings WHERE division_id = 8").get(),
+      divisionAssignment: db.prepare("SELECT club_id, division_id, admin_updated_at FROM division_assignments WHERE club_id = ?").get(divisionAssignment.club_id),
+      venueAssignment: db.prepare("SELECT id, effective_to FROM club_venue_assignments WHERE id = ?").get(venueAssignment.id),
+      division: db.prepare("SELECT name FROM pyramid_divisions WHERE id = 1").get(),
+      pyramidSeason: db.prepare("SELECT season_label FROM pyramid_seasons WHERE id = 1").get(),
+      travel: db.prepare("SELECT driving_minutes FROM travel_cache ORDER BY rowid LIMIT 1").get(),
+      auditRows: db.prepare("SELECT COUNT(*) as count FROM admin_audit_log WHERE actor = 'operator'").get()
+    });
+    const expected = {
+      venue: { name: "Operator venue name" },
+      club: { name: "Operator club name", short_name: "Edited" },
+      clubPrice: { adult_price_pence: 4321, source_url: "https://example.com/price" },
+      fixturePrice: { adult_price_pence: 7654, source_url: "https://example.com/fixture-price" },
+      fixture: { fixture_date: "2030-05-12", kickoff_time: "15:30", kickoff_at: "2030-05-12T14:30:00.000Z" },
+      fixtureSeason: { ends_on: "2030-06-30", is_current: 0 },
+      competition: { name: "Operator competition name" },
+      mapping: { competition_code: "PL" },
+      divisionAssignment: { club_id: divisionAssignment.club_id, division_id: divisionAssignment.division_id === 1 ? 2 : 1, admin_updated_at: "2030-01-01T00:00:00.000Z" },
+      venueAssignment: { id: venueAssignment.id, effective_to: "2030-01-01" },
+      division: { name: "Operator division name" },
+      pyramidSeason: { season_label: "Operator pyramid season" },
+      travel: { driving_minutes: 77 },
+      auditRows: { count: 1 }
+    };
+
+    const runtime = openDatabase(filename);
+    expect(readOperationalState(runtime)).toEqual(expected);
+    runtime.close();
+
+    const repeatedInitialization = await setupDatabase(filename);
+    expect(readOperationalState(repeatedInitialization)).toEqual(expected);
+    repeatedInitialization.close();
+  });
+
+  it("requires explicit setup and migrations before runtime open", async () => {
+    const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-db-runtime-"));
+    const missing = path.join(dirname, "missing.sqlite");
+    expect(() => openDatabase(missing)).toThrow("Initialize it explicitly with npm run db:setup");
+    expect(fs.existsSync(missing)).toBe(false);
+
+    const outdated = path.join(dirname, "outdated.sqlite");
+    fs.writeFileSync(outdated, "");
+    expect(() => openDatabase(outdated)).toThrow("Run npm run db:migrate before starting the app");
+  });
+
   it("creates a SQLite file and can be run repeatedly without duplicating seed rows", async () => {
     const dirname = fs.mkdtempSync(path.join(os.tmpdir(), "nearmefc-db-"));
     const filename = path.join(dirname, "nearmefc.sqlite");

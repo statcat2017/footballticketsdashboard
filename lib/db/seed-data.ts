@@ -68,53 +68,53 @@ export async function seedAppDatabase(db: AppDatabase): Promise<void> {
   };
 
   add(
-    "INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET code = excluded.code, name = excluded.name, sport = excluded.sport, status = excluded.status",
+    "INSERT INTO pyramid_templates (id, code, name, sport, status) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
     [MEN_PYRAMID_TEMPLATE.id, MEN_PYRAMID_TEMPLATE.code, MEN_PYRAMID_TEMPLATE.name, MEN_PYRAMID_TEMPLATE.sport, MEN_PYRAMID_TEMPLATE.status]
   );
 
   for (const division of MEN_PYRAMID_DIVISIONS) {
     add(
-      "INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size, display_order) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET template_id = excluded.template_id, code = excluded.code, name = excluded.name, level = excluded.level, max_size = excluded.max_size, display_order = excluded.display_order",
+      "INSERT INTO pyramid_divisions (id, template_id, code, name, level, max_size, display_order) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
       [division.id, division.template_id, division.code, division.name, division.level, division.max_size, divisionDisplayOrder.get(division.id) ?? null]
     );
   }
 
   for (const edge of MEN_PYRAMID_EDGES) {
     add(
-      "INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type, allocation_type) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_division_id = excluded.from_division_id, to_division_id = excluded.to_division_id, movement_type = excluded.movement_type, allocation_type = excluded.allocation_type",
+      "INSERT INTO pyramid_edges (id, from_division_id, to_division_id, movement_type, allocation_type) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
       [edge.id, edge.from_division_id, edge.to_division_id, edge.movement_type, edgeAllocationType.get(edge.id) ?? "allocation_dependent"]
     );
   }
 
   for (const season of MEN_PYRAMID_SEASONS) {
     add(
-      "INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET template_id = excluded.template_id, season_label = excluded.season_label",
+      "INSERT INTO pyramid_seasons (id, template_id, season_label) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
       [season.id, season.template_id, season.season_label]
     );
   }
 
   for (const c of SEED_DATA.competitions) {
     add(
-      "INSERT INTO competitions (code, name, tier, kind) VALUES (?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, tier = excluded.tier, kind = excluded.kind",
+      "INSERT INTO competitions (code, name, tier, kind) VALUES (?, ?, ?, ?) ON CONFLICT(code) DO NOTHING",
       [c.code, c.name, c.tier, c.kind ?? "league"]
     );
   }
 
   for (const m of DIVISION_COMPETITION_MAPPINGS) {
     add(
-      "INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?) ON CONFLICT(division_id) DO UPDATE SET competition_code = excluded.competition_code",
+      "INSERT INTO division_competition_mappings (division_id, competition_code) VALUES (?, ?) ON CONFLICT(division_id) DO NOTHING",
       [m.division_id, m.competition_code]
     );
   }
 
   add(
-    "INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET label = excluded.label, starts_on = excluded.starts_on, ends_on = excluded.ends_on, is_current = excluded.is_current",
+    "INSERT INTO fixture_seasons (id, label, starts_on, ends_on, is_current) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
     [1, "2025-26", "2025-08-01", "2026-07-31", 1]
   );
 
   for (const v of SEED_DATA.venues) {
     add(
-      "INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, postcode = excluded.postcode, latitude = excluded.latitude, longitude = excluded.longitude, is_approximate = excluded.is_approximate",
+      "INSERT INTO venues (id, name, postcode, latitude, longitude, is_approximate) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
       [v.id, v.name, v.postcode, v.latitude, v.longitude, v.is_approximate]
     );
   }
@@ -160,7 +160,7 @@ export async function seedAppDatabase(db: AppDatabase): Promise<void> {
   for (const cl of SEED_DATA.clubs) {
     const pyramidMatch = pyramidClubByName.get(cl.name);
     add(
-      "INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at, source_url, league_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, football_data_team_id = excluded.football_data_team_id, aliases = excluded.aliases, short_name = excluded.short_name, venue_id = excluded.venue_id, official_site_url = excluded.official_site_url, generic_ticket_url = excluded.generic_ticket_url, price_source_url = excluded.price_source_url, verified_at = excluded.verified_at, source_url = excluded.source_url, league_name = excluded.league_name",
+      "INSERT INTO clubs (id, name, football_data_team_id, aliases, short_name, venue_id, official_site_url, generic_ticket_url, price_source_url, verified_at, source_url, league_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
       [cl.id, cl.name, cl.football_data_team_id, cl.aliases, cl.short_name, cl.venue_id, cl.official_site_url, cl.generic_ticket_url, cl.price_source_url, cl.verified_at, pyramidMatch?.source_url ?? cl.generic_ticket_url ?? null, pyramidMatch?.league_name ?? null]
     );
   }
@@ -169,7 +169,7 @@ export async function seedAppDatabase(db: AppDatabase): Promise<void> {
     if (!pyramidClubNames.has(pc.name)) {
       const newId = pyramidToClubId.get(pc.id)!;
       add(
-        "INSERT INTO clubs (id, name, aliases, verified_at, source_url, league_name) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, aliases = excluded.aliases, verified_at = excluded.verified_at, source_url = excluded.source_url, league_name = excluded.league_name",
+        "INSERT INTO clubs (id, name, aliases, verified_at, source_url, league_name) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
         [newId, pc.name, pc.aliases, pc.verified_at, pc.source_url, pc.league_name]
       );
     }
@@ -193,28 +193,28 @@ export async function seedAppDatabase(db: AppDatabase): Promise<void> {
 
   for (const p of SEED_DATA.club_ticket_prices) {
     add(
-      "INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(club_id) DO UPDATE SET sale_mode = excluded.sale_mode, adult_price_pence = excluded.adult_price_pence, concession_price_pence = excluded.concession_price_pence, source_url = excluded.source_url, verified_at = excluded.verified_at, confidence = excluded.confidence",
+      "INSERT INTO club_ticket_prices (club_id, sale_mode, adult_price_pence, concession_price_pence, source_url, verified_at, confidence) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(club_id) DO NOTHING",
       [p.club_id, p.sale_mode, p.adult_price_pence, p.concession_price_pence, p.source_url, p.verified_at, p.confidence]
     );
   }
 
   for (const f of SEED_DATA.fixtures) {
     add(
-      "INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source, source_id) DO UPDATE SET competition_code = excluded.competition_code, home_club_id = excluded.home_club_id, away_club_id = excluded.away_club_id, venue_id = excluded.venue_id, kickoff_at = excluded.kickoff_at, fixture_date = excluded.fixture_date, kickoff_time = excluded.kickoff_time, kickoff_time_status = excluded.kickoff_time_status, season_label = excluded.season_label, status = excluded.status, is_demo_data = excluded.is_demo_data, is_historical = excluded.is_historical, home_one_off = excluded.home_one_off, away_one_off = excluded.away_one_off, confidence = excluded.confidence",
+      "INSERT INTO fixtures (source, source_id, competition_code, home_club_id, away_club_id, venue_id, kickoff_at, fixture_date, kickoff_time, kickoff_time_status, season_label, status, is_demo_data, is_historical, home_one_off, away_one_off, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source, source_id) DO NOTHING",
       [f.source, f.source_id, f.competition_code, f.home_club_id, f.away_club_id, f.venue_id, f.kickoff_at, f.fixture_date, f.kickoff_time, f.kickoff_time_status, f.season_label, f.status, f.is_demo_data, f.is_historical, f.home_one_off, f.away_one_off, f.confidence]
     );
   }
 
   for (const t of SEED_DATA.travel_cache) {
     add(
-      "INSERT INTO travel_cache (postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(postcode_district, venue_id) DO UPDATE SET distance_miles = excluded.distance_miles, driving_minutes = excluded.driving_minutes, public_transport_minutes = excluded.public_transport_minutes, provider = excluded.provider, calculated_at = excluded.calculated_at",
+      "INSERT INTO travel_cache (postcode_district, venue_id, distance_miles, driving_minutes, public_transport_minutes, provider, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(postcode_district, venue_id) DO NOTHING",
       [t.postcode_district, t.venue_id, t.distance_miles, t.driving_minutes, t.public_transport_minutes, t.provider, t.calculated_at]
     );
   }
 
   for (const assignment of CLUB_VENUE_ASSIGNMENTS) {
     add(
-      "INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET club_id = excluded.club_id, venue_id = excluded.venue_id, effective_from = excluded.effective_from, effective_to = excluded.effective_to, is_primary = excluded.is_primary",
+      "INSERT INTO club_venue_assignments (id, club_id, venue_id, effective_from, effective_to, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
       [assignment.id, translateClubId(assignment.club_id), assignment.venue_id, assignment.effective_from, assignment.effective_to, assignment.is_primary]
     );
   }

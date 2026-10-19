@@ -1,10 +1,10 @@
 # SQLite Schema
 
-Run `npm run db:setup` to create or update `data/nearmefc.sqlite`, apply the schema from `lib/db/schema.ts`, and seed demo data. The setup is idempotent, so it can be rerun safely.
+Run `npm run db:setup` to initialize local `data/nearmefc.sqlite`, apply pending numbered migrations, and insert missing demo/reference rows. Existing rows are preserved when setup is repeated. Production startup only opens an existing, migrated database; deploy applies migrations explicitly with `npm run db:migrate`.
 
 To reset local data, delete `data/nearmefc.sqlite` and run `npm run db:setup` again. The SQLite file and WAL/SHM sidecars are ignored by git.
 
-## Current Tables (22 total, migrations 001–027)
+## Current Tables (22 total, migrations 001–030)
 
 ### Core Data
 
