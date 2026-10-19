@@ -37,11 +37,13 @@ FOOTBALL_DATA_API_TOKEN=...
 
 Production uses SQLite via `better-sqlite3`.
 
-Migrations are applied during deploy using:
+The application opens the configured database without creating, migrating, or seeding it. A missing database or pending migration fails startup with an instruction to run the relevant setup command. Production deploy applies migrations before restarting the service using:
 
 ```bash
 node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/db-migrate-prod.ts
 ```
+
+Use `npm run db:setup` only to deliberately initialize a new local or staging database with the demo/reference seed data. Re-running it preserves rows that already exist; operational reference-data edits must be made through the admin tools or import workflows.
 
 ## Health check
 

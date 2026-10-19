@@ -1,10 +1,10 @@
 import { importFootballDataFixtures } from "../lib/db/footballDataImporter.ts";
-import { createAppDatabase } from "../lib/db/client.ts";
+import { openAppDatabase } from "../lib/db/client.ts";
 import { defaultDatabasePath } from "../lib/db/setup.ts";
 
 async function main(): Promise<void> {
   const filename = process.env.SQLITE_DB_PATH ?? defaultDatabasePath;
-  const db = await createAppDatabase(filename);
+  const db = openAppDatabase(filename);
 
   try {
     const result = await importFootballDataFixtures({ db });

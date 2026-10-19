@@ -1,7 +1,7 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
 
 import { createSqliteAppDatabase, type AppDatabase } from "./adapter.ts";
-import { defaultDatabasePath, setupDatabase } from "./setup.ts";
+import { defaultDatabasePath, openDatabase, setupDatabase } from "./setup.ts";
 
 let database: AppDatabase | null = null;
 let databasePromise: Promise<AppDatabase> | null = null;
@@ -14,6 +14,10 @@ export async function createAppDatabase(filename = ":memory:"): Promise<AppDatab
   return createSqliteAppDatabase(await createDatabase(filename));
 }
 
+export function openAppDatabase(filename = defaultDatabasePath): AppDatabase {
+  return createSqliteAppDatabase(openDatabase(filename));
+}
+
 export async function getDatabase(): Promise<AppDatabase> {
   if (database) return database;
   if (!databasePromise) {
@@ -21,7 +25,7 @@ export async function getDatabase(): Promise<AppDatabase> {
       try {
         const configuredPath = process.env.SQLITE_DB_PATH;
         const filename = configuredPath ?? defaultDatabasePath;
-        database = await createAppDatabase(filename);
+        database = openAppDatabase(filename);
         return database;
       } catch (err) {
         databasePromise = null;

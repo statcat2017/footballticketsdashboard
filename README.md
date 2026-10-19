@@ -34,7 +34,7 @@ npm run dev         # Starts dev server
 |---------|-------------|
 | `npm run dev` | Start development server |
 | `npm run build` | Production build |
-| `npm run db:setup` | Create/reset local SQLite with seed data |
+| `npm run db:setup` | Explicitly initialize local SQLite with seed data; preserve existing rows |
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run import:clubs` | Import club seed data from CSV |
 | `npm run travel:fill` | Populate travel cache |
@@ -49,7 +49,7 @@ app/                    # Next.js app routes (pages + API)
 lib/
   db/                   # Database layer
     schema.ts           # Single source of truth for all tables
-    migrations/         # Numbered SQL migrations (001-027)
+    migrations/         # Numbered SQL migrations (001-030)
   admin/                # Admin service modules
   import/               # Fixture import pipeline (adapters, validation)
   search/               # Public search service

@@ -1,5 +1,5 @@
 import { createSqliteAppDatabase } from "../lib/db/adapter.ts";
-import { defaultDatabasePath, setupDatabase } from "../lib/db/setup.ts";
+import { defaultDatabasePath, openDatabase } from "../lib/db/setup.ts";
 import { fillTravelCacheForPostcode } from "../lib/travel/cache.ts";
 
 const filename = process.env.SQLITE_DB_PATH ?? defaultDatabasePath;
@@ -13,7 +13,7 @@ if (!postcode) {
 }
 
 async function main(): Promise<void> {
-  const db = createSqliteAppDatabase(await setupDatabase(filename));
+  const db = createSqliteAppDatabase(openDatabase(filename));
 
   try {
     const result = await fillTravelCacheForPostcode(db, postcode, {
